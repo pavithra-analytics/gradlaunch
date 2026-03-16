@@ -21,76 +21,88 @@ function httpsPost(hostname, path, headers, body) {
   });
 }
 
-// Tool use schema — enforces exact JSON structure every time
-function buildTool(role, locationStr, needsVisa, hasJD, sal, salNote) {
-  const baseProperties = {
-    match_score: { type: 'integer', description: 'How well the resume matches current ' + role + ' requirements, 0-100' },
+function buildTool(role, locationStr, needsVisa, hasJD) {
+  const props = {
+    match_score: { type: 'integer', description: 'How well resume matches current ' + role + ' requirements, 0-100' },
     summary: {
       type: 'object',
       properties: {
         headline: { type: 'string', description: '8-12 word honest assessment of their profile' },
-        description: { type: 'string', description: '2 sentences about where they stand and what they need' },
-        goal: { type: 'string', description: '2-3 word goal e.g. Interview ready' }
+        description: { type: 'string', description: '2 sentences about where they stand and what they need' }
       },
-      required: ['headline', 'description', 'goal']
+      required: ['headline', 'description']
     },
-    skills_present: {
-      type: 'array',
-      description: 'Skills found in the resume, max 8',
-      items: { type: 'string' }
-    },
-    skill_levels: {
-      type: 'object',
-      description: 'Map of skill name to Strong, Intermediate, or Beginner',
-      additionalProperties: { type: 'string' }
-    },
+    skills_present: { type: 'array', items: { type: 'string' }, description: 'Up to 8 skills found in the resume' },
+    skill_levels: { type: 'object', additionalProperties: { type: 'string' }, description: 'Skill to Strong/Intermediate/Beginner' },
     gaps: {
       type: 'array',
-      description: '3-5 missing skills with specific fixes',
+      description: '3-5 missing skills needed for this role',
       items: {
         type: 'object',
         properties: {
           skill: { type: 'string' },
           priority: { type: 'string', enum: ['High', 'Medium', 'Low'] },
-          how_to_fix: { type: 'string', description: 'Specific fix with exact resource name and URL' }
+          how_to_fix: { type: 'string', description: 'Specific resource with URL' }
         },
         required: ['skill', 'priority', 'how_to_fix']
       }
     },
+    trending_skills: {
+      type: 'array',
+      description: '5 skills trending for this role right now',
+      items: {
+        type: 'object',
+        properties: {
+          skill: { type: 'string' },
+          have: { type: 'boolean' }
+        },
+        required: ['skill', 'have']
+      }
+    },
+    top_companies: {
+      type: 'array',
+      description: '4 companies actively hiring for this role',
+      items: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          detail: { type: 'string' }
+        },
+        required: ['name', 'detail']
+      }
+    },
     priority_actions: {
       type: 'array',
-      description: 'Top 3 specific actions with exact URLs',
       items: { type: 'string' },
-      maxItems: 3
+      description: 'Top 3 specific actions with exact URLs'
     },
     plan_30: {
       type: 'object',
-      description: '30-day weekly action plan',
       properties: {
         weeks: {
           type: 'array',
           items: {
             type: 'object',
             properties: {
-              label: { type: 'string', description: 'e.g. Week 1' },
+              label: { type: 'string' },
               steps: {
                 type: 'array',
                 items: {
                   type: 'object',
                   properties: {
-                    action: { type: 'string', description: 'What to do' },
-                    detail: { type: 'string', description: 'How to do it with URL and time estimate' },
-                    link: { type: 'string', description: 'URL or null' },
-                    link_label: { type: 'string', description: 'Link button text or null' }
+                    action: { type: 'string' },
+                    detail: { type: 'string', description: 'How with URL and time estimate' },
+                    link: { type: 'string' },
+                    link_label: { type: 'string' }
                   },
-                  required: ['action', 'detail']
+                  required: ['action', 'detail', 'link', 'link_label']
                 }
               }
             },
             required: ['label', 'steps']
           }
         },
-        callout: { type: 'string', description: '1-2 sentences about what this plan achieves' }
+        callout: { type: 'string' }
       },
       required: ['weeks', 'callout']
     },
@@ -107,11 +119,10 @@ function buildTool(role, locationStr, needsVisa, hasJD, sal, salNote) {
           duration: { type: 'string' },
           free: { type: 'boolean' },
           url: { type: 'string' },
-          why: { type: 'string', description: 'Why this cert closes a specific gap for this person' }
+          why: { type: 'string' }
         },
         required: ['name', 'provider', 'level', 'cost', 'duration', 'free', 'url', 'why']
-      },
-      maxItems: 3
+      }
     },
     salary: {
       type: 'object',
@@ -119,36 +130,32 @@ function buildTool(role, locationStr, needsVisa, hasJD, sal, salNote) {
         entry: { type: 'string' },
         mid: { type: 'string' },
         senior: { type: 'string' },
-        note: { type: 'string' },
-        tips: { type: 'array', items: { type: 'string' } }
+        note: { type: 'string' }
       },
-      required: ['entry', 'mid', 'senior', 'note', 'tips']
+      required: ['entry', 'mid', 'senior', 'note']
     },
     ats_rewrites: {
       type: 'array',
-      description: '2 resume bullets rewritten with ATS keywords',
+      description: '2 weak resume bullets rewritten with ATS keywords',
       items: {
         type: 'object',
         properties: {
-          original: { type: 'string', description: 'Weak bullet from their actual resume' },
+          original: { type: 'string', description: 'Weak bullet copied word for word from their resume' },
           rewritten: { type: 'string', description: 'Stronger version with action verb, metrics, keywords' },
           keywords_added: { type: 'array', items: { type: 'string' } }
         },
         required: ['original', 'rewritten', 'keywords_added']
-      },
-      maxItems: 2
+      }
     },
     linkedin_headline: {
       type: 'string',
-      description: 'LinkedIn headline under 220 chars: Role | Skill1 Skill2 Skill3 | Cert | Company or University. Use real resume data. No visa. No location.'
+      description: 'Under 220 chars. Format: Role | Skill1 Skill2 Skill3 | Cert or in progress | Company or University. No visa. No location.'
     }
   };
 
-  // Add JD breakdown or trending skills based on whether JD was provided
   if (hasJD) {
-    baseProperties.jd_breakdown = {
+    props.jd_breakdown = {
       type: 'array',
-      description: 'Requirements from the job description with met/not met status',
       items: {
         type: 'object',
         properties: {
@@ -159,53 +166,24 @@ function buildTool(role, locationStr, needsVisa, hasJD, sal, salNote) {
         required: ['requirement', 'met', 'note']
       }
     };
-  } else {
-    baseProperties.trending_skills = {
-      type: 'array',
-      description: '5 trending skills for this role right now',
-      items: {
-        type: 'object',
-        properties: {
-          skill: { type: 'string' },
-          have: { type: 'boolean', description: 'Whether the candidate has this skill' }
-        },
-        required: ['skill', 'have']
-      },
-      maxItems: 5
-    };
-    baseProperties.top_companies = {
-      type: 'array',
-      description: '4 companies actively hiring for this role',
-      items: {
-        type: 'object',
-        properties: {
-          name: { type: 'string' },
-          detail: { type: 'string', description: 'Role type and approximate openings' }
-        },
-        required: ['name', 'detail']
-      },
-      maxItems: 4
-    };
   }
 
-  // Add visa-specific fields
   if (needsVisa) {
-    baseProperties.sponsors = {
+    props.sponsors = {
       type: 'array',
-      description: 'Mix of 6 companies that sponsor H-1B visas and are hiring for this role. Include Large, Mid, and Small companies. Not just FAANG.',
+      description: '6 companies hiring for this role that sponsor H-1B. Mix of Large, Mid, Small.',
       items: {
         type: 'object',
         properties: {
           name: { type: 'string' },
-          roles: { type: 'string', description: 'Relevant roles they hire' },
-          why: { type: 'string', description: 'One reason why good fit for this candidate' },
+          roles: { type: 'string' },
+          why: { type: 'string' },
           size: { type: 'string', enum: ['Large', 'Mid', 'Small'] }
         },
         required: ['name', 'roles', 'why', 'size']
-      },
-      maxItems: 6
+      }
     };
-    baseProperties.opt_timeline = {
+    props.opt_timeline = {
       type: 'object',
       properties: {
         title: { type: 'string' },
@@ -228,23 +206,14 @@ function buildTool(role, locationStr, needsVisa, hasJD, sal, salNote) {
     };
   }
 
-  const requiredFields = [
-    'match_score', 'summary', 'skills_present', 'skill_levels', 'gaps',
-    'priority_actions', 'plan_30', 'certifications', 'salary',
-    'ats_rewrites', 'linkedin_headline'
-  ];
-  if (hasJD) requiredFields.push('jd_breakdown');
-  else { requiredFields.push('trending_skills'); requiredFields.push('top_companies'); }
-  if (needsVisa) { requiredFields.push('sponsors'); requiredFields.push('opt_timeline'); }
+  const required = ['match_score','summary','skills_present','skill_levels','gaps','trending_skills','top_companies','priority_actions','plan_30','certifications','salary','ats_rewrites','linkedin_headline'];
+  if (hasJD) required.push('jd_breakdown');
+  if (needsVisa) { required.push('sponsors'); required.push('opt_timeline'); }
 
   return {
     name: 'career_analysis',
-    description: 'Returns a complete career analysis for a graduate student',
-    input_schema: {
-      type: 'object',
-      properties: baseProperties,
-      required: requiredFields
-    }
+    description: 'Complete career analysis for a graduate student',
+    input_schema: { type: 'object', properties: props, required }
   };
 }
 
@@ -258,7 +227,7 @@ async function runAnalysis(apiKey, prompt, tool) {
       max_tokens: 2000,
       tools: [tool],
       tool_choice: { type: 'tool', name: 'career_analysis' },
-      system: 'You are an expert career advisor for new graduates. Analyze the resume carefully and provide specific, actionable advice. Always use real data from the resume.',
+      system: 'You are an expert career advisor for new graduates. Use real data from the resume. Be specific — include exact URLs in plan steps.',
       messages: [{ role: 'user', content: prompt }]
     }
   );
@@ -282,9 +251,7 @@ module.exports = async function handler(req, res) {
   const needsVisa = body.needsVisa === true || body.needsVisa === 'true';
   const jd = (body.jd || '').substring(0, 800);
 
-  if (!resume || !role) {
-    return res.status(400).json({ error: 'Resume and target role are required.' });
-  }
+  if (!resume || !role) return res.status(400).json({ error: 'Resume and target role are required.' });
 
   const hasJD = jd.trim().length > 20;
   const locationStr = location.trim() || 'Nationwide USA';
@@ -304,28 +271,26 @@ module.exports = async function handler(req, res) {
   };
   const locKey = Object.keys(SALARY).find(k => k !== 'default' && locationStr.toLowerCase().includes(k)) || 'default';
   const sal = SALARY[locKey];
-  const salNote = isNational
-    ? 'National averages. NYC, SF, Seattle pay 20-40% more.'
-    : locationStr + ' market rates.';
+  const salNote = isNational ? 'National averages. NYC, SF, Seattle pay 20-40% more.' : locationStr + ' market rates.';
 
   const CERTS = [
-    'Google Data Analytics Certificate (Google/Coursera, Entry, Free-$49/mo, 6 months, free, https://grow.google/certificates/data-analytics/)',
-    'AWS Cloud Practitioner (AWS, Entry, $100, 1 month, paid, https://aws.amazon.com/certification/certified-cloud-practitioner/)',
-    'Google Project Management (Google/Coursera, Entry, Free-$49/mo, 6 months, free, https://grow.google/certificates/project-management/)',
-    'Tableau Desktop Specialist (Tableau, Associate, $250, 1 month, paid, https://www.tableau.com/learn/certification/desktop-specialist)',
-    'Microsoft Power BI PL-300 (Microsoft, Associate, $165, 2 months, paid, https://learn.microsoft.com/certifications/power-bi-data-analyst-associate/)',
-    'Google UX Design (Google/Coursera, Entry, Free-$49/mo, 6 months, free, https://grow.google/certificates/ux-design/)',
-    'AWS Solutions Architect Associate (AWS, Associate, $150, 2-3 months, paid, https://aws.amazon.com/certification/certified-solutions-architect-associate/)',
-    'PMP (PMI, Professional, $405, 3+ months, paid, https://www.pmi.org/certifications/project-management-pmp)',
-    'Google IT Support (Google/Coursera, Entry, Free-$49/mo, 6 months, free, https://grow.google/certificates/it-support/)',
-    'Salesforce Admin (Salesforce, Associate, $200, 2 months, paid, https://trailhead.salesforce.com/credentials/administrator)',
-    'CFA Level 1 (CFA Institute, Professional, $700-$1000, 6 months, paid, https://www.cfainstitute.org/en/programs/cfa)',
-    'dbt Analytics Engineering (dbt Labs, Associate, $200, 1 month, paid, https://www.getdbt.com/certifications)',
-    'Scrum Master PSM I (Scrum.org, Entry, $150, 2 weeks, paid, https://www.scrum.org/assessments/professional-scrum-master-i-certification)',
-    'CompTIA Security+ (CompTIA, Associate, $370, 2 months, paid, https://www.comptia.org/certifications/security)'
+    'Google Data Analytics Certificate (Google/Coursera, Entry, Free-$49/mo, 6 months, free=true, https://grow.google/certificates/data-analytics/)',
+    'AWS Cloud Practitioner (AWS, Entry, $100, 1 month, free=false, https://aws.amazon.com/certification/certified-cloud-practitioner/)',
+    'Google Project Management (Google/Coursera, Entry, Free-$49/mo, 6 months, free=true, https://grow.google/certificates/project-management/)',
+    'Tableau Desktop Specialist (Tableau, Associate, $250, 1 month, free=false, https://www.tableau.com/learn/certification/desktop-specialist)',
+    'Microsoft Power BI PL-300 (Microsoft, Associate, $165, 2 months, free=false, https://learn.microsoft.com/certifications/power-bi-data-analyst-associate/)',
+    'Google UX Design (Google/Coursera, Entry, Free-$49/mo, 6 months, free=true, https://grow.google/certificates/ux-design/)',
+    'AWS Solutions Architect Associate (AWS, Associate, $150, 2-3 months, free=false, https://aws.amazon.com/certification/certified-solutions-architect-associate/)',
+    'PMP (PMI, Professional, $405, 3+ months, free=false, https://www.pmi.org/certifications/project-management-pmp)',
+    'Google IT Support (Google/Coursera, Entry, Free-$49/mo, 6 months, free=true, https://grow.google/certificates/it-support/)',
+    'Salesforce Admin (Salesforce, Associate, $200, 2 months, free=false, https://trailhead.salesforce.com/credentials/administrator)',
+    'CFA Level 1 (CFA Institute, Professional, $700-$1000, 6 months, free=false, https://www.cfainstitute.org/en/programs/cfa)',
+    'dbt Analytics Engineering (dbt Labs, Associate, $200, 1 month, free=false, https://www.getdbt.com/certifications)',
+    'Scrum Master PSM I (Scrum.org, Entry, $150, 2 weeks, free=false, https://www.scrum.org/assessments/professional-scrum-master-i-certification)',
+    'CompTIA Security+ (CompTIA, Associate, $370, 2 months, free=false, https://www.comptia.org/certifications/security)'
   ].join('\n');
 
-  // ── CALL 1: Small web search for live market data ──
+  // Web search — small, targeted, fast
   let liveData = '';
   try {
     const searchR = await httpsPost(
@@ -334,93 +299,77 @@ module.exports = async function handler(req, res) {
       { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
       {
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 250,
+        max_tokens: 200,
         tools: [{ type: 'web_search_20250305', name: 'web_search' }],
-        system: 'Search and return 2 plain text sentences. No JSON. No lists.',
+        system: 'Search and return 2 plain text sentences only. No JSON.',
         messages: [{
           role: 'user',
-          content: 'What skills do ' + role + ' jobs in ' + locationStr + ' require in 2025, and which ' + (needsVisa ? 'H-1B sponsoring ' : '') + 'companies are hiring? 2 sentences only.'
+          content: 'Top skills for ' + role + ' jobs in ' + locationStr + ' in 2025 and ' + (needsVisa ? 'H-1B sponsoring ' : '') + 'companies hiring. 2 sentences only.'
         }]
       }
     );
     if (searchR.status === 200 && Array.isArray(searchR.body.content)) {
-      liveData = searchR.body.content
-        .filter(b => b.type === 'text').map(b => b.text).join('').trim().substring(0, 300);
+      liveData = searchR.body.content.filter(b => b.type === 'text').map(b => b.text).join('').trim().substring(0, 250);
     }
   } catch (e) {
     console.log('Web search skipped:', e.message);
   }
 
-  // ── CALL 2: Main analysis using tool use ──
-  const tool = buildTool(role, locationStr, needsVisa, hasJD, sal, salNote);
+  const tool = buildTool(role, locationStr, needsVisa, hasJD);
 
   const prompt = `Analyze this resume for a ${role} role in ${locationStr}.
 Visa: ${visa}. Needs sponsorship: ${needsVisa ? 'yes' : 'no'}.
 
-RESUME:
-${resume}
-${hasJD ? '\nJOB DESCRIPTION:\n' + jd : ''}
+RESUME: ${resume}
+${hasJD ? '\nJOB DESCRIPTION: ' + jd : ''}
 ${liveData ? '\nLIVE MARKET DATA: ' + liveData : ''}
 
-SALARY TO USE (use these exact values):
-entry: ${sal.e}, mid: ${sal.m}, senior: ${sal.s}
-note: ${salNote}
-tips: ["Do not reveal expected salary first, let employer make the opening offer", "Negotiate total compensation including bonus equity and benefits not just base pay"${needsVisa ? ', "H-1B sponsorship costs employers $5-10k, fair to acknowledge if it comes up in negotiation"' : ''}, "Research this role on Glassdoor and Levels.fyi before any salary conversation"]
+SALARY (use exactly): entry=${sal.e}, mid=${sal.m}, senior=${sal.s}, note="${salNote}"
 
-CERTIFICATIONS (pick 3 most relevant to their specific gaps):
+CERTIFICATIONS (pick 3 most relevant to their gaps):
 ${CERTS}
 
-${needsVisa ? `OPT TIMELINE GUIDANCE for ${visa}:
-title: "${visa} Timeline"
-duration: "${visa === 'F-1 OPT' ? 'Duration: 12 months' : visa === 'STEM OPT' ? 'Duration: 24 additional months' : 'Duration: 3 years renewable to 6'}"
-Steps should cover: graduation/application, EAD arrival, active job search, extension deadline (if F-1/STEM), expiry date
-important_note: critical advice specific to ${visa} including H-1B lottery rate of ~25%` : ''}
+Rules:
+- Use real skills and bullet points from the resume
+- Plan steps must include specific URLs and time estimates
+- ats_rewrites must copy actual bullets from the resume
+- trending_skills and top_companies must always be populated`;
 
-Use the career_analysis tool to return your analysis. Be specific — use real skills from the resume, real company names, exact URLs in plan steps.`;
-
-  // Run analysis with auto retry (Option B)
-  let result = null;
-  let lastError = null;
-
+  // Auto retry — Option B
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
       const r = await runAnalysis(apiKey, prompt, tool);
 
       if (r.status !== 200) {
         const msg = r.body && r.body.error ? r.body.error.message : 'Analysis failed.';
-        lastError = msg;
-        if (attempt === 1) continue; // retry
+        console.error('API error attempt', attempt, ':', msg);
+        if (attempt < 2) continue;
         return res.status(502).json({ error: msg });
       }
 
-      // Extract tool use result
       const content = r.body && r.body.content;
       if (!Array.isArray(content)) {
-        lastError = 'Unexpected response format.';
-        if (attempt === 1) continue;
-        return res.status(502).json({ error: lastError });
+        if (attempt < 2) continue;
+        return res.status(502).json({ error: 'Unexpected response. Please try again.' });
       }
 
-      // Find the tool_use block
       const toolBlock = content.find(b => b.type === 'tool_use' && b.name === 'career_analysis');
       if (!toolBlock || !toolBlock.input) {
-        lastError = 'Tool response missing.';
-        if (attempt === 1) continue;
+        console.error('No tool block attempt', attempt);
+        if (attempt < 2) continue;
         return res.status(502).json({ error: 'Analysis incomplete. Please try again.' });
       }
 
-      result = toolBlock.input;
+      const result = toolBlock.input;
+      result.role = role;
+      result.location = locationStr;
       result._live = liveData.length > 0;
       return res.status(200).json(result);
 
     } catch (err) {
-      lastError = err.message;
       console.error('Attempt', attempt, 'error:', err.message);
-      if (attempt === 2) {
-        return res.status(500).json({ error: 'Server error. Please try again.' });
-      }
+      if (attempt < 2) continue;
+      return res.status(500).json({ error: 'Server error. Please try again.' });
     }
   }
-
-  return res.status(502).json({ error: lastError || 'Analysis failed. Please try again.' });
 };
