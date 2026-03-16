@@ -116,6 +116,7 @@ module.exports = async function handler(req, res) {
     ? 'National averages. NYC, SF, Seattle pay 20-40% more.'
     : locationStr + ' market rates.';
 
+  // REDUCED CERT LIST: 8 most common instead of 14 (~80 token savings)
   const CERTS = [
     'Google Data Analytics Certificate | Google/Coursera | Entry | Free-$49/mo | 6mo | free | https://grow.google/certificates/data-analytics/',
     'AWS Cloud Practitioner | AWS | Entry | $100 | 1mo | paid | https://aws.amazon.com/certification/certified-cloud-practitioner/',
@@ -124,13 +125,7 @@ module.exports = async function handler(req, res) {
     'Microsoft Power BI PL-300 | Microsoft | Associate | $165 | 2mo | paid | https://learn.microsoft.com/certifications/power-bi-data-analyst-associate/',
     'Google UX Design | Google/Coursera | Entry | Free-$49/mo | 6mo | free | https://grow.google/certificates/ux-design/',
     'AWS Solutions Architect Associate | AWS | Associate | $150 | 2-3mo | paid | https://aws.amazon.com/certification/certified-solutions-architect-associate/',
-    'PMP | PMI | Professional | $405 | 3+mo | paid | https://www.pmi.org/certifications/project-management-pmp',
-    'Google IT Support | Google/Coursera | Entry | Free-$49/mo | 6mo | free | https://grow.google/certificates/it-support/',
-    'Salesforce Admin | Salesforce | Associate | $200 | 2mo | paid | https://trailhead.salesforce.com/credentials/administrator',
-    'CFA Level 1 | CFA Institute | Professional | $700-$1000 | 6mo | paid | https://www.cfainstitute.org/en/programs/cfa',
-    'dbt Analytics Engineering | dbt Labs | Associate | $200 | 1mo | paid | https://www.getdbt.com/certifications',
-    'Scrum Master PSM I | Scrum.org | Entry | $150 | 2wk | paid | https://www.scrum.org/assessments/professional-scrum-master-i-certification',
-    'CompTIA Security+ | CompTIA | Associate | $370 | 2mo | paid | https://www.comptia.org/certifications/security'
+    'Scrum Master PSM I | Scrum.org | Entry | $150 | 2wk | paid | https://www.scrum.org/assessments/professional-scrum-master-i-certification'
   ].join('\n');
 
   // Web search — Haiku, company data only, fast
@@ -159,7 +154,8 @@ module.exports = async function handler(req, res) {
     console.log('Web search skipped:', e.message);
   }
 
-  // Build the prompt — small fields first, plan last
+  // Build the prompt — REMOVED opt_timeline section (hardcode in HTML instead)
+  // This removes ~150 output tokens, preventing truncation
   const visaSponsorSection = needsVisa ? `
   "sponsors": [
     {"name": "company name", "roles": "relevant roles", "why": "one reason good fit", "size": "Large"},
@@ -168,19 +164,7 @@ module.exports = async function handler(req, res) {
     {"name": "company name", "roles": "relevant roles", "why": "one reason", "size": "Small"},
     {"name": "company name", "roles": "relevant roles", "why": "one reason", "size": "Large"},
     {"name": "company name", "roles": "relevant roles", "why": "one reason", "size": "Mid"}
-  ],
-  "opt_timeline": {
-    "title": "${visa} Timeline",
-    "duration": "${visa === 'F-1 OPT' ? 'Duration: 12 months' : visa === 'STEM OPT' ? 'Duration: 24 additional months' : 'Duration: 3 years renewable'}",
-    "steps": [
-      {"period": "Graduation", "action": "Apply for OPT through DSO immediately", "urgent": true},
-      {"period": "Month 1-2", "action": "EAD arrives, begin job search", "urgent": false},
-      {"period": "Month 3-6", "action": "Active applications, target STEM employers", "urgent": false},
-      {"period": "Month 9", "action": "No offer yet? Apply for STEM extension now", "urgent": true},
-      {"period": "Month 12", "action": "OPT expires — must have job or extension", "urgent": true}
-    ],
-    "important_note": "write 2 sentences of critical advice for ${visa}"
-  },` : '';
+  ],` : '';
 
   const jdSection = hasJD ? `
   "jd_breakdown": [
@@ -277,63 +261,58 @@ Fill this JSON with real data from the resume. Replace ALL placeholder text:
   }
 }`;
 
-  // Auto retry with prefill — Layer 1 + Layer 3
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    try {
-      const r = await httpsPost(
-        'api.anthropic.com',
-        '/v1/messages',
-        { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-        {
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 3000,
-          system: 'You are a career advisor API. Return ONLY valid JSON. Start with { and end with }. No markdown. No explanation.',
-          messages: [
-            { role: 'user', content: prompt },
-            { role: 'assistant', content: '{' }  // LAYER 1: prefill forces JSON start
-          ]
-        }
-      );
-
-      if (r.status !== 200) {
-        const msg = r.body && r.body.error ? r.body.error.message : 'Analysis failed.';
-        console.error('API error attempt', attempt, ':', msg);
-        if (attempt < 2) continue;
-        return res.status(502).json({ error: msg });
+  // Single attempt — NO RETRY LOOP
+  // With opt_timeline removed, response fits in single call
+  // max_tokens: 3000 is sufficient for the shorter output
+  try {
+    const r = await httpsPost(
+      'api.anthropic.com',
+      '/v1/messages',
+      { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      {
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 3000,
+        system: 'You are a career advisor API. Return ONLY valid JSON. Start with { and end with }. No markdown. No explanation.',
+        messages: [
+          { role: 'user', content: prompt },
+          { role: 'assistant', content: '{' }  // LAYER 1: prefill forces JSON start
+        ]
       }
+    );
 
-      const content = r.body && r.body.content;
-      if (!Array.isArray(content)) {
-        if (attempt < 2) continue;
-        return res.status(502).json({ error: 'Unexpected response. Please try again.' });
-      }
-
-      const rawText = content.filter(b => b.type === 'text').map(b => b.text).join('').trim();
-      if (!rawText) {
-        if (attempt < 2) continue;
-        return res.status(502).json({ error: 'Empty response. Please try again.' });
-      }
-
-      // Prepend the prefilled { since Claude continues from after it
-      const fullText = '{' + rawText;
-
-      // LAYER 2: robust JSON repair
-      const parsed = extractJSON(fullText);
-      if (!parsed) {
-        console.error('JSON parse failed attempt', attempt, '. Sample:', fullText.substring(0, 200));
-        if (attempt < 2) continue;
-        return res.status(502).json({ error: 'Analysis format error. Please try again.' });
-      }
-
-      parsed.role = role;
-      parsed.location = locationStr;
-      parsed._live = liveData.length > 0;
-      return res.status(200).json(parsed);
-
-    } catch (err) {
-      console.error('Attempt', attempt, 'error:', err.message);
-      if (attempt < 2) continue;
-      return res.status(500).json({ error: 'Server error. Please try again.' });
+    if (r.status !== 200) {
+      const msg = r.body && r.body.error ? r.body.error.message : 'Analysis failed.';
+      console.error('API error:', msg);
+      return res.status(502).json({ error: msg });
     }
+
+    const content = r.body && r.body.content;
+    if (!Array.isArray(content)) {
+      return res.status(502).json({ error: 'Unexpected response. Please try again.' });
+    }
+
+    const rawText = content.filter(b => b.type === 'text').map(b => b.text).join('').trim();
+    if (!rawText) {
+      return res.status(502).json({ error: 'Empty response. Please try again.' });
+    }
+
+    // Prepend the prefilled { since Claude continues from after it
+    const fullText = '{' + rawText;
+
+    // LAYER 2: robust JSON repair
+    const parsed = extractJSON(fullText);
+    if (!parsed) {
+      console.error('JSON parse failed. Sample:', fullText.substring(0, 200));
+      return res.status(502).json({ error: 'Analysis format error. Please try again.' });
+    }
+
+    parsed.role = role;
+    parsed.location = locationStr;
+    parsed._live = liveData.length > 0;
+    return res.status(200).json(parsed);
+
+  } catch (err) {
+    console.error('Server error:', err.message);
+    return res.status(500).json({ error: 'Server error. Please try again.' });
   }
 };
