@@ -505,7 +505,7 @@ function showFileSuccess(filename, text) {
   document.getElementById('fname-display').textContent = filename;
   // Build preview — first 150 chars cleaned up
   const preview = text.replace(/\s+/g, ' ').trim().substring(0, 150);
-  document.getElementById('resume-preview').innerHTML = '<strong>We read:</strong> ' + preview + '…';
+  document.getElementById('resume-preview').innerHTML = 'Resume read successfully';
   showUploadState('ok');
   setLaunchEnabled(true);
 }
