@@ -21,250 +21,57 @@ function httpsPost(hostname, path, headers, body) {
   });
 }
 
-function buildTool(role, locationStr, needsVisa, hasJD) {
-  const props = {
+// Robust JSON repair — handles common Haiku output issues
+function extractJSON(text) {
+  if (!text) return null;
 
-    // ── CORE ANALYSIS (small fields first) ──
-    match_score: {
-      type: 'integer',
-      description: 'Match 0-100. Reflect actual seniority — senior professionals score higher than graduates for same role.'
-    },
-    summary: {
-      type: 'object',
-      properties: {
-        headline: { type: 'string', description: '8-12 words reflecting actual experience level and key gap. Never use graduate for experienced professionals.' },
-        description: { type: 'string', description: '2 honest sentences about where they stand and what they need.' }
-      },
-      required: ['headline', 'description']
-    },
-    skills_present: {
-      type: 'array',
-      items: { type: 'string' },
-      description: 'Up to 8 skills found in the resume'
-    },
-    skill_levels: {
-      type: 'object',
-      additionalProperties: { type: 'string' },
-      description: 'Skill to Strong/Intermediate/Beginner based on resume evidence'
-    },
-    gaps: {
-      type: 'array',
-      description: '3-5 missing skills for this role',
-      items: {
-        type: 'object',
-        properties: {
-          skill: { type: 'string' },
-          priority: { type: 'string', enum: ['High', 'Medium', 'Low'] },
-          how_to_fix: { type: 'string', description: 'Specific resource with exact URL' }
-        },
-        required: ['skill', 'priority', 'how_to_fix']
-      }
-    },
-    trending_skills: {
-      type: 'array',
-      description: '5 skills trending for this role right now',
-      items: {
-        type: 'object',
-        properties: {
-          skill: { type: 'string' },
-          have: { type: 'boolean' }
-        },
-        required: ['skill', 'have']
-      }
-    },
-    top_companies: {
-      type: 'array',
-      description: '4 companies actively hiring for this role',
-      items: {
-        type: 'object',
-        properties: {
-          name: { type: 'string' },
-          detail: { type: 'string' }
-        },
-        required: ['name', 'detail']
-      }
-    },
-    priority_actions: {
-      type: 'array',
-      items: { type: 'string' },
-      description: '3 specific actions with exact URLs'
-    },
+  // Strip markdown fences
+  let cleaned = text.trim()
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim();
 
-    // ── SALARY (small) ──
-    salary: {
-      type: 'object',
-      properties: {
-        entry: { type: 'string' },
-        mid: { type: 'string' },
-        senior: { type: 'string' },
-        note: { type: 'string' }
-      },
-      required: ['entry', 'mid', 'senior', 'note']
-    },
+  // Find outermost braces
+  const start = cleaned.indexOf('{');
+  const end = cleaned.lastIndexOf('}');
+  if (start === -1 || end === -1) return null;
 
-    // ── CERTIFICATIONS (medium, before plan) ──
-    certifications: {
-      type: 'array',
-      description: 'Top 3 certifications most relevant to their gaps. Pick from the provided list only.',
-      items: {
-        type: 'object',
-        properties: {
-          name: { type: 'string' },
-          provider: { type: 'string' },
-          level: { type: 'string' },
-          cost: { type: 'string' },
-          duration: { type: 'string' },
-          free: { type: 'boolean' },
-          url: { type: 'string' },
-          why: { type: 'string', description: 'One sentence why this closes a specific gap' }
-        },
-        required: ['name', 'provider', 'level', 'cost', 'duration', 'free', 'url', 'why']
-      }
-    },
+  cleaned = cleaned.substring(start, end + 1);
 
-    // ── ATS REWRITES (medium, before plan) ──
-    ats_rewrites: {
-      type: 'array',
-      description: '2 weak resume bullets rewritten with ATS keywords',
-      items: {
-        type: 'object',
-        properties: {
-          original: { type: 'string', description: 'Copy a weak bullet word for word from their resume' },
-          rewritten: { type: 'string', description: 'Stronger version with action verb, metrics, ATS keywords' },
-          keywords_added: { type: 'array', items: { type: 'string' } }
-        },
-        required: ['original', 'rewritten', 'keywords_added']
-      }
-    },
+  // Attempt 1 — parse as-is
+  try { return JSON.parse(cleaned); } catch (e) {}
 
-    // ── LINKEDIN HEADLINE (small, before plan) ──
-    linkedin_headline: {
-      type: 'string',
-      description: 'Under 220 chars. Format: Role | Skill1 Skill2 Skill3 | Cert or in progress | Company or University. Use real resume data. No visa. No location.'
-    },
+  // Attempt 2 — fix trailing commas and control chars
+  try {
+    const fixed = cleaned
+      .replace(/,\s*([}\]])/g, '$1')
+      .replace(/[\u0000-\u001F\u007F]/g, ' ');
+    return JSON.parse(fixed);
+  } catch (e) {}
 
-    // ── PLAN (largest field — last so other fields always fill first) ──
-    plan_30: {
-      type: 'object',
-      description: '30-day weekly action plan. Exactly 2 specific steps per week with URLs.',
-      properties: {
-        weeks: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              label: { type: 'string' },
-              steps: {
-                type: 'array',
-                description: 'Exactly 2 steps for this week',
-                items: {
-                  type: 'object',
-                  properties: {
-                    action: { type: 'string', description: 'What to do' },
-                    detail: { type: 'string', description: 'How to do it with exact URL and time estimate' },
-                    link: { type: 'string', description: 'Full URL starting with https or empty string' },
-                    link_label: { type: 'string', description: 'Short button label or empty string' }
-                  },
-                  required: ['action', 'detail', 'link', 'link_label']
-                }
-              }
-            },
-            required: ['label', 'steps']
-          }
-        },
-        callout: { type: 'string', description: '1-2 sentences about what this plan achieves' }
-      },
-      required: ['weeks', 'callout']
+  // Attempt 3 — truncated JSON, try to close open structures
+  try {
+    let f = cleaned.replace(/,\s*([}\]])/g, '$1').replace(/[\u0000-\u001F\u007F]/g, ' ');
+    // Count unclosed braces and brackets
+    let braces = 0, brackets = 0, inStr = false, escape = false;
+    for (const ch of f) {
+      if (escape) { escape = false; continue; }
+      if (ch === '\\' && inStr) { escape = true; continue; }
+      if (ch === '"') { inStr = !inStr; continue; }
+      if (inStr) continue;
+      if (ch === '{') braces++;
+      if (ch === '}') braces--;
+      if (ch === '[') brackets++;
+      if (ch === ']') brackets--;
     }
-  };
+    // Close any open structures
+    f += ']'.repeat(Math.max(0, brackets));
+    f += '}'.repeat(Math.max(0, braces));
+    return JSON.parse(f);
+  } catch (e) {}
 
-  // JD breakdown if JD provided
-  if (hasJD) {
-    props.jd_breakdown = {
-      type: 'array',
-      description: 'Requirements from the job description',
-      items: {
-        type: 'object',
-        properties: {
-          requirement: { type: 'string' },
-          met: { type: 'boolean' },
-          note: { type: 'string' }
-        },
-        required: ['requirement', 'met', 'note']
-      }
-    };
-  }
-
-  // Visa fields
-  if (needsVisa) {
-    props.sponsors = {
-      type: 'array',
-      description: '6 companies hiring for this role that sponsor H-1B. Mix of Large, Mid, Small. Not just FAANG.',
-      items: {
-        type: 'object',
-        properties: {
-          name: { type: 'string' },
-          roles: { type: 'string' },
-          why: { type: 'string' },
-          size: { type: 'string', enum: ['Large', 'Mid', 'Small'] }
-        },
-        required: ['name', 'roles', 'why', 'size']
-      }
-    };
-    props.opt_timeline = {
-      type: 'object',
-      properties: {
-        title: { type: 'string' },
-        duration: { type: 'string' },
-        steps: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              period: { type: 'string' },
-              action: { type: 'string' },
-              urgent: { type: 'boolean' }
-            },
-            required: ['period', 'action', 'urgent']
-          }
-        },
-        important_note: { type: 'string' }
-      },
-      required: ['title', 'duration', 'steps', 'important_note']
-    };
-  }
-
-  // Required fields — small fields first, plan last
-  const required = [
-    'match_score', 'summary', 'skills_present', 'skill_levels', 'gaps',
-    'trending_skills', 'top_companies', 'priority_actions',
-    'salary', 'certifications', 'ats_rewrites', 'linkedin_headline',
-    'plan_30'
-  ];
-  if (hasJD) required.push('jd_breakdown');
-  if (needsVisa) { required.push('sponsors'); required.push('opt_timeline'); }
-
-  return {
-    name: 'career_analysis',
-    description: 'Complete career analysis',
-    input_schema: { type: 'object', properties: props, required }
-  };
-}
-
-async function runAnalysis(apiKey, prompt, tool) {
-  return httpsPost(
-    'api.anthropic.com',
-    '/v1/messages',
-    { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-    {
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 3000,
-      tools: [tool],
-      tool_choice: { type: 'tool', name: 'career_analysis' },
-      system: 'You are an expert career advisor. Analyze resumes accurately — reflect actual seniority and experience level. Use real data from the resume. Include exact URLs in plan steps.',
-      messages: [{ role: 'user', content: prompt }]
-    }
-  );
+  return null;
 }
 
 module.exports = async function handler(req, res) {
@@ -305,26 +112,28 @@ module.exports = async function handler(req, res) {
   };
   const locKey = Object.keys(SALARY).find(k => k !== 'default' && locationStr.toLowerCase().includes(k)) || 'default';
   const sal = SALARY[locKey];
-  const salNote = isNational ? 'National averages. NYC, SF, Seattle pay 20-40% more.' : locationStr + ' market rates.';
+  const salNote = isNational
+    ? 'National averages. NYC, SF, Seattle pay 20-40% more.'
+    : locationStr + ' market rates.';
 
   const CERTS = [
-    'Google Data Analytics Certificate | Google/Coursera | Entry | Free-$49/mo | 6 months | free | https://grow.google/certificates/data-analytics/',
-    'AWS Cloud Practitioner | AWS | Entry | $100 | 1 month | paid | https://aws.amazon.com/certification/certified-cloud-practitioner/',
-    'Google Project Management | Google/Coursera | Entry | Free-$49/mo | 6 months | free | https://grow.google/certificates/project-management/',
-    'Tableau Desktop Specialist | Tableau | Associate | $250 | 1 month | paid | https://www.tableau.com/learn/certification/desktop-specialist',
-    'Microsoft Power BI PL-300 | Microsoft | Associate | $165 | 2 months | paid | https://learn.microsoft.com/certifications/power-bi-data-analyst-associate/',
-    'Google UX Design | Google/Coursera | Entry | Free-$49/mo | 6 months | free | https://grow.google/certificates/ux-design/',
-    'AWS Solutions Architect Associate | AWS | Associate | $150 | 2-3 months | paid | https://aws.amazon.com/certification/certified-solutions-architect-associate/',
-    'PMP | PMI | Professional | $405 | 3+ months | paid | https://www.pmi.org/certifications/project-management-pmp',
-    'Google IT Support | Google/Coursera | Entry | Free-$49/mo | 6 months | free | https://grow.google/certificates/it-support/',
-    'Salesforce Admin | Salesforce | Associate | $200 | 2 months | paid | https://trailhead.salesforce.com/credentials/administrator',
-    'CFA Level 1 | CFA Institute | Professional | $700-$1000 | 6 months | paid | https://www.cfainstitute.org/en/programs/cfa',
-    'dbt Analytics Engineering | dbt Labs | Associate | $200 | 1 month | paid | https://www.getdbt.com/certifications',
-    'Scrum Master PSM I | Scrum.org | Entry | $150 | 2 weeks | paid | https://www.scrum.org/assessments/professional-scrum-master-i-certification',
-    'CompTIA Security+ | CompTIA | Associate | $370 | 2 months | paid | https://www.comptia.org/certifications/security'
+    'Google Data Analytics Certificate | Google/Coursera | Entry | Free-$49/mo | 6mo | free | https://grow.google/certificates/data-analytics/',
+    'AWS Cloud Practitioner | AWS | Entry | $100 | 1mo | paid | https://aws.amazon.com/certification/certified-cloud-practitioner/',
+    'Google Project Management | Google/Coursera | Entry | Free-$49/mo | 6mo | free | https://grow.google/certificates/project-management/',
+    'Tableau Desktop Specialist | Tableau | Associate | $250 | 1mo | paid | https://www.tableau.com/learn/certification/desktop-specialist',
+    'Microsoft Power BI PL-300 | Microsoft | Associate | $165 | 2mo | paid | https://learn.microsoft.com/certifications/power-bi-data-analyst-associate/',
+    'Google UX Design | Google/Coursera | Entry | Free-$49/mo | 6mo | free | https://grow.google/certificates/ux-design/',
+    'AWS Solutions Architect Associate | AWS | Associate | $150 | 2-3mo | paid | https://aws.amazon.com/certification/certified-solutions-architect-associate/',
+    'PMP | PMI | Professional | $405 | 3+mo | paid | https://www.pmi.org/certifications/project-management-pmp',
+    'Google IT Support | Google/Coursera | Entry | Free-$49/mo | 6mo | free | https://grow.google/certificates/it-support/',
+    'Salesforce Admin | Salesforce | Associate | $200 | 2mo | paid | https://trailhead.salesforce.com/credentials/administrator',
+    'CFA Level 1 | CFA Institute | Professional | $700-$1000 | 6mo | paid | https://www.cfainstitute.org/en/programs/cfa',
+    'dbt Analytics Engineering | dbt Labs | Associate | $200 | 1mo | paid | https://www.getdbt.com/certifications',
+    'Scrum Master PSM I | Scrum.org | Entry | $150 | 2wk | paid | https://www.scrum.org/assessments/professional-scrum-master-i-certification',
+    'CompTIA Security+ | CompTIA | Associate | $370 | 2mo | paid | https://www.comptia.org/certifications/security'
   ].join('\n');
 
-  // Web search — Haiku only, targeted, for company and market data
+  // Web search — Haiku, company data only, fast
   let liveData = '';
   try {
     const searchR = await httpsPost(
@@ -333,54 +142,158 @@ module.exports = async function handler(req, res) {
       { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
       {
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 200,
+        max_tokens: 150,
         tools: [{ type: 'web_search_20250305', name: 'web_search' }],
-        system: 'Search and return 2 plain text sentences only. No JSON. No lists.',
+        system: 'Search and return 2 plain text sentences only. No JSON.',
         messages: [{
           role: 'user',
-          content: 'Which companies are actively hiring ' + role + ' in ' + locationStr + ' right now in 2025' + (needsVisa ? ' and sponsor H-1B visas' : '') + '? 2 sentences only.'
+          content: 'Which companies are hiring ' + role + ' in ' + locationStr + ' right now' + (needsVisa ? ' and sponsor H-1B' : '') + '? 2 sentences only.'
         }]
       }
     );
     if (searchR.status === 200 && Array.isArray(searchR.body.content)) {
       liveData = searchR.body.content
-        .filter(b => b.type === 'text')
-        .map(b => b.text)
-        .join('')
-        .trim()
-        .substring(0, 250);
+        .filter(b => b.type === 'text').map(b => b.text).join('').trim().substring(0, 200);
     }
   } catch (e) {
     console.log('Web search skipped:', e.message);
   }
 
-  const tool = buildTool(role, locationStr, needsVisa, hasJD);
+  // Build the prompt — small fields first, plan last
+  const visaSponsorSection = needsVisa ? `
+  "sponsors": [
+    {"name": "company name", "roles": "relevant roles", "why": "one reason good fit", "size": "Large"},
+    {"name": "company name", "roles": "relevant roles", "why": "one reason", "size": "Mid"},
+    {"name": "company name", "roles": "relevant roles", "why": "one reason", "size": "Mid"},
+    {"name": "company name", "roles": "relevant roles", "why": "one reason", "size": "Small"},
+    {"name": "company name", "roles": "relevant roles", "why": "one reason", "size": "Large"},
+    {"name": "company name", "roles": "relevant roles", "why": "one reason", "size": "Mid"}
+  ],
+  "opt_timeline": {
+    "title": "${visa} Timeline",
+    "duration": "${visa === 'F-1 OPT' ? 'Duration: 12 months' : visa === 'STEM OPT' ? 'Duration: 24 additional months' : 'Duration: 3 years renewable'}",
+    "steps": [
+      {"period": "Graduation", "action": "Apply for OPT through DSO immediately", "urgent": true},
+      {"period": "Month 1-2", "action": "EAD arrives, begin job search", "urgent": false},
+      {"period": "Month 3-6", "action": "Active applications, target STEM employers", "urgent": false},
+      {"period": "Month 9", "action": "No offer yet? Apply for STEM extension now", "urgent": true},
+      {"period": "Month 12", "action": "OPT expires — must have job or extension", "urgent": true}
+    ],
+    "important_note": "write 2 sentences of critical advice for ${visa}"
+  },` : '';
 
-  const prompt = `Analyze this resume for a ${role} role in ${locationStr}.
-Visa: ${visa}. Needs sponsorship: ${needsVisa ? 'yes' : 'no'}.
+  const jdSection = hasJD ? `
+  "jd_breakdown": [
+    {"requirement": "requirement from JD", "met": true, "note": "one sentence"},
+    {"requirement": "requirement from JD", "met": false, "note": "one sentence"},
+    {"requirement": "requirement from JD", "met": true, "note": "one sentence"}
+  ],` : `
+  "trending_skills": [
+    {"skill": "skill name", "have": false},
+    {"skill": "skill name", "have": true},
+    {"skill": "skill name", "have": false},
+    {"skill": "skill name", "have": true},
+    {"skill": "skill name", "have": false}
+  ],
+  "top_companies": [
+    {"name": "company name", "detail": "role type and openings"},
+    {"name": "company name", "detail": "role type and openings"},
+    {"name": "company name", "detail": "role type and openings"},
+    {"name": "company name", "detail": "role type and openings"}
+  ],`;
 
-RESUME:
-${resume}
-${hasJD ? '\nJOB DESCRIPTION:\n' + jd : ''}
-${liveData ? '\nLIVE COMPANY DATA (use for top_companies and sponsors): ' + liveData : ''}
+  const prompt = `You are a career advisor API. Analyze this resume and return ONLY a JSON object.
+Return pure JSON. Start with { and end with }. No markdown. No explanation. No text outside JSON.
 
-SALARY VALUES — use exactly:
-entry: ${sal.e}, mid: ${sal.m}, senior: ${sal.s}
-note: ${salNote}
-
-CERTIFICATIONS — pick 3 most relevant to their gaps (name | provider | level | cost | duration | free | url):
+RESUME: ${resume}
+ROLE: ${role}
+LOCATION: ${locationStr}
+VISA: ${visa}
+NEEDS SPONSORSHIP: ${needsVisa ? 'yes' : 'no'}
+${hasJD ? 'JOB DESCRIPTION: ' + jd : ''}
+${liveData ? 'LIVE COMPANY DATA: ' + liveData : ''}
+SALARY: entry=${sal.e} mid=${sal.m} senior=${sal.s}
+CERTS LIST (pick 3 most relevant, format: name|provider|level|cost|duration|free|url):
 ${CERTS}
 
-RULES:
-- Reflect actual seniority from resume — do not call experienced professionals graduates
-- Each plan week must have exactly 2 steps with specific URLs and time estimates
-- Copy actual bullet points from resume for ats_rewrites
-- Pick certifications from the list above only`;
+Fill this JSON with real data from the resume. Replace ALL placeholder text:
 
-  // Auto retry once on failure
+{
+  "match_score": 0,
+  "summary": {
+    "headline": "write 8-12 words reflecting actual seniority — never call experienced professionals graduates",
+    "description": "write 2 honest sentences about where they stand"
+  },
+  "skills_present": ["skill from resume", "skill", "skill"],
+  "skill_levels": {"skill": "Strong"},
+  "gaps": [
+    {"skill": "missing skill", "priority": "High", "how_to_fix": "specific resource with exact URL"},
+    {"skill": "missing skill", "priority": "Medium", "how_to_fix": "specific resource with URL"},
+    {"skill": "missing skill", "priority": "Low", "how_to_fix": "specific resource with URL"}
+  ],
+  ${jdSection}
+  "priority_actions": [
+    "specific action with exact URL",
+    "specific action with URL",
+    "specific action"
+  ],
+  "salary": {
+    "entry": "${sal.e}",
+    "mid": "${sal.m}",
+    "senior": "${sal.s}",
+    "note": "${salNote}"
+  },
+  "certifications": [
+    {"name": "cert from list", "provider": "provider", "level": "level", "cost": "cost", "duration": "duration", "free": false, "url": "https://url", "why": "why this closes a specific gap"},
+    {"name": "cert from list", "provider": "provider", "level": "level", "cost": "cost", "duration": "duration", "free": true, "url": "https://url", "why": "why relevant"},
+    {"name": "cert from list", "provider": "provider", "level": "level", "cost": "cost", "duration": "duration", "free": false, "url": "https://url", "why": "why relevant"}
+  ],
+  "ats_rewrites": [
+    {"original": "copy a weak bullet from their actual resume word for word", "rewritten": "stronger version with action verb metrics and ATS keywords", "keywords_added": ["keyword1", "keyword2", "keyword3"]},
+    {"original": "copy second weak bullet from resume", "rewritten": "improved version", "keywords_added": ["keyword1", "keyword2"]}
+  ],
+  "linkedin_headline": "Role | Skill1 Skill2 Skill3 | Cert or in progress | Company or University — under 220 chars, use real resume data",
+  ${visaSponsorSection}
+  "plan_30": {
+    "weeks": [
+      {"label": "Week 1", "steps": [
+        {"action": "specific action", "detail": "how with exact URL and time estimate", "link": "https://url", "link_label": "Visit site"},
+        {"action": "specific action", "detail": "how with URL", "link": "", "link_label": ""}
+      ]},
+      {"label": "Week 2", "steps": [
+        {"action": "specific action", "detail": "how with exact URL", "link": "https://url", "link_label": "Visit site"},
+        {"action": "specific action", "detail": "how", "link": "", "link_label": ""}
+      ]},
+      {"label": "Week 3", "steps": [
+        {"action": "specific action", "detail": "how with URL", "link": "", "link_label": ""},
+        {"action": "specific action", "detail": "how", "link": "", "link_label": ""}
+      ]},
+      {"label": "Week 4", "steps": [
+        {"action": "specific action", "detail": "how with URL", "link": "", "link_label": ""},
+        {"action": "specific action", "detail": "how", "link": "", "link_label": ""}
+      ]}
+    ],
+    "callout": "1-2 sentences about what this plan achieves"
+  }
+}`;
+
+  // Auto retry with prefill — Layer 1 + Layer 3
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
-      const r = await runAnalysis(apiKey, prompt, tool);
+      const r = await httpsPost(
+        'api.anthropic.com',
+        '/v1/messages',
+        { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+        {
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 3000,
+          system: 'You are a career advisor API. Return ONLY valid JSON. Start with { and end with }. No markdown. No explanation.',
+          messages: [
+            { role: 'user', content: prompt },
+            { role: 'assistant', content: '{' }  // LAYER 1: prefill forces JSON start
+          ]
+        }
+      );
 
       if (r.status !== 200) {
         const msg = r.body && r.body.error ? r.body.error.message : 'Analysis failed.';
@@ -391,23 +304,31 @@ RULES:
 
       const content = r.body && r.body.content;
       if (!Array.isArray(content)) {
-        console.error('No content array attempt', attempt);
         if (attempt < 2) continue;
         return res.status(502).json({ error: 'Unexpected response. Please try again.' });
       }
 
-      const toolBlock = content.find(b => b.type === 'tool_use' && b.name === 'career_analysis');
-      if (!toolBlock || !toolBlock.input) {
-        console.error('No tool block attempt', attempt, '- content types:', content.map(b => b.type).join(','));
+      const rawText = content.filter(b => b.type === 'text').map(b => b.text).join('').trim();
+      if (!rawText) {
         if (attempt < 2) continue;
-        return res.status(502).json({ error: 'Analysis incomplete. Please try again.' });
+        return res.status(502).json({ error: 'Empty response. Please try again.' });
       }
 
-      const result = toolBlock.input;
-      result.role = role;
-      result.location = locationStr;
-      result._live = liveData.length > 0;
-      return res.status(200).json(result);
+      // Prepend the prefilled { since Claude continues from after it
+      const fullText = '{' + rawText;
+
+      // LAYER 2: robust JSON repair
+      const parsed = extractJSON(fullText);
+      if (!parsed) {
+        console.error('JSON parse failed attempt', attempt, '. Sample:', fullText.substring(0, 200));
+        if (attempt < 2) continue;
+        return res.status(502).json({ error: 'Analysis format error. Please try again.' });
+      }
+
+      parsed.role = role;
+      parsed.location = locationStr;
+      parsed._live = liveData.length > 0;
+      return res.status(200).json(parsed);
 
     } catch (err) {
       console.error('Attempt', attempt, 'error:', err.message);
