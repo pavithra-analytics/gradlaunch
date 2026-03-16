@@ -259,7 +259,8 @@ module.exports = async function handler(req, res) {
     {"name": "mid company",   "roles": "relevant roles", "why": "one reason", "size": "Mid"},
     {"name": "mid company",   "roles": "relevant roles", "why": "one reason", "size": "Mid"},
     {"name": "small company", "roles": "relevant roles", "why": "one reason", "size": "Small"}
-  ],` : '';
+  ],` : `
+  "sponsors": [],`;
 
   const prompt = `You are a career advisor API. Analyze this resume and return ONLY a JSON object.
 Return pure JSON. No markdown. No explanation.
@@ -301,8 +302,8 @@ RULES:
   ],
   "linkedin_headline": "Role | Skill1 Skill2 | Cert in progress | Company",
   "cert_picks": ["Cert Name 1", "Cert Name 2", "Cert Name 3"],
-  "cert_reasons": {"Cert Name 1": "why it closes a gap", "Cert Name 2": "why", "Cert Name 3": "why"},
-  ${sponsorsSection}
+  "cert_reasons": {"Cert Name 1": "why it closes a gap", "Cert Name 2": "why", "Cert Name 3": "why"}
+  ${sponsorsSection ? ',' + sponsorsSection : ''}
   "plan_30": {
     "weeks": [
       {"label": "Week 1", "steps": [
