@@ -223,7 +223,7 @@ async function runAnalysis(apiKey, prompt, tool) {
     '/v1/messages',
     { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
     {
-      model: 'claude-haiku-4-5-20251001',
+      model: 'claude-sonnet-4-5',
       max_tokens: 2000,
       tools: [tool],
       tool_choice: { type: 'tool', name: 'career_analysis' },
