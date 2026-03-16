@@ -212,7 +212,7 @@ function buildTool(role, locationStr, needsVisa, hasJD) {
 
   return {
     name: 'career_analysis',
-    description: 'Complete career analysis for a graduate student',
+    description: 'Complete career analysis',
     input_schema: { type: 'object', properties: props, required }
   };
 }
@@ -224,7 +224,7 @@ async function runAnalysis(apiKey, prompt, tool) {
     { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
     {
       model: 'claude-sonnet-4-5',
-      max_tokens: 2000,
+      max_tokens: 3000,
       tools: [tool],
       tool_choice: { type: 'tool', name: 'career_analysis' },
       system: 'You are an expert career advisor for new graduates. Use real data from the resume. Be specific — include exact URLs in plan steps.',
