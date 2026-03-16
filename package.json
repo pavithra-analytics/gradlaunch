@@ -4,6 +4,6 @@
   "description": "GradLaunch — Student Career Starter",
   "main": "index.html",
   "engines": {
-    "node": "18.x"
+    "node": "24.x"
   }
 }
