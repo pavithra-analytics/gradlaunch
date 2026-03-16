@@ -2,7 +2,6 @@
   "name": "gradlaunch",
   "version": "1.0.0",
   "description": "GradLaunch — Student Career Starter",
-  "main": "index.html",
   "engines": {
     "node": "24.x"
   }
