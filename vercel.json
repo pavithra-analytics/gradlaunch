@@ -1,6 +1,3 @@
 {
-  "version": 2,
-  "rewrites": [
-    { "source": "/api/analyze", "destination": "/api/analyze.js" }
-  ]
+  "version": 2
 }
