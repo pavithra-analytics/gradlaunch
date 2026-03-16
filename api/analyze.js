@@ -201,28 +201,35 @@ module.exports = async function handler(req, res) {
   const sal = SALARY[locKey];
   const salNote = isNational ? 'National averages. NYC, SF, Seattle pay 20-40% more.' : locationStr + ' market rates.';
 
-  // ── WEB SEARCH — cached ──
+  // ── WEB SEARCH — Tavily, cached 24hr ──
+  const tavilyKey = process.env.TAVILY_API_KEY;
   const cacheKey = role.toLowerCase().trim() + '|' + locationStr.toLowerCase() + '|' + (needsVisa ? 'visa' : 'novisa');
   let liveData = getCached(cacheKey) || '';
 
-  if (!liveData) {
+  if (!liveData && tavilyKey) {
     try {
-      const searchR = await httpsPost(
-        'api.anthropic.com', '/v1/messages',
-        { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      const query = 'companies hiring ' + role + ' in ' + locationStr + (needsVisa ? ' H-1B visa sponsor' : '') + ' 2025';
+      const tavilyR = await httpsPost(
+        'api.tavily.com', '/search',
+        { 'Content-Type': 'application/json' },
         {
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 150,
-          tools: [{ type: 'web_search_20250305', name: 'web_search' }],
-          system: 'Search and return 2 plain text sentences only. No JSON.',
-          messages: [{ role: 'user', content: 'Which companies are hiring ' + role + ' in ' + locationStr + ' right now' + (needsVisa ? ' and sponsor H-1B' : '') + '? 2 sentences only.' }]
+          api_key: tavilyKey,
+          query,
+          search_depth: 'basic',
+          max_results: 3,
+          include_answer: true
         }
       );
-      if (searchR.status === 200 && Array.isArray(searchR.body.content)) {
-        liveData = searchR.body.content.filter(b => b.type === 'text').map(b => b.text).join('').trim().substring(0, 200);
+      if (tavilyR.status === 200 && tavilyR.body) {
+        // Prefer the summary answer, fall back to first result snippet
+        liveData = (
+          tavilyR.body.answer ||
+          (tavilyR.body.results && tavilyR.body.results[0] && tavilyR.body.results[0].content) ||
+          ''
+        ).trim().substring(0, 300);
         if (liveData) setCache(cacheKey, liveData);
       }
-    } catch (e) { console.log('Web search skipped:', e.message); }
+    } catch (e) { console.log('Tavily search skipped:', e.message); }
   }
 
   // ── PROMPT — LLM REASONS ONLY, no salary/cert details ──
@@ -263,8 +270,10 @@ Return pure JSON. No markdown. No explanation.
 RESUME: ${resume}
 ROLE: ${role}
 LOCATION: ${locationStr}
+VISA: ${visa}
+NEEDS SPONSORSHIP: ${needsVisa ? 'yes' : 'no'}
 ${hasJD ? 'JOB DESCRIPTION: ' + jd : ''}
-${liveData ? 'LIVE DATA: ' + liveData : ''}
+${liveData ? 'LIVE MARKET DATA: ' + liveData : ''}
 
 CERT NAMES (pick exactly 3 most relevant to gaps, use exact names):
 ${certNames}
@@ -357,7 +366,6 @@ RULES:
     result.role = role;
     result.location = locationStr;
     result._live = liveData.length > 0;
-    result._cached = !!getCached(cacheKey);
 
     return res.status(200).json(result);
 
