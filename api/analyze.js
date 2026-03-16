@@ -92,21 +92,35 @@ function httpsPost(hostname, path, headers, body) {
   });
 }
 
-function extractJSON(text) {
-  if (!text) return null;
-  let cleaned = text.trim()
-    .replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim();
-  const start = cleaned.indexOf('{');
-  const end = cleaned.lastIndexOf('}');
-  if (start === -1 || end === -1) return null;
-  cleaned = cleaned.substring(start, end + 1);
-  try { return JSON.parse(cleaned); } catch (e) {}
+function extractJSON(rawText) {
+  if (!rawText || !rawText.trim()) return null;
+  let t = rawText.trim();
+  // Strip markdown fences
+  t = t.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim();
+  // Determine JSON string based on what Haiku returned
+  let jsonStr;
+  if (t.startsWith('"') || t.match(/^\d/)) {
+    jsonStr = '{' + t; // prefill continuation — prepend {
+  } else if (t.startsWith('{')) {
+    jsonStr = t; // full JSON already
+  } else {
+    const idx = t.indexOf('{');
+    if (idx === -1) return null;
+    jsonStr = t.substring(idx); // strip text before JSON
+  }
+  // Trim to last }
+  const lastBrace = jsonStr.lastIndexOf('}');
+  if (lastBrace !== -1) jsonStr = jsonStr.substring(0, lastBrace + 1);
+  // Attempt 1: parse as-is
+  try { return JSON.parse(jsonStr); } catch (e) {}
+  // Attempt 2: fix trailing commas + control chars
   try {
-    const fixed = cleaned.replace(/,\s*([}\]])/g, '$1').replace(/[\u0000-\u001F\u007F]/g, ' ');
+    const fixed = jsonStr.replace(/,\s*([}\]])/g, '$1').replace(/[\u0000-\u001F\u007F]/g, ' ');
     return JSON.parse(fixed);
   } catch (e) {}
+  // Attempt 3: close unclosed structures
   try {
-    let f = cleaned.replace(/,\s*([}\]])/g, '$1').replace(/[\u0000-\u001F\u007F]/g, ' ');
+    let f = jsonStr.replace(/,\s*([}\]])/g, '$1').replace(/[\u0000-\u001F\u007F]/g, ' ');
     let braces = 0, brackets = 0, inStr = false, escape = false;
     for (const ch of f) {
       if (escape) { escape = false; continue; }
@@ -354,9 +368,9 @@ RULES:
     const rawText = content.filter(b => b.type === 'text').map(b => b.text).join('').trim();
     if (!rawText) return res.status(502).json({ error: 'Empty response. Please try again.' });
 
-    const parsed = extractJSON('{' + rawText);
+    const parsed = extractJSON(rawText);
     if (!parsed) {
-      console.error('JSON parse failed. Sample:', ('{' + rawText).substring(0, 200));
+      console.error('JSON parse failed. Sample:', rawText.substring(0, 200));
       return res.status(502).json({ error: 'Analysis format error. Please try again.' });
     }
 
