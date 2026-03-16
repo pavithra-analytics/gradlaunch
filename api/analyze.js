@@ -74,7 +74,8 @@ function httpsPost(hostname, path, headers, body) {
     const data = JSON.stringify(body);
     const options = {
       hostname, path, method: 'POST',
-      headers: { ...headers, 'Content-Length': Buffer.byteLength(data) }
+      headers: { ...headers, 'Content-Length': Buffer.byteLength(data) },
+      timeout: 25000
     };
     const req = https.request(options, (res) => {
       let raw = '';
@@ -84,6 +85,7 @@ function httpsPost(hostname, path, headers, body) {
         catch (e) { resolve({ status: res.statusCode, body: raw }); }
       });
     });
+    req.on('timeout', () => { req.destroy(new Error('Request timed out')); });
     req.on('error', reject);
     req.write(data);
     req.end();
@@ -222,12 +224,7 @@ module.exports = async function handler(req, res) {
       );
       if (tavilyR.status === 200 && tavilyR.body) {
         // Prefer the summary answer, fall back to first result snippet
-        liveData = (
-          tavilyR.body.answer ||
-          (tavilyR.body.results && tavilyR.body.results[0] && tavilyR.body.results[0].content) ||
-          ''
-        ).trim().substring(0, 300);
-        if (liveData) setCache(cacheKey, liveData);
+        liveData = (tavilyR.body.answer || '').trim().substring(0, 300);
       }
     } catch (e) { console.log('Tavily search skipped:', e.message); }
   }
