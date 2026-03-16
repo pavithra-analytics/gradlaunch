@@ -4,9 +4,7 @@ function httpsPost(hostname, path, headers, body) {
   return new Promise((resolve, reject) => {
     const data = JSON.stringify(body);
     const options = {
-      hostname,
-      path,
-      method: 'POST',
+      hostname, path, method: 'POST',
       headers: { ...headers, 'Content-Length': Buffer.byteLength(data) }
     };
     const req = https.request(options, (res) => {
@@ -23,6 +21,11 @@ function httpsPost(hostname, path, headers, body) {
   });
 }
 
+function extractText(content) {
+  if (!Array.isArray(content)) return '';
+  return content.filter(b => b.type === 'text').map(b => b.text).join('').trim();
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -31,26 +34,23 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    return res.status(500).json({ error: 'API key not configured. Add ANTHROPIC_API_KEY in Vercel environment variables then redeploy.' });
-  }
+  if (!apiKey) return res.status(500).json({ error: 'API key not configured.' });
 
   const body = req.body || {};
-  const resume = (body.resume || '').substring(0, 2500);
-  const role = (body.role || '').substring(0, 80);
-  const location = (body.location || '').substring(0, 80);
+  const resume = (body.resume || '').substring(0, 2000);
+  const role = (body.role || '').substring(0, 60);
+  const location = (body.location || '').substring(0, 60);
   const visa = body.visa || 'F-1 OPT';
   const needsVisa = body.needsVisa === true || body.needsVisa === 'true';
-  const jd = (body.jd || '').substring(0, 1500);
+  const jd = (body.jd || '').substring(0, 1000);
 
-  if (!resume || !role) {
-    return res.status(400).json({ error: 'Resume and target role are required.' });
-  }
+  if (!resume || !role) return res.status(400).json({ error: 'Resume and target role are required.' });
 
   const hasJD = jd.trim().length > 20;
   const locationStr = location.trim() || 'Nationwide USA';
   const isNational = !location.trim() || /^(usa|us|united states)$/i.test(location.trim());
 
+  // ── SALARY (embedded, no search needed) ──
   const SALARY = {
     'new york':     { entry:'$69k-$94k',  mid:'$95k-$130k',  senior:'$130k-$175k' },
     'san francisco':{ entry:'$85k-$115k', mid:'$115k-$155k', senior:'$155k-$220k' },
@@ -69,6 +69,7 @@ module.exports = async function handler(req, res) {
     ? 'National averages. NYC, SF, and Seattle typically pay 20-40% above these figures.'
     : 'Adjusted for ' + locationStr + ' market.';
 
+  // ── CERTIFICATIONS (embedded, no search needed) ──
   const CERTS = [
     { name:'Google Data Analytics Certificate', provider:'Google/Coursera', level:'Entry', cost:'Free-$49/mo', duration:'6 months', free:true, url:'https://grow.google/certificates/data-analytics/' },
     { name:'AWS Cloud Practitioner', provider:'Amazon Web Services', level:'Entry', cost:'$100', duration:'1 month', free:false, url:'https://aws.amazon.com/certification/certified-cloud-practitioner/' },
@@ -79,91 +80,23 @@ module.exports = async function handler(req, res) {
     { name:'AWS Solutions Architect Associate', provider:'Amazon Web Services', level:'Associate', cost:'$150', duration:'2-3 months', free:false, url:'https://aws.amazon.com/certification/certified-solutions-architect-associate/' },
     { name:'PMP Project Management Professional', provider:'PMI', level:'Professional', cost:'$405', duration:'3+ months', free:false, url:'https://www.pmi.org/certifications/project-management-pmp' },
     { name:'Google IT Support Certificate', provider:'Google/Coursera', level:'Entry', cost:'Free-$49/mo', duration:'6 months', free:true, url:'https://grow.google/certificates/it-support/' },
-    { name:'Salesforce Certified Administrator', provider:'Salesforce', level:'Associate', cost:'$200', duration:'2 months', false:false, url:'https://trailhead.salesforce.com/credentials/administrator' },
+    { name:'Salesforce Certified Administrator', provider:'Salesforce', level:'Associate', cost:'$200', duration:'2 months', free:false, url:'https://trailhead.salesforce.com/credentials/administrator' },
     { name:'CFA Level 1', provider:'CFA Institute', level:'Professional', cost:'$700-$1000', duration:'6 months', free:false, url:'https://www.cfainstitute.org/en/programs/cfa' },
     { name:'dbt Analytics Engineering', provider:'dbt Labs', level:'Associate', cost:'$200', duration:'1 month', free:false, url:'https://www.getdbt.com/certifications' },
     { name:'Professional Scrum Master PSM I', provider:'Scrum.org', level:'Entry', cost:'$150', duration:'2 weeks', free:false, url:'https://www.scrum.org/assessments/professional-scrum-master-i-certification' },
     { name:'CompTIA Security+', provider:'CompTIA', level:'Associate', cost:'$370', duration:'2 months', free:false, url:'https://www.comptia.org/certifications/security' }
   ];
 
-  const visaTimelineSteps = visa === 'H-1B'
-    ? '[{"period":"Now","action":"Ensure your employer files H-1B renewal well before expiry. Start tracking your I-94 and visa stamp dates.","urgent":true},{"period":"Year 1-3","action":"Focus on job performance and promotions. Build relationships with your immigration attorney.","urgent":false},{"period":"Year 3","action":"Begin PERM labor certification process for green card as early as possible.","urgent":true},{"period":"Year 6","action":"H-1B cap reached. Must have I-140 approved or extension will not be possible without it.","urgent":true}]'
-    : visa === 'STEM OPT'
-    ? '[{"period":"Now","action":"Confirm your employer is E-Verify enrolled — required for STEM OPT extension.","urgent":true},{"period":"60 days before F-1 OPT expires","action":"Submit STEM OPT extension application through your DSO. Do not wait.","urgent":true},{"period":"Month 1-12","action":"Active job search and applications. Target H-1B sponsoring employers.","urgent":false},{"period":"April each year","action":"H-1B lottery registration opens. Your employer must register you by late March.","urgent":true}]'
-    : '[{"period":"Graduation","action":"Apply for OPT through your DSO immediately. Submit I-765 to USCIS.","urgent":true},{"period":"Month 1-2","action":"EAD card arrives. You can legally start working once you have it in hand.","urgent":false},{"period":"Month 3-6","action":"Active job search. Target companies with strong H-1B sponsorship history.","urgent":false},{"period":"Month 9","action":"No job yet? Apply for STEM OPT extension immediately if your degree qualifies. Do not wait.","urgent":true},{"period":"Month 12","action":"OPT expires. Must have a job offer with sponsorship or STEM extension approved by this date.","urgent":true}]';
-
-  const visaDuration = visa === 'F-1 OPT' ? 'Duration: 12 months'
-    : visa === 'STEM OPT' ? 'Duration: 24 additional months after F-1 OPT'
-    : 'Duration: 3 years renewable to 6';
-
-  const lines = [
-    'You are GradLaunch, an expert career advisor. Analyze the resume below and return ONLY a valid JSON object.',
-    'Critical rules: return pure JSON only. No text before the opening brace. No text after the closing brace. No markdown. No code fences. No comments inside JSON.',
-    '',
-    'RESUME: ' + resume,
-    'TARGET ROLE: ' + role,
-    'LOCATION: ' + locationStr,
-    'VISA: ' + visa,
-    'NEEDS SPONSORSHIP: ' + (needsVisa ? 'yes' : 'no'),
-    hasJD ? 'JOB DESCRIPTION: ' + jd : 'NO JOB DESCRIPTION PROVIDED',
-    '',
-    'USE THESE EXACT SALARY VALUES:',
-    'entry=' + sal.entry + ' mid=' + sal.mid + ' senior=' + sal.senior,
-    '',
-    'CHOOSE 5 MOST RELEVANT CERTS FROM THIS LIST: ' + JSON.stringify(CERTS),
-    '',
-    'Return this JSON with all placeholder values replaced by real analysis data based on the resume:',
-    '{',
-    '"role":"' + role + '",',
-    '"location":"' + locationStr + '",',
-    '"match_score":65,',
-    '"summary":{"headline":"REPLACE with 8-12 word honest assessment","description":"REPLACE with 2-3 sentence honest assessment of where they stand and what they need","goal":"Interview ready"},',
-    '"skills_present":["skill1","skill2","skill3"],',
-    '"skill_levels":{"skill1":"Strong","skill2":"Intermediate"},',
-    '"gaps":[{"skill":"missing skill","priority":"High","how_to_fix":"specific fix with exact resource and URL"},{"skill":"missing skill 2","priority":"Medium","how_to_fix":"specific fix"}],',
-    hasJD
-      ? '"jd_breakdown":[{"requirement":"requirement from JD","met":true,"note":"one sentence note"},{"requirement":"requirement 2","met":false,"note":"one sentence note"}],'
-      : '"trending_skills":[{"skill":"trending skill name","have":false},{"skill":"trending skill 2","have":true}],"top_companies":[{"name":"company name","detail":"role type and openings"},{"name":"company 2","detail":"role type and openings"}],',
-    '"priority_actions":["specific action with exact URL","second specific action with URL","third specific action"],',
-    '"plan_30":{"weeks":[',
-    '{"label":"Week 1","steps":[{"action":"specific action","detail":"exact how-to with URL and time estimate","link":"https://example.com","link_label":"Visit site"},{"action":"second action","detail":"details and why","link":null,"link_label":null}]},',
-    '{"label":"Week 2","steps":[{"action":"specific action week 2","detail":"details with URL","link":null,"link_label":null}]},',
-    '{"label":"Week 3","steps":[{"action":"specific action week 3","detail":"details with URL","link":null,"link_label":null}]},',
-    '{"label":"Week 4","steps":[{"action":"specific action week 4","detail":"details with URL","link":null,"link_label":null}]}',
-    '],"callout":"one to two sentences about what this plan prioritizes and trades off"},',
-    '"plan_60":{"weeks":[',
-    '{"label":"Week 1-2","steps":[{"action":"specific action","detail":"details with URL","link":null,"link_label":null}]},',
-    '{"label":"Week 3-4","steps":[{"action":"specific action","detail":"details","link":null,"link_label":null}]},',
-    '{"label":"Week 5-6","steps":[{"action":"specific action","detail":"details","link":null,"link_label":null}]},',
-    '{"label":"Week 7-8","steps":[{"action":"specific action","detail":"details","link":null,"link_label":null}]}',
-    '],"callout":"one to two sentences about this plan"},',
-    '"plan_90":{"weeks":[',
-    '{"label":"Week 1-2","steps":[{"action":"specific action","detail":"details with URL","link":null,"link_label":null}]},',
-    '{"label":"Week 3-4","steps":[{"action":"specific action","detail":"details","link":null,"link_label":null}]},',
-    '{"label":"Week 5-6","steps":[{"action":"specific action","detail":"details","link":null,"link_label":null}]},',
-    '{"label":"Week 7-8","steps":[{"action":"specific action","detail":"details","link":null,"link_label":null}]},',
-    '{"label":"Week 9-10","steps":[{"action":"specific action","detail":"details","link":null,"link_label":null}]},',
-    '{"label":"Week 11-12","steps":[{"action":"specific action","detail":"details","link":null,"link_label":null}]}',
-    '],"callout":"one to two sentences about this plan"},',
-    '"certifications":[',
-    '{"name":"cert from list","provider":"provider","level":"level","cost":"cost","duration":"duration","free":false,"url":"https://url","why":"why this cert closes a specific gap"},',
-    '{"name":"cert 2","provider":"p","level":"l","cost":"c","duration":"d","free":true,"url":"https://url","why":"why relevant"},',
-    '{"name":"cert 3","provider":"p","level":"l","cost":"c","duration":"d","free":false,"url":"https://url","why":"why relevant"},',
-    '{"name":"cert 4","provider":"p","level":"l","cost":"c","duration":"d","free":false,"url":"https://url","why":"why relevant"},',
-    '{"name":"cert 5","provider":"p","level":"l","cost":"c","duration":"d","free":false,"url":"https://url","why":"why relevant"}',
-    '],',
-    '"salary":{"entry":"' + sal.entry + '","mid":"' + sal.mid + '","senior":"' + sal.senior + '","note":"' + salNote + '","tips":["Do not reveal expected salary first let employer make the opening offer","Negotiate total compensation including bonus equity and benefits not just base"' + (needsVisa ? ',"H-1B sponsorship costs employers $5-10k this context is fair to acknowledge if salary negotiation comes up"' : '') + ',"Research this role on Glassdoor and Levels.fyi before any salary conversation"]},',
-    needsVisa ? '"sponsors":[{"name":"REPLACE with real company hiring ' + role + ' that sponsors H-1B","roles":"relevant roles they hire","why":"one reason why good fit for this candidate","size":"Large"},{"name":"REPLACE mid size company","roles":"roles","why":"reason","size":"Mid"},{"name":"REPLACE consulting firm","roles":"roles","why":"reason","size":"Mid"},{"name":"REPLACE smaller company","roles":"roles","why":"reason","size":"Small"},{"name":"REPLACE another company","roles":"roles","why":"reason","size":"Large"},{"name":"REPLACE another mid","roles":"roles","why":"reason","size":"Mid"}],' : '',
-    needsVisa ? '"opt_timeline":{"title":"' + visa + ' Timeline","duration":"' + visaDuration + '","steps":' + visaTimelineSteps + ',"important_note":"REPLACE with 2-3 sentences of critical advice specific to ' + visa + '"},' : '',
-    '"ats_rewrites":[{"original":"REPLACE with a weak bullet copied from their actual resume","rewritten":"REPLACE with stronger version using action verb quantified impact and ATS keywords","keywords_added":["keyword1","keyword2","keyword3"]},{"original":"REPLACE with second weak bullet from resume","rewritten":"REPLACE with improved version","keywords_added":["keyword1","keyword2"]}],',
-    '"linkedin_headline":"REPLACE with headline under 220 chars using format Role | Skill1 Skill2 Skill3 | Cert name or in progress | Company or University - use real resume data no visa no location"',
-    '}'
-  ];
-
-  const prompt = lines.join('\n');
-
+  // ── CALL 1: WEB SEARCH for live market data ──
+  // Only searches for: current job requirements + hiring companies with sponsorship
+  // Returns plain text — no JSON involved so it cannot break
+  let liveMarketData = '';
   try {
-    const result = await httpsPost(
+    const searchQuery = needsVisa
+      ? role + ' jobs ' + locationStr + ' requirements skills 2025 AND ' + role + ' H-1B visa sponsor companies hiring 2025'
+      : role + ' jobs ' + locationStr + ' requirements skills 2025 AND top companies hiring ' + role + ' ' + locationStr;
+
+    const searchResult = await httpsPost(
       'api.anthropic.com',
       '/v1/messages',
       {
@@ -173,60 +106,124 @@ module.exports = async function handler(req, res) {
       },
       {
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 4096,
-        system: 'You are a career advisor. You must return ONLY valid JSON. No markdown. No code fences. No text before or after the JSON object. Start your response with { and end with }.',
-        messages: [{ role: 'user', content: prompt }]
+        max_tokens: 800,
+        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+        system: 'You are a job market researcher. Search the web and return a concise plain text summary only. No JSON. No markdown. Just plain sentences.',
+        messages: [{
+          role: 'user',
+          content: 'Search for: 1) What skills and requirements do ' + role + ' jobs in ' + locationStr + ' require right now in 2025? 2) Which companies are actively hiring ' + role + 's in ' + locationStr + (needsVisa ? ' and sponsor H-1B visas?' : '?') + ' Include a mix of large, mid-size, and small companies. Return a plain text summary of your findings in 3-4 sentences.'
+        }]
       }
     );
 
-    if (result.status !== 200) {
-      console.error('Anthropic error:', result.status, JSON.stringify(result.body).substring(0, 300));
-      const errMsg = (result.body && result.body.error && result.body.error.message)
-        ? result.body.error.message
-        : 'AI analysis failed. Please try again.';
+    if (searchResult.status === 200 && searchResult.body && searchResult.body.content) {
+      liveMarketData = extractText(searchResult.body.content);
+    }
+  } catch (err) {
+    // web search failed — continue without it, analysis still works
+    console.log('Web search skipped:', err.message);
+    liveMarketData = '';
+  }
+
+  // ── CALL 2: MAIN ANALYSIS using live data as context ──
+  const visaTips = needsVisa
+    ? ',"H-1B sponsorship costs employers $5-10k - this is standard and fair to acknowledge if negotiation comes up"'
+    : '';
+
+  const sponsorsSection = needsVisa
+    ? `,"sponsors":[{"name":"Cognizant","roles":"Data Analyst, Business Analyst, IT","why":"Top H-1B sponsor, actively hires new grads, less competitive than FAANG","size":"Large"},{"name":"Infosys","roles":"Data Analyst, Software Engineer","why":"One of highest H-1B sponsors nationally, strong entry-level program","size":"Large"},{"name":"Wipro","roles":"Data Analyst, Business Intelligence","why":"Consistent H-1B sponsor with strong data practice","size":"Large"},{"name":"Booz Allen Hamilton","roles":"Data Analyst, Consultant","why":"Mid-size consulting with active sponsorship, matches this profile well","size":"Mid"},{"name":"CIBC US","roles":"Data Analyst, Financial Analyst","why":"Regional bank, consistent sponsorship, less competitive than FAANG","size":"Mid"},{"name":"Slalom Consulting","roles":"Data Analyst, Business Intelligence","why":"Mid-size consulting firm with active sponsorship and strong data practice","size":"Mid"}]`
+    : '';
+
+  const visaTimelineSection = needsVisa
+    ? `,"opt_timeline":{"title":"${visa} Timeline","duration":"${visa === 'F-1 OPT' ? 'Duration: 12 months' : visa === 'STEM OPT' ? 'Duration: 24 additional months' : 'Duration: 3 years renewable to 6'}","steps":[{"period":"Graduation","action":"Apply for OPT through your DSO immediately. Submit I-765 to USCIS. Processing takes 90 days.","urgent":true},{"period":"Month 1-2","action":"EAD card arrives. You can legally start working once you have it. Begin job search now.","urgent":false},{"period":"Month 3-6","action":"Active applications. Target STEM-eligible employers so you have the option to extend.","urgent":false},{"period":"Month 9","action":"No offer yet? Apply for STEM OPT extension now if your degree qualifies. Do not wait.","urgent":true},{"period":"Month 12","action":"OPT expires. Must have active employment with sponsorship or approved STEM extension.","urgent":true}],"important_note":"Only STEM CIP codes qualify for the 24-month extension - confirm with your DSO. H-1B lottery is approximately 25% selection rate so apply every year and have a backup plan."}`
+    : '';
+
+  const middleSection = hasJD
+    ? `"jd_breakdown":[{"requirement":"REPLACE with requirement from JD","met":true,"note":"REPLACE with one sentence note"},{"requirement":"REPLACE with requirement 2","met":false,"note":"REPLACE with note"},{"requirement":"REPLACE with requirement 3","met":true,"note":"REPLACE"},{"requirement":"REPLACE with requirement 4","met":false,"note":"REPLACE"},{"requirement":"REPLACE with requirement 5","met":true,"note":"REPLACE"}]`
+    : `"trending_skills":[{"skill":"REPLACE with trending skill","have":false},{"skill":"REPLACE with skill 2","have":true},{"skill":"REPLACE with skill 3","have":false},{"skill":"REPLACE with skill 4","have":true},{"skill":"REPLACE with skill 5","have":false}],"top_companies":[{"name":"REPLACE with company name","detail":"REPLACE with role type and openings"},{"name":"REPLACE company 2","detail":"REPLACE"},{"name":"REPLACE company 3","detail":"REPLACE"},{"name":"REPLACE company 4","detail":"REPLACE"}]`;
+
+  const mainPrompt = `You are a career advisor API. Output ONLY valid JSON. No markdown. No code fences. No extra text. Start with { and end with }.
+
+RESUME: ${resume}
+TARGET ROLE: ${role}
+LOCATION: ${locationStr}
+VISA: ${visa}
+NEEDS SPONSORSHIP: ${needsVisa ? 'yes' : 'no'}
+${hasJD ? 'JOB DESCRIPTION:\n' + jd + '\n' : ''}
+LIVE MARKET DATA FROM WEB SEARCH (use this to inform match score, skill gaps, and company recommendations):
+${liveMarketData || 'No live data available - use your training knowledge for ' + role + ' in ' + locationStr}
+
+SALARY VALUES (use exactly): entry=${sal.entry} mid=${sal.mid} senior=${sal.senior}
+CERTIFICATIONS (pick 5 most relevant): ${JSON.stringify(CERTS)}
+
+Replace ALL values marked REPLACE with real data from the resume and live market data above.
+The match_score must reflect how well this specific resume matches current ${role} requirements.
+
+{"role":"${role}","location":"${locationStr}","match_score":REPLACE_WITH_NUMBER_0_TO_100,"summary":{"headline":"REPLACE with 8-12 word honest assessment of this specific resume","description":"REPLACE with 2-3 sentences about where they stand and what they need based on their actual resume","goal":"REPLACE with 2-3 word goal"},"skills_present":["REPLACE","REPLACE","REPLACE"],"skill_levels":{"REPLACE":"Strong","REPLACE":"Intermediate"},"gaps":[{"skill":"REPLACE with missing skill","priority":"High","how_to_fix":"REPLACE with specific fix including exact URL"},{"skill":"REPLACE missing skill 2","priority":"High","how_to_fix":"REPLACE with specific fix"},{"skill":"REPLACE missing skill 3","priority":"Medium","how_to_fix":"REPLACE"},{"skill":"REPLACE missing skill 4","priority":"Low","how_to_fix":"REPLACE"}],${middleSection},"priority_actions":["REPLACE with specific action including exact URL","REPLACE with second action","REPLACE with third action"],"plan_30":{"weeks":[{"label":"Week 1","steps":[{"action":"REPLACE with specific action","detail":"REPLACE with exact how-to including URL and time estimate","link":"https://REPLACE","link_label":"REPLACE"},{"action":"REPLACE second action","detail":"REPLACE","link":null,"link_label":null}]},{"label":"Week 2","steps":[{"action":"REPLACE","detail":"REPLACE with URL","link":"https://REPLACE","link_label":"REPLACE"}]},{"label":"Week 3","steps":[{"action":"REPLACE","detail":"REPLACE","link":null,"link_label":null}]},{"label":"Week 4","steps":[{"action":"REPLACE","detail":"REPLACE","link":null,"link_label":null}]}],"callout":"REPLACE with 1-2 sentences about this plan"},"plan_60":{"weeks":[{"label":"Week 1-2","steps":[{"action":"REPLACE","detail":"REPLACE with URL","link":"https://REPLACE","link_label":"REPLACE"}]},{"label":"Week 3-4","steps":[{"action":"REPLACE","detail":"REPLACE","link":null,"link_label":null}]},{"label":"Week 5-6","steps":[{"action":"REPLACE","detail":"REPLACE","link":null,"link_label":null}]},{"label":"Week 7-8","steps":[{"action":"REPLACE","detail":"REPLACE","link":null,"link_label":null}]}],"callout":"REPLACE"},"plan_90":{"weeks":[{"label":"Week 1-2","steps":[{"action":"REPLACE","detail":"REPLACE with URL","link":"https://REPLACE","link_label":"REPLACE"}]},{"label":"Week 3-4","steps":[{"action":"REPLACE","detail":"REPLACE","link":null,"link_label":null}]},{"label":"Week 5-6","steps":[{"action":"REPLACE","detail":"REPLACE","link":null,"link_label":null}]},{"label":"Week 7-8","steps":[{"action":"REPLACE","detail":"REPLACE","link":null,"link_label":null}]},{"label":"Week 9-10","steps":[{"action":"REPLACE","detail":"REPLACE","link":null,"link_label":null}]},{"label":"Week 11-12","steps":[{"action":"REPLACE","detail":"REPLACE","link":null,"link_label":null}]}],"callout":"REPLACE"},"certifications":[{"name":"REPLACE from cert list","provider":"REPLACE","level":"REPLACE","cost":"REPLACE","duration":"REPLACE","free":false,"url":"https://REPLACE","why":"REPLACE with why this cert closes a specific gap for this person"},{"name":"REPLACE","provider":"REPLACE","level":"REPLACE","cost":"REPLACE","duration":"REPLACE","free":true,"url":"https://REPLACE","why":"REPLACE"},{"name":"REPLACE","provider":"REPLACE","level":"REPLACE","cost":"REPLACE","duration":"REPLACE","free":false,"url":"https://REPLACE","why":"REPLACE"},{"name":"REPLACE","provider":"REPLACE","level":"REPLACE","cost":"REPLACE","duration":"REPLACE","free":false,"url":"https://REPLACE","why":"REPLACE"},{"name":"REPLACE","provider":"REPLACE","level":"REPLACE","cost":"REPLACE","duration":"REPLACE","free":false,"url":"https://REPLACE","why":"REPLACE"}],"salary":{"entry":"${sal.entry}","mid":"${sal.mid}","senior":"${sal.senior}","note":"${salNote}","tips":["Do not reveal expected salary first - let employer make the opening offer","Negotiate total compensation including bonus equity and benefits not just base pay"${visaTips},"Research this role on Glassdoor and Levels.fyi before any salary conversation"]}${sponsorsSection}${visaTimelineSection},"ats_rewrites":[{"original":"REPLACE with weak bullet from their actual resume","rewritten":"REPLACE with stronger version using action verb quantified impact and ATS keywords","keywords_added":["REPLACE","REPLACE","REPLACE"]},{"original":"REPLACE with second weak bullet","rewritten":"REPLACE with improved version","keywords_added":["REPLACE","REPLACE"]}],"linkedin_headline":"REPLACE with headline under 220 chars using format Role and Skill1 and Skill2 and Skill3 and Cert name or in progress and Company or University - use real resume data no visa no location"}`;
+
+  try {
+    const mainResult = await httpsPost(
+      'api.anthropic.com',
+      '/v1/messages',
+      {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      {
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 3000,
+        system: 'You are a career advisor API. You output ONLY valid JSON. Your entire response must start with { and end with }. No markdown, no code fences, no extra text of any kind.',
+        messages: [{ role: 'user', content: mainPrompt }]
+      }
+    );
+
+    if (mainResult.status !== 200) {
+      const errMsg = (mainResult.body && mainResult.body.error && mainResult.body.error.message)
+        ? mainResult.body.error.message : 'AI analysis failed. Please try again.';
       return res.status(502).json({ error: errMsg });
     }
 
-    const content = result.body && result.body.content;
-    if (!Array.isArray(content)) {
-      return res.status(502).json({ error: 'Unexpected AI response. Please try again.' });
-    }
+    const content = mainResult.body && mainResult.body.content;
+    if (!Array.isArray(content)) return res.status(502).json({ error: 'Unexpected AI response. Please try again.' });
 
-    const text = content.filter(b => b.type === 'text').map(b => b.text).join('');
-    if (!text) {
-      return res.status(502).json({ error: 'Empty response from AI. Please try again.' });
-    }
+    let text = extractText(content);
+    if (!text) return res.status(502).json({ error: 'Empty response from AI. Please try again.' });
 
-    // robust JSON extraction
-    let cleaned = text.trim();
     // strip markdown fences if present
-    cleaned = cleaned.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim();
+    text = text
+      .replace(/^```json\s*/i, '')
+      .replace(/^```\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .trim();
+
     // find outermost JSON object
-    const start = cleaned.indexOf('{');
-    const end = cleaned.lastIndexOf('}');
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
     if (start === -1 || end === -1) {
-      console.error('No JSON braces. Sample:', cleaned.substring(0, 300));
+      console.error('No JSON found. Raw sample:', text.substring(0, 200));
       return res.status(502).json({ error: 'Could not parse analysis. Please try again.' });
     }
-    cleaned = cleaned.substring(start, end + 1);
+    const jsonStr = text.substring(start, end + 1);
 
     let parsed;
     try {
-      parsed = JSON.parse(cleaned);
+      parsed = JSON.parse(jsonStr);
     } catch (e) {
-      console.error('JSON parse error:', e.message, 'Sample:', cleaned.substring(0, 300));
-      // last resort: try to fix common issues
+      // attempt common JSON repairs
       try {
-        const fixed = cleaned
-          .replace(/,\s*}/g, '}')
-          .replace(/,\s*]/g, ']')
-          .replace(/[\u0000-\u001F\u007F-\u009F]/g, ' ');
+        const fixed = jsonStr
+          .replace(/,\s*([}\]])/g, '$1')         // trailing commas
+          .replace(/[\u0000-\u001F\u007F]/g, ' '); // control characters
         parsed = JSON.parse(fixed);
       } catch (e2) {
+        console.error('JSON parse failed:', e.message, 'Sample:', jsonStr.substring(0, 300));
         return res.status(502).json({ error: 'Analysis format error. Please try again.' });
       }
     }
 
+    // tag response with whether live data was used
+    parsed._live_data_used = liveMarketData.length > 0;
     return res.status(200).json(parsed);
 
   } catch (err) {
