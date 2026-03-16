@@ -47,7 +47,6 @@ module.exports = async function handler(req, res) {
   const locationStr = location.trim() || 'Nationwide USA';
   const isNational = !location.trim() || /^(usa|us|united states)$/i.test(location.trim());
 
-  // Embedded salary — no search needed
   const SALARY = {
     'new york':     { e:'$69k-$94k',  m:'$95k-$130k',  s:'$130k-$175k' },
     'san francisco':{ e:'$85k-$115k', m:'$115k-$155k', s:'$155k-$220k' },
@@ -66,26 +65,24 @@ module.exports = async function handler(req, res) {
     ? 'National averages. NYC, SF, Seattle pay 20-40% more.'
     : locationStr + ' market rates.';
 
-  // Compact cert list
   const CERTS = [
-    'Google Data Analytics|Google/Coursera|Entry|Free-$49/mo|6mo|true|https://grow.google/certificates/data-analytics/',
-    'AWS Cloud Practitioner|AWS|Entry|$100|1mo|false|https://aws.amazon.com/certification/certified-cloud-practitioner/',
-    'Google Project Management|Google/Coursera|Entry|Free-$49/mo|6mo|true|https://grow.google/certificates/project-management/',
-    'Tableau Desktop Specialist|Tableau|Associate|$250|1mo|false|https://www.tableau.com/learn/certification/desktop-specialist',
-    'Power BI PL-300|Microsoft|Associate|$165|2mo|false|https://learn.microsoft.com/certifications/power-bi-data-analyst-associate/',
-    'Google UX Design|Google/Coursera|Entry|Free-$49/mo|6mo|true|https://grow.google/certificates/ux-design/',
-    'AWS Solutions Architect|AWS|Associate|$150|2-3mo|false|https://aws.amazon.com/certification/certified-solutions-architect-associate/',
-    'PMP|PMI|Professional|$405|3+mo|false|https://www.pmi.org/certifications/project-management-pmp',
-    'Google IT Support|Google/Coursera|Entry|Free-$49/mo|6mo|true|https://grow.google/certificates/it-support/',
-    'Salesforce Admin|Salesforce|Associate|$200|2mo|false|https://trailhead.salesforce.com/credentials/administrator',
-    'CFA Level 1|CFA Institute|Professional|$700-$1000|6mo|false|https://www.cfainstitute.org/en/programs/cfa',
-    'dbt Analytics|dbt Labs|Associate|$200|1mo|false|https://www.getdbt.com/certifications',
-    'Scrum Master PSM I|Scrum.org|Entry|$150|2wk|false|https://www.scrum.org/assessments/professional-scrum-master-i-certification',
-    'CompTIA Security+|CompTIA|Associate|$370|2mo|false|https://www.comptia.org/certifications/security'
-  ].join('\n');
+    { name:'Google Data Analytics Certificate', provider:'Google/Coursera', level:'Entry', cost:'Free-$49/mo', duration:'6 months', free:true, url:'https://grow.google/certificates/data-analytics/' },
+    { name:'AWS Cloud Practitioner', provider:'AWS', level:'Entry', cost:'$100', duration:'1 month', free:false, url:'https://aws.amazon.com/certification/certified-cloud-practitioner/' },
+    { name:'Google Project Management', provider:'Google/Coursera', level:'Entry', cost:'Free-$49/mo', duration:'6 months', free:true, url:'https://grow.google/certificates/project-management/' },
+    { name:'Tableau Desktop Specialist', provider:'Tableau', level:'Associate', cost:'$250', duration:'1 month', free:false, url:'https://www.tableau.com/learn/certification/desktop-specialist' },
+    { name:'Microsoft Power BI PL-300', provider:'Microsoft', level:'Associate', cost:'$165', duration:'2 months', free:false, url:'https://learn.microsoft.com/certifications/power-bi-data-analyst-associate/' },
+    { name:'Google UX Design', provider:'Google/Coursera', level:'Entry', cost:'Free-$49/mo', duration:'6 months', free:true, url:'https://grow.google/certificates/ux-design/' },
+    { name:'AWS Solutions Architect Associate', provider:'AWS', level:'Associate', cost:'$150', duration:'2-3 months', free:false, url:'https://aws.amazon.com/certification/certified-solutions-architect-associate/' },
+    { name:'PMP', provider:'PMI', level:'Professional', cost:'$405', duration:'3+ months', free:false, url:'https://www.pmi.org/certifications/project-management-pmp' },
+    { name:'Google IT Support', provider:'Google/Coursera', level:'Entry', cost:'Free-$49/mo', duration:'6 months', free:true, url:'https://grow.google/certificates/it-support/' },
+    { name:'Salesforce Admin', provider:'Salesforce', level:'Associate', cost:'$200', duration:'2 months', free:false, url:'https://trailhead.salesforce.com/credentials/administrator' },
+    { name:'CFA Level 1', provider:'CFA Institute', level:'Professional', cost:'$700-$1000', duration:'6 months', free:false, url:'https://www.cfainstitute.org/en/programs/cfa' },
+    { name:'dbt Analytics Engineering', provider:'dbt Labs', level:'Associate', cost:'$200', duration:'1 month', free:false, url:'https://www.getdbt.com/certifications' },
+    { name:'Scrum Master PSM I', provider:'Scrum.org', level:'Entry', cost:'$150', duration:'2 weeks', free:false, url:'https://www.scrum.org/assessments/professional-scrum-master-i-certification' },
+    { name:'CompTIA Security+', provider:'CompTIA', level:'Associate', cost:'$370', duration:'2 months', free:false, url:'https://www.comptia.org/certifications/security' }
+  ];
 
-  // ── CALL 1: Targeted web search (small, fast) ──
-  // Only fetches what we actually need live data for
+  // ── CALL 1: Small targeted web search ──
   let liveData = '';
   try {
     const searchR = await httpsPost(
@@ -94,63 +91,118 @@ module.exports = async function handler(req, res) {
       { 'Content-Type':'application/json', 'x-api-key':apiKey, 'anthropic-version':'2023-06-01' },
       {
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 400,
+        max_tokens: 250,
         tools: [{ type: 'web_search_20250305', name: 'web_search' }],
-        system: 'Search the web and return a 3-sentence plain text summary. No JSON. No lists. Plain sentences only.',
+        system: 'Search and return 2 plain text sentences only. No JSON. No lists. No markdown.',
         messages: [{
           role: 'user',
-          content: 'What are the top 5 skills required for ' + role + ' jobs in ' + locationStr + ' in 2025, and which ' + (needsVisa ? 'H-1B sponsoring ' : '') + 'companies are actively hiring for this role? Give me a plain text summary in 3 sentences.'
+          content: 'What are the top skills required for ' + role + ' jobs in ' + locationStr + ' in 2025, and which ' + (needsVisa ? 'H-1B sponsoring ' : '') + 'companies are actively hiring? Answer in 2 sentences only.'
         }]
       }
     );
     if (searchR.status === 200 && Array.isArray(searchR.body.content)) {
-      liveData = searchR.body.content.filter(b => b.type === 'text').map(b => b.text).join('').trim().substring(0, 500);
+      liveData = searchR.body.content
+        .filter(b => b.type === 'text')
+        .map(b => b.text)
+        .join('')
+        .trim()
+        .substring(0, 300);
     }
   } catch (e) {
     console.log('Web search skipped:', e.message);
   }
 
-  // ── CALL 2: Main analysis — short natural language prompt ──
-  const prompt = `Analyze this resume for a ${role} position in ${locationStr}.
+  // ── CALL 2: Main analysis — lean prompt, small JSON output ──
+  const prompt = `Analyze this resume for a ${role} role in ${locationStr}.
 Visa: ${visa}. Needs sponsorship: ${needsVisa ? 'yes' : 'no'}.
 
-RESUME:
-${resume}
-${hasJD ? '\nJOB DESCRIPTION:\n' + jd : ''}
-${liveData ? '\nCURRENT MARKET DATA:\n' + liveData : ''}
+RESUME: ${resume}
+${hasJD ? 'JOB DESCRIPTION: ' + jd : ''}
+${liveData ? 'LIVE MARKET DATA: ' + liveData : ''}
 
-SALARY (use exactly): entry=${sal.e} mid=${sal.m} senior=${sal.s} note="${salNote}"
+SALARY: entry=${sal.e}, mid=${sal.m}, senior=${sal.s}
 
-CERTS (name|provider|level|cost|duration|free|url — pick 5 most relevant):
-${CERTS}
+CERTIFICATIONS (pick 3 most relevant, name|provider|level|cost|duration|free|url):
+${CERTS.map(c => c.name + '|' + c.provider + '|' + c.level + '|' + c.cost + '|' + c.duration + '|' + c.free + '|' + c.url).join('\n')}
 
-Return a JSON object with these exact keys. Output ONLY the JSON, nothing else.
+Return ONLY this JSON object. No extra text.
 
-Keys required:
-- role, location, match_score (0-100 integer)
-- summary: {headline, description, goal}
-- skills_present: array of strings
-- skill_levels: object mapping skill to Strong/Intermediate/Beginner
-- gaps: array of {skill, priority (High/Medium/Low), how_to_fix}
-${hasJD
-  ? '- jd_breakdown: array of {requirement, met (boolean), note}'
-  : '- trending_skills: array of {skill, have (boolean)}\n- top_companies: array of {name, detail}'
-}
-- priority_actions: array of 3 specific strings with URLs
-- plan_30: {weeks: array of {label, steps: array of {action, detail, link, link_label}}, callout}
-- plan_60: same structure with 4 bi-weekly blocks
-- plan_90: same structure with 6 bi-weekly blocks
-- certifications: array of 5 objects {name, provider, level, cost, duration, free, url, why}
-- salary: {entry, mid, senior, note, tips: array of strings}
-${needsVisa ? '- sponsors: array of 6 objects {name, roles, why, size (Large/Mid/Small)}\n- opt_timeline: {title, duration, steps: array of {period, action, urgent}, important_note}' : ''}
-- ats_rewrites: array of 2 objects {original, rewritten, keywords_added}
-- linkedin_headline: string under 220 chars
-
-Rules:
-1. Plans must have specific URLs and time estimates, not vague advice
-2. Use real data from the resume for skills_present and ats_rewrites
-3. linkedin_headline format: Role | Skill1 Skill2 Skill3 | Cert | Company or University
-4. match_score must reflect how well this resume matches current ${role} requirements`;
+{
+  "role": "${role}",
+  "location": "${locationStr}",
+  "match_score": <0-100 integer>,
+  "summary": {
+    "headline": "<8-12 words summarizing their profile honestly>",
+    "description": "<2 sentences about where they stand and what they need>",
+    "goal": "<3 words max>"
+  },
+  "skills_present": ["<skill from resume>", "<skill>", "<skill>"],
+  "skill_levels": {"<skill>": "Strong"},
+  "gaps": [
+    {"skill": "<missing skill>", "priority": "High", "how_to_fix": "<specific fix with exact URL>"},
+    {"skill": "<missing skill>", "priority": "Medium", "how_to_fix": "<specific fix>"},
+    {"skill": "<missing skill>", "priority": "Low", "how_to_fix": "<specific fix>"}
+  ],
+  ${hasJD
+    ? '"jd_breakdown": [{"requirement": "<from JD>", "met": true, "note": "<one sentence>"}, {"requirement": "<from JD>", "met": false, "note": "<one sentence>"}, {"requirement": "<from JD>", "met": true, "note": "<one sentence>"}],'
+    : '"trending_skills": [{"skill": "<skill>", "have": false}, {"skill": "<skill>", "have": true}, {"skill": "<skill>", "have": false}, {"skill": "<skill>", "have": true}, {"skill": "<skill>", "have": false}], "top_companies": [{"name": "<company>", "detail": "<role and openings>"}, {"name": "<company>", "detail": "<role and openings>"}, {"name": "<company>", "detail": "<role and openings>"}, {"name": "<company>", "detail": "<role and openings>"}],'
+  }
+  "priority_actions": [
+    "<specific action with exact URL>",
+    "<specific action with exact URL>",
+    "<specific action>"
+  ],
+  "plan_30": {
+    "weeks": [
+      {"label": "Week 1", "steps": [{"action": "<what>", "detail": "<how with URL and time>", "link": "<https://url>", "link_label": "<text>"}, {"action": "<what>", "detail": "<how>", "link": null, "link_label": null}]},
+      {"label": "Week 2", "steps": [{"action": "<what>", "detail": "<how with URL>", "link": "<https://url>", "link_label": "<text>"}]},
+      {"label": "Week 3", "steps": [{"action": "<what>", "detail": "<how>", "link": null, "link_label": null}]},
+      {"label": "Week 4", "steps": [{"action": "<what>", "detail": "<how>", "link": null, "link_label": null}]}
+    ],
+    "callout": "<1-2 sentences about what this plan achieves>"
+  },
+  "certifications": [
+    {"name": "<from list>", "provider": "<provider>", "level": "<level>", "cost": "<cost>", "duration": "<duration>", "free": true, "url": "<url>", "why": "<one sentence why this closes their specific gap>"},
+    {"name": "<from list>", "provider": "<provider>", "level": "<level>", "cost": "<cost>", "duration": "<duration>", "free": false, "url": "<url>", "why": "<why relevant>"},
+    {"name": "<from list>", "provider": "<provider>", "level": "<level>", "cost": "<cost>", "duration": "<duration>", "free": false, "url": "<url>", "why": "<why relevant>"}
+  ],
+  "salary": {
+    "entry": "${sal.e}",
+    "mid": "${sal.m}",
+    "senior": "${sal.s}",
+    "note": "${salNote}",
+    "tips": [
+      "Do not reveal your expected salary first — let the employer make the opening offer",
+      "Negotiate total compensation including bonus equity and benefits not just base pay",
+      "Research this role on Glassdoor and Levels.fyi before any salary conversation"
+    ]
+  },
+  ${needsVisa ? `"sponsors": [
+    {"name": "<company hiring ${role} with H-1B>", "roles": "<roles>", "why": "<why good fit>", "size": "Large"},
+    {"name": "<mid-size company>", "roles": "<roles>", "why": "<why>", "size": "Mid"},
+    {"name": "<consulting or services firm>", "roles": "<roles>", "why": "<why>", "size": "Mid"},
+    {"name": "<smaller company>", "roles": "<roles>", "why": "<why>", "size": "Small"},
+    {"name": "<company>", "roles": "<roles>", "why": "<why>", "size": "Large"},
+    {"name": "<company>", "roles": "<roles>", "why": "<why>", "size": "Mid"}
+  ],
+  "opt_timeline": {
+    "title": "${visa} Timeline",
+    "duration": "${visa === 'F-1 OPT' ? 'Duration: 12 months' : visa === 'STEM OPT' ? 'Duration: 24 additional months' : 'Duration: 3 years renewable to 6'}",
+    "steps": [
+      {"period": "Graduation", "action": "Apply for OPT through your DSO immediately. Submit I-765 to USCIS. Processing takes 90 days.", "urgent": true},
+      {"period": "Month 1-2", "action": "EAD card arrives. You can start working once you have it. Begin active job search.", "urgent": false},
+      {"period": "Month 3-6", "action": "Active applications. Target STEM-eligible employers so you have the option to extend.", "urgent": false},
+      {"period": "Month 9", "action": "No offer yet? Apply for STEM OPT extension immediately if your degree qualifies. Do not wait.", "urgent": true},
+      {"period": "Month 12", "action": "OPT expires. Must have active employment with sponsorship or approved STEM extension.", "urgent": true}
+    ],
+    "important_note": "<2 sentences of critical advice specific to ${visa}>"
+  },` : ''}
+  "ats_rewrites": [
+    {"original": "<weak bullet from their actual resume>", "rewritten": "<stronger version with action verb, metrics, keywords>", "keywords_added": ["<kw>", "<kw>", "<kw>"]},
+    {"original": "<second weak bullet>", "rewritten": "<improved version>", "keywords_added": ["<kw>", "<kw>"]}
+  ],
+  "linkedin_headline": "<under 220 chars: Role | Skill1 Skill2 Skill3 | Cert or in progress | Company or University>"
+}`;
 
   try {
     const mainR = await httpsPost(
@@ -159,14 +211,14 @@ Rules:
       { 'Content-Type':'application/json', 'x-api-key':apiKey, 'anthropic-version':'2023-06-01' },
       {
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 2500,
-        system: 'You are a career advisor API. Return ONLY valid JSON. Start with { end with }. No markdown, no code fences, no explanation.',
+        max_tokens: 2000,
+        system: 'You are a career advisor API. Return ONLY a valid JSON object. Start your response with { and end with }. No markdown, no code fences, no explanation outside the JSON.',
         messages: [{ role: 'user', content: prompt }]
       }
     );
 
     if (mainR.status !== 200) {
-      const msg = mainR.body && mainR.body.error ? mainR.body.error.message : 'Analysis failed.';
+      const msg = mainR.body && mainR.body.error ? mainR.body.error.message : 'Analysis failed. Please try again.';
       return res.status(502).json({ error: msg });
     }
 
@@ -176,25 +228,26 @@ Rules:
     let text = content.filter(b => b.type === 'text').map(b => b.text).join('').trim();
     if (!text) return res.status(502).json({ error: 'Empty response. Please try again.' });
 
-    // clean markdown fences
     text = text.replace(/^```json\s*/i,'').replace(/^```\s*/i,'').replace(/\s*```$/i,'').trim();
 
-    const s = text.indexOf('{');
-    const e = text.lastIndexOf('}');
-    if (s === -1 || e === -1) return res.status(502).json({ error: 'Could not parse analysis. Please try again.' });
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    if (start === -1 || end === -1) {
+      console.error('No JSON found:', text.substring(0, 200));
+      return res.status(502).json({ error: 'Could not parse analysis. Please try again.' });
+    }
 
     let parsed;
     try {
-      parsed = JSON.parse(text.substring(s, e + 1));
-    } catch (err) {
+      parsed = JSON.parse(text.substring(start, end + 1));
+    } catch (e) {
       try {
-        // repair trailing commas and control chars
-        const fixed = text.substring(s, e + 1)
+        const fixed = text.substring(start, end + 1)
           .replace(/,\s*([}\]])/g, '$1')
           .replace(/[\u0000-\u001F\u007F]/g, ' ');
         parsed = JSON.parse(fixed);
-      } catch (err2) {
-        console.error('Parse failed:', err.message, text.substring(s, s + 200));
+      } catch (e2) {
+        console.error('Parse failed:', e.message, text.substring(start, start + 300));
         return res.status(502).json({ error: 'Analysis format error. Please try again.' });
       }
     }
