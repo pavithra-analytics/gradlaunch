@@ -152,17 +152,6 @@ Files are validated for minimum 200 meaningful characters before submission. Uns
 
 ---
 
-## Visa Support
-
-| Status | What you get |
-|---|---|
-| F-1 OPT | H-1B sponsor companies, OPT timeline with deadlines |
-| STEM OPT | STEM extension steps, E-Verify guidance |
-| H-1B | PERM green card timeline, renewal guidance |
-| Permanent Resident / Citizen | Standard analysis, no visa sections |
-
----
-
 ## What's Next
 
 - [ ] Job description match score (paste any JD for exact requirement breakdown)
