@@ -2,9 +2,7 @@ const https = require('https');
 
 // ── SUPPORTED MIME TYPES ──
 const MIME_TYPES = {
-  'pdf':  'application/pdf',
-  'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'txt':  'text/plain'
+  'pdf':  'application/pdf'
 };
 
 // ── MAX FILE SIZE: 3MB (base64 overhead keeps us under Vercel 4.5MB body limit) ──
