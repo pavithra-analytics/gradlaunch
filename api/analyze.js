@@ -611,7 +611,7 @@ async function streamAnalysis({ apiKey, systemPrompt, marketDataBlock, userConte
         'Content-Type':    'application/json',
         'x-api-key':       apiKey,
         'anthropic-version': '2023-06-01',
-        'anthropic-beta':  'files-api-2025-04-14',
+        ...(fileId ? { 'anthropic-beta': 'files-api-2025-04-14' } : {}),
         'Content-Length':  Buffer.byteLength(requestBody)
       },
       timeout: 55000
