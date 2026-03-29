@@ -1561,14 +1561,8 @@ function handleSSE(name, data) {
       break;
 
     case 'verdict':
-      renderVerdict(data);
-      // Transition to results on first real content
-      if (document.getElementById('pg-loading').classList.contains('active')) {
-        stopLoading();
-        showPage('results');
-        document.getElementById('back-btn').style.display='block';
-      }
-      break;
+     renderVerdict(data);
+     break;
 
     case 'skills':
       analysisData.skills_present = data.skills_present;
@@ -1595,7 +1589,14 @@ function handleSSE(name, data) {
     case 'scores':      renderScores(data);            break;
     case 'bullet_group': appendBulletGroup(data);      break;
     case 'jd_breakdown': renderJDBreakdown(data.jd_breakdown); break;
-    case 'done':        renderSummaryCard();            break;
+        
+    case 'done':
+     renderSummaryCard();
+     stopLoading();
+     showPage('results');
+     document.getElementById('back-btn').style.display='block';
+     break;
+        
     case 'error':       throw new Error(data.message||'Analysis error');
   }
 }
