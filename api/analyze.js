@@ -130,8 +130,84 @@ function httpGet(url, headers = {}) {
 }
 
 // ═══════════════════════════════════════════════════════
-// TOOL DEFINITIONS
+// HTTPS POST HELPER — for meta-prompt Anthropic call
 // ═══════════════════════════════════════════════════════
+function httpsPost(hostname, path, headers, body) {
+  return new Promise((resolve, reject) => {
+    const data = JSON.stringify(body);
+    const req  = https.request({
+      hostname, path, method: 'POST',
+      headers: {
+        'Content-Type':   'application/json',
+        'Content-Length': Buffer.byteLength(data),
+        ...headers
+      },
+      timeout: 20000
+    }, res => {
+      let raw = '';
+      res.on('data', c => raw += c);
+      res.on('end', () => { try { resolve(JSON.parse(raw)); } catch { resolve({}); } });
+    });
+    req.on('timeout', () => req.destroy(new Error('Timeout')));
+    req.on('error', reject);
+    req.write(data);
+    req.end();
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+// GENERATE PROJECT PROMPT — dedicated meta-prompt call
+// Uses a separate Haiku call whose only job is to write
+// an excellent agentic coding prompt for the project.
+// Cost: ~$0.001 per analysis. Worth every fraction of a cent.
+// ═══════════════════════════════════════════════════════
+async function generateProjectPrompt(project, apiKey) {
+  try {
+    const { title, description, skills } = project;
+    const techStack = (skills || []).slice(0, 5).join(', ');
+
+    const metaPrompt = `Write a prompt that instructs an AI coding assistant to help a developer build this portfolio project from scratch.
+
+Project: ${title}
+Tech stack: ${techStack}
+What gets built: ${description}
+
+Rules for the prompt you write:
+- Start with "Act as a senior [appropriate role based on the tech stack]"
+- Address the developer as "you" — never use any personal names
+- No explanation of why they are building this — just build it
+- Phase 1 (2 sentences): AI interviews developer about their setup and requirements before planning anything. Ends with "Say 'next phase' when ready."
+- Phase 2 (2 sentences): AI designs the architecture and file structure, gets approval before writing any code. Ends with "Say 'next phase' when ready."  
+- Phase 3 (2 sentences): AI builds one file at a time, asks questions when it needs specifics, never dumps everything at once.
+- Total prompt must be under 180 words
+- No dashes or em-dashes
+- Output ONLY the prompt text, nothing else`;
+
+    const response = await httpsPost(
+      'api.anthropic.com',
+      '/v1/messages',
+      {
+        'x-api-key':         apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      {
+        model:      'claude-haiku-4-5-20251001',
+        max_tokens: 400,
+        messages: [{ role: 'user', content: metaPrompt }]
+      }
+    );
+
+    const text = response?.content?.[0]?.text?.trim();
+    if (text && text.length > 50) return text;
+    return null;
+
+  } catch (e) {
+    console.log('Meta-prompt generation failed gracefully:', e.message);
+    return null;
+  }
+}
+
+
 const TOOLS = [
   {
     name: 'set_verdict',
@@ -344,12 +420,12 @@ TOOL CALLING ORDER:
 
 QUALITY RULES:
 - verdict_headline: quotable and specific to THIS resume. "You have 4 years of experience and a resume that reads like your first draft." No dashes. Sounds like something a friend said out loud.
-- brutal_honey: ONE paragraph. No dashes. No bullet points inside it. Recruiter reality first then redemption. Sentences flow into each other like a person talking.
+- brutal_honey: MAXIMUM 3 SENTENCES. No dashes. No bullet points. Sentence 1: the uncomfortable truth about why a recruiter skips this exact bullet. Sentence 2: what is actually salvageable or good about it. Sentence 3: the specific direction for the rewrite. Nothing more.
 - rewrite bullets: [X][Y][Z] placeholders always. End with: "Estimates count. 40% faster based on before/after testing is real data." No dashes.
 - linkedin_headline: under 200 chars, zero status language. Use a pipe symbol to separate elements if needed.
 - set_gaps how_often: USE THE EXACT PERCENTAGES FROM THE MARKET DATA BLOCK. If a skill is not in market data use your best estimate.
 - set_projects market_signal: USE THE EXACT PERCENTAGES FROM THE MARKET DATA BLOCK.
-- ai_prompt: Start by addressing the student directly. Explain why this specific project closes their most critical gap. Then Phase 1 planning (no code), Phase 2 output design (no code), Phase 3 guided coding. Write like a mentor briefing a student. Student types "next phase" to advance. No dashes.
+- ai_prompt: Write a brief fallback placeholder only. This field will be replaced by a dedicated prompt optimizer. Just write: "Act as a senior [relevant role]. Help me build [project title] using [main skill]. Guide me through planning, design, and coding one step at a time." Under 30 words. No personal details. No names. No explanation of why.
 - bullet tags: pick 1 or 2 accurate diagnostic tags. "Missing Metric" only if no numbers exist. "Passive Voice" only if the verb is genuinely passive.`;
 }
 
@@ -394,12 +470,12 @@ function buildAnalysisPrompt(role, locationStr, jd, hasJD, sal, marketDataBlock)
 
 ${marketDataBlock}
 
-Salary context for ${locationStr} — do not output these numbers, use for context only:
+Salary context for ${locationStr} (do not output these numbers, use for context only):
 Entry: ${sal.e} | Mid: ${sal.m} | Senior: ${sal.s}
 
 ${hasJD ? `JOB DESCRIPTION:\n${jd}\n\nSince a JD was provided, also call set_jd_breakdown.` : ''}
 
-Call tools in the required order. Every verdict, roast, and rewrite must reference actual content from this specific resume — never write generic advice.`;
+Call ALL tools in the required order. Do not stop after set_verdict. Complete every single tool call including set_skills, set_gaps, set_linkedin, set_certifications, set_projects, set_scores, and add_bullet_group for every company in the resume. Every verdict, roast, and rewrite must reference actual content from this specific resume. Never write generic advice.`;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -493,9 +569,25 @@ function emitToolCall(name, args, res, sal, role, certNames) {
         ai_prompt:     p.ai_prompt || '',
         bullets:       (p.bullets || []).slice(0, 2)
       }));
-      // Sort highest market_signal first so recommended project is always index 0
       projects.sort((a, b) => b.market_signal - a.market_signal);
-      sendEvent(res, 'projects', { projects: projects.slice(0, 3) });
+      const top3 = projects.slice(0, 3);
+
+      // Generate optimized agentic prompts for all 3 projects in parallel
+      // Each is a dedicated Haiku call whose only job is writing a great prompt
+      // Falls back to Claude's original ai_prompt if the meta-call fails
+      Promise.all(
+        top3.map(p => generateProjectPrompt(p, process.env.ANTHROPIC_API_KEY)
+          .then(optimized => {
+            if (optimized) p.ai_prompt = optimized;
+          })
+          .catch(() => {})
+        )
+      ).then(() => {
+        sendEvent(res, 'projects', { projects: top3 });
+      }).catch(() => {
+        // If anything goes wrong, emit with original prompts
+        sendEvent(res, 'projects', { projects: top3 });
+      });
       break;
     }
     case 'set_scores':
@@ -583,7 +675,7 @@ async function streamAnalysis({ apiKey, systemPrompt, marketDataBlock, userConte
 
     const requestBody = JSON.stringify({
       model:      'claude-haiku-4-5-20251001',
-      max_tokens: 6000,
+      max_tokens: 12000,
       // No thinking — Haiku completes in 10-12s well within 60s limit
       system: [
         {
@@ -599,7 +691,7 @@ async function streamAnalysis({ apiKey, systemPrompt, marketDataBlock, userConte
         }
       ],
       tools,
-      tool_choice: { type: 'auto' },
+      tool_choice: { type: 'any' },
       stream: true
     });
 
@@ -608,11 +700,11 @@ async function streamAnalysis({ apiKey, systemPrompt, marketDataBlock, userConte
       path: '/v1/messages',
       method: 'POST',
       headers: {
-        'Content-Type':    'application/json',
-        'x-api-key':       apiKey,
+        'Content-Type':      'application/json',
+        'x-api-key':         apiKey,
         'anthropic-version': '2023-06-01',
-        'anthropic-beta':  'files-api-2025-04-14',
-        'Content-Length':  Buffer.byteLength(requestBody)
+        ...(fileId ? { 'anthropic-beta': 'files-api-2025-04-14' } : {}),
+        'Content-Length':    Buffer.byteLength(requestBody)
       },
       timeout: 55000
     };
