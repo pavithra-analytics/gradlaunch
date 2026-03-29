@@ -1,0 +1,31 @@
+name: Weekly Cache Pre-warm
+
+on:
+  schedule:
+    # Runs at 3:00 AM UTC every Sunday (11:00 PM EST Saturday)
+    # Job skills change slowly — weekly is fresh enough
+    - cron: '0 3 * * 0'
+  # Allow manual trigger from GitHub Actions tab anytime
+  workflow_dispatch:
+
+jobs:
+  warm-cache:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger weekly cache pre-warm
+        run: |
+          echo "Starting warmcache for all 30 roles..."
+          response=$(curl -s -w "\n%{http_code}" \
+            -X GET \
+            --max-time 1800 \
+            "https://gradlaunch-weld.vercel.app/api/warmcache")
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | head -n-1)
+          echo "HTTP Status: $http_code"
+          echo "Response: $body"
+          if [ "$http_code" != "200" ]; then
+            echo "Warmcache failed with status $http_code"
+            exit 1
+          fi
+          echo "Warmcache completed successfully"
+        timeout-minutes: 40
