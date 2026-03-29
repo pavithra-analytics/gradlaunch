@@ -1,0 +1,17 @@
+{
+  "version": 2,
+  "functions": {
+    "api/analyze.js": {
+      "maxDuration": 60
+    },
+    "api/apify.js": {
+      "maxDuration": 10
+    },
+    "api/upload.js": {
+      "maxDuration": 30
+    },
+    "api/warmcache.js": {
+      "maxDuration": 300
+    }
+  }
+}
