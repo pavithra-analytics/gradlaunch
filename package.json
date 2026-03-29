@@ -1,0 +1,8 @@
+{
+  "name": "gradlaunch",
+  "version": "2.0.0",
+  "description": "GradLaunch — The job market is not rooting for you. We are.",
+  "engines": {
+    "node": "20.x"
+  }
+}
