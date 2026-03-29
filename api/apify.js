@@ -235,7 +235,7 @@ async function runApify(role, location) {
       `https://api.apify.com/v2/acts/curious_coder~linkedin-jobs-scraper/runs?token=${token}`,
       {},
       {
-        startUrls: [linkedinUrl],
+        urls: [linkedinUrl],
         count: 40,           // NOTE: verify field name on first test
         scrapeCompany: false // faster without company details
       }
