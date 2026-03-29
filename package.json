@@ -1,8 +1,0 @@
-{
-  "name": "gradlaunch",
-  "version": "1.0.0",
-  "description": "GradLaunch",
-  "engines": {
-    "node": "20.x"
-  }
-}
