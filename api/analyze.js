@@ -345,7 +345,7 @@ const TOOLS = [
               status:       { type: 'string',  enum: ['green','red'] },
               tags:         { type: 'array', items: { type: 'string', enum: ['Missing Metric','Passive Voice','No Impact Statement','Vague Action Verb','Strong','Impact Validated','Quantified'] }, description: 'One or two diagnostic tags for this bullet. Green bullets get positive tags, red bullets get problem tags.' },
               brutal_honey: { type: 'string',  description: 'Red only: ONE paragraph. No dashes or em-dashes. Start with why a recruiter skips this bullet, then what is salvageable. Human voice, sounds like a person talking. null for green.' },
-              rewrite:      { type: 'string',  description: 'Red only: Stronger version with [X][Y][Z] placeholders. No dashes or em-dashes. End with: "Estimates count. 40% faster based on before/after testing is real data." null for green.' }
+              rewrite:      { type: 'string',  description: 'Red only: ONE sentence under 25 words. Start with a strong action verb. Include the single most relevant ATS keyword from the market data for this role. Use [X][Y][Z] only where numbers are genuinely missing from the original bullet. No dashes. After writing your draft, check: does it have a strong verb? Does it have the right ATS keyword? Is it under 25 words? If any check fails, revise once before outputting the final version. Only add "Estimates count." at the end if the bullet had zero numbers and you used placeholders. null for green.' }
             },
             required: ['text','status','tags','brutal_honey','rewrite']
           }
@@ -421,7 +421,7 @@ TOOL CALLING ORDER:
 QUALITY RULES:
 - verdict_headline: quotable and specific to THIS resume. "You have 4 years of experience and a resume that reads like your first draft." No dashes. Sounds like something a friend said out loud.
 - brutal_honey: MAXIMUM 3 SENTENCES. No dashes. No bullet points. Sentence 1: the uncomfortable truth about why a recruiter skips this exact bullet. Sentence 2: what is actually salvageable or good about it. Sentence 3: the specific direction for the rewrite. Nothing more.
-- rewrite bullets: [X][Y][Z] placeholders always. End with: "Estimates count. 40% faster based on before/after testing is real data." No dashes.
+- rewrite bullets: ONE sentence under 25 words. Strong action verb first. Most relevant ATS keyword for this role from the market data. [X][Y][Z] only where numbers are genuinely missing. Self-check before outputting: strong verb? ATS keyword present? Under 25 words? Revise once if any check fails. Only add "Estimates count." if the original had zero numbers and you used placeholders.
 - linkedin_headline: under 200 chars, zero status language. Use a pipe symbol to separate elements if needed.
 - set_gaps how_often: USE THE EXACT PERCENTAGES FROM THE MARKET DATA BLOCK. If a skill is not in market data use your best estimate.
 - set_projects market_signal: USE THE EXACT PERCENTAGES FROM THE MARKET DATA BLOCK.
