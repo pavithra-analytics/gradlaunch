@@ -399,7 +399,7 @@ Entry: ${sal.e} | Mid: ${sal.m} | Senior: ${sal.s}
 
 ${hasJD ? `JOB DESCRIPTION:\n${jd}\n\nSince a JD was provided, also call set_jd_breakdown.` : ''}
 
-Call tools in the required order. Every verdict, roast, and rewrite must reference actual content from this specific resume — never write generic advice.`;
+Call ALL tools in the required order. Do not stop after set_verdict. Complete every single tool call — set_skills, set_gaps, set_linkedin, set_certifications, set_projects, set_scores, add_bullet_group for every company, and set_jd_breakdown if a JD was provided. Every verdict, roast, and rewrite must reference actual content from this specific resume — never write generic advice.`;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -583,7 +583,7 @@ async function streamAnalysis({ apiKey, systemPrompt, marketDataBlock, userConte
 
     const requestBody = JSON.stringify({
       model:      'claude-haiku-4-5-20251001',
-      max_tokens: 6000,
+      max_tokens: 8000,
       // No thinking — Haiku completes in 10-12s well within 60s limit
       system: [
         {
