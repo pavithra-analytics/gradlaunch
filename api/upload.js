@@ -3,7 +3,6 @@ const https = require('https');
 // ── SUPPORTED MIME TYPES ──
 const MIME_TYPES = {
   'pdf':  'application/pdf',
-  'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'txt':  'text/plain'
 };
 
