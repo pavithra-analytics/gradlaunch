@@ -344,12 +344,12 @@ TOOL CALLING ORDER:
 
 QUALITY RULES:
 - verdict_headline: quotable and specific to THIS resume. "You have 4 years of experience and a resume that reads like your first draft." No dashes. Sounds like something a friend said out loud.
-- brutal_honey: ONE paragraph. No dashes. No bullet points inside it. Recruiter reality first then redemption. Sentences flow into each other like a person talking.
+- brutal_honey: MAXIMUM 3 SENTENCES. No dashes. No bullet points. Sentence 1: the uncomfortable truth about why a recruiter skips this exact bullet. Sentence 2: what is actually salvageable or good about it. Sentence 3: the specific direction for the rewrite. Nothing more.
 - rewrite bullets: [X][Y][Z] placeholders always. End with: "Estimates count. 40% faster based on before/after testing is real data." No dashes.
 - linkedin_headline: under 200 chars, zero status language. Use a pipe symbol to separate elements if needed.
 - set_gaps how_often: USE THE EXACT PERCENTAGES FROM THE MARKET DATA BLOCK. If a skill is not in market data use your best estimate.
 - set_projects market_signal: USE THE EXACT PERCENTAGES FROM THE MARKET DATA BLOCK.
-- ai_prompt: Start by addressing the student directly. Explain why this specific project closes their most critical gap. Then Phase 1 planning (no code), Phase 2 output design (no code), Phase 3 guided coding. Write like a mentor briefing a student. Student types "next phase" to advance. No dashes.
+- ai_prompt: CRITICAL RULES: (1) NEVER use the student's name. Address them as "you" throughout. (2) The project must be the EXACT project described in the description field. Do not reference GradLaunch, the student's current employer, or any other project. (3) Keep each phase to 2 sentences maximum. (4) Total prompt must be under 150 words. (5) No dashes. Structure: One sentence explaining why this specific project closes their biggest gap. Then "Phase 1 (Planning): [2 sentences, no code, what to think through]" then "Phase 2 (Design): [2 sentences, no code, what to sketch]" then "Phase 3 (Build): [2 sentences, start coding, what to build first]". End with "Type next phase to advance."
 - bullet tags: pick 1 or 2 accurate diagnostic tags. "Missing Metric" only if no numbers exist. "Passive Voice" only if the verb is genuinely passive.`;
 }
 
@@ -394,12 +394,12 @@ function buildAnalysisPrompt(role, locationStr, jd, hasJD, sal, marketDataBlock)
 
 ${marketDataBlock}
 
-Salary context for ${locationStr} — do not output these numbers, use for context only:
+Salary context for ${locationStr} (do not output these numbers, use for context only):
 Entry: ${sal.e} | Mid: ${sal.m} | Senior: ${sal.s}
 
 ${hasJD ? `JOB DESCRIPTION:\n${jd}\n\nSince a JD was provided, also call set_jd_breakdown.` : ''}
 
-Call ALL tools in the required order. Do not stop after set_verdict. Complete every single tool call — set_skills, set_gaps, set_linkedin, set_certifications, set_projects, set_scores, add_bullet_group for every company, and set_jd_breakdown if a JD was provided. Every verdict, roast, and rewrite must reference actual content from this specific resume — never write generic advice.`;
+Call ALL tools in the required order. Do not stop after set_verdict. Complete every single tool call including set_skills, set_gaps, set_linkedin, set_certifications, set_projects, set_scores, and add_bullet_group for every company in the resume. Every verdict, roast, and rewrite must reference actual content from this specific resume. Never write generic advice.`;
 }
 
 // ═══════════════════════════════════════════════════════
