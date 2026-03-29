@@ -130,7 +130,7 @@ function httpGet(url, headers = {}) {
 }
 
 // ═══════════════════════════════════════════════════════
-// HTTPS POST HELPER — for meta-prompt Anthropic call
+// HTTPS POST HELPER
 // ═══════════════════════════════════════════════════════
 function httpsPost(hostname, path, headers, body) {
   return new Promise((resolve, reject) => {
@@ -156,32 +156,41 @@ function httpsPost(hostname, path, headers, body) {
 }
 
 // ═══════════════════════════════════════════════════════
-// GENERATE PROJECT PROMPT — dedicated meta-prompt call
-// Uses a separate Haiku call whose only job is to write
-// an excellent agentic coding prompt for the project.
-// Cost: ~$0.001 per analysis. Worth every fraction of a cent.
+// GENERATE PROJECT PROMPT
+// Dedicated Haiku call for the top recommended project only.
+// Produces a concrete, paste-ready prompt for an AI coding
+// assistant — specific dataset, specific UI, specific first
+// command, no questions about existing infrastructure.
 // ═══════════════════════════════════════════════════════
 async function generateProjectPrompt(project, apiKey) {
   try {
     const { title, description, skills } = project;
-    const techStack = (skills || []).slice(0, 5).join(', ');
+    const techStack = (skills || []).slice(0, 6).join(', ');
 
-    const metaPrompt = `Write a prompt that instructs an AI coding assistant to help a developer build this portfolio project from scratch.
+    const metaPrompt = `You are writing a prompt that a developer will paste into Claude or ChatGPT to get hands-on help building a portfolio project from scratch. The developer is a student with no existing infrastructure — they are starting from zero on their laptop.
 
-Project: ${title}
+Project to build: ${title}
 Tech stack: ${techStack}
-What gets built: ${description}
+What it does: ${description}
 
-Rules for the prompt you write:
-- Start with "Act as a senior [appropriate role based on the tech stack]"
-- Address the developer as "you" — never use any personal names
-- No explanation of why they are building this — just build it
-- Phase 1 (2 sentences): AI interviews developer about their setup and requirements before planning anything. Ends with "Say 'next phase' when ready."
-- Phase 2 (2 sentences): AI designs the architecture and file structure, gets approval before writing any code. Ends with "Say 'next phase' when ready."  
-- Phase 3 (2 sentences): AI builds one file at a time, asks questions when it needs specifics, never dumps everything at once.
-- Total prompt must be under 180 words
+Write the prompt following these EXACT rules:
+
+1. Start with "Act as a senior [specific role matching the tech stack]. We are building [project name] together from scratch."
+
+2. IMMEDIATELY specify the exact tools — name the exact free dataset or API (e.g. "We will use the Yahoo Finance API via yfinance" or "We will use the Spotify API with spotipy"), the exact database (SQLite for simple, PostgreSQL for complex), the exact UI framework (Streamlit for data projects, FastAPI for APIs, React for frontends), and what the final output looks like visually (e.g. "a Streamlit dashboard with a bar chart showing X and a table showing Y").
+
+3. Phase 1 (2 sentences): Planning only. No code, no file names, no technology choices yet. Tell the AI to ask 2 specific questions about what this project should do and who will use it. End with: "Say 'next phase' when ready."
+
+4. Phase 2 (2 sentences): Design only. No code. Tell the AI to show the exact folder structure, every file name, and every function as a stub with its inputs and outputs. The AI must get explicit approval on the design before writing any implementation. End with: "Say 'next phase' when ready."
+
+5. Phase 3 (2 sentences): Code generation. Tell the AI to build one function at a time starting with the data fetching layer, show the actual output after running each function, and never move to the next function until the current one works.
+
+Rules:
+- Under 200 words total
 - No dashes or em-dashes
-- Output ONLY the prompt text, nothing else`;
+- No questions about existing AWS, Docker, or infrastructure setup
+- The project must be buildable in one weekend on a laptop with no cloud account required
+- Output ONLY the prompt text, nothing else, no preamble`;
 
     const response = await httpsPost(
       'api.anthropic.com',
@@ -192,23 +201,25 @@ Rules for the prompt you write:
       },
       {
         model:      'claude-haiku-4-5-20251001',
-        max_tokens: 400,
+        max_tokens: 500,
         messages: [{ role: 'user', content: metaPrompt }]
       }
     );
 
     const text = response?.content?.[0]?.text?.trim();
-    if (text && text.length > 50) return text;
+    if (text && text.length > 80) {
+      console.log(`Project prompt generated: ${text.length} chars`);
+      return text;
+    }
     return null;
 
   } catch (e) {
-    console.log('Meta-prompt generation failed gracefully:', e.message);
+    console.log('Project prompt generation failed gracefully:', e.message);
     return null;
   }
 }
 
 
-const TOOLS = [
   {
     name: 'set_verdict',
     description: 'Set the overall verdict. Call this FIRST — it renders immediately.',
@@ -425,7 +436,7 @@ QUALITY RULES:
 - linkedin_headline: under 200 chars, zero status language. Use a pipe symbol to separate elements if needed.
 - set_gaps how_often: USE THE EXACT PERCENTAGES FROM THE MARKET DATA BLOCK. If a skill is not in market data use your best estimate.
 - set_projects market_signal: USE THE EXACT PERCENTAGES FROM THE MARKET DATA BLOCK.
-- ai_prompt: Write a brief fallback placeholder only. This field will be replaced by a dedicated prompt optimizer. Just write: "Act as a senior [relevant role]. Help me build [project title] using [main skill]. Guide me through planning, design, and coding one step at a time." Under 30 words. No personal details. No names. No explanation of why.
+- ai_prompt: For projects 1 and 2, write a concrete 2-sentence placeholder: "Act as a senior [role matching the tech stack]. Help me build [exact project title] using [list the specific tools from skills]. Guide me step by step, one function at a time, starting with the project setup." Under 40 words. No names. No infrastructure questions.
 - bullet tags: pick 1 or 2 accurate diagnostic tags. "Missing Metric" only if no numbers exist. "Passive Voice" only if the verb is genuinely passive.`;
 }
 
@@ -572,22 +583,22 @@ function emitToolCall(name, args, res, sal, role, certNames) {
       projects.sort((a, b) => b.market_signal - a.market_signal);
       const top3 = projects.slice(0, 3);
 
-      // Generate optimized agentic prompts for all 3 projects in parallel
-      // Each is a dedicated Haiku call whose only job is writing a great prompt
-      // Falls back to Claude's original ai_prompt if the meta-call fails
-      Promise.all(
-        top3.map(p => generateProjectPrompt(p, process.env.ANTHROPIC_API_KEY)
-          .then(optimized => {
-            if (optimized) p.ai_prompt = optimized;
-          })
-          .catch(() => {})
-        )
-      ).then(() => {
-        sendEvent(res, 'projects', { projects: top3 });
-      }).catch(() => {
-        // If anything goes wrong, emit with original prompts
-        sendEvent(res, 'projects', { projects: top3 });
-      });
+      // Emit projects immediately — never block the main stream on the meta-call
+      sendEvent(res, 'projects', { projects: top3 });
+
+      // Fire meta-call after emit — if it completes before the stream closes
+      // it sends a project_prompt event to update the top project's prompt.
+      // If the stream closes first the event is simply lost — graceful degradation.
+      generateProjectPrompt(top3[0], process.env.ANTHROPIC_API_KEY)
+        .then(optimized => {
+          if (optimized) {
+            sendEvent(res, 'project_prompt', {
+              index:  0,
+              prompt: optimized
+            });
+          }
+        })
+        .catch(() => {});
       break;
     }
     case 'set_scores':
