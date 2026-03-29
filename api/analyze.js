@@ -675,7 +675,7 @@ async function streamAnalysis({ apiKey, systemPrompt, marketDataBlock, userConte
 
     const requestBody = JSON.stringify({
       model:      'claude-haiku-4-5-20251001',
-      max_tokens: 8000,
+      max_tokens: 12000,
       // No thinking — Haiku completes in 10-12s well within 60s limit
       system: [
         {
@@ -691,7 +691,7 @@ async function streamAnalysis({ apiKey, systemPrompt, marketDataBlock, userConte
         }
       ],
       tools,
-      tool_choice: { type: 'auto' },
+      tool_choice: { type: 'any' },
       stream: true
     });
 
