@@ -489,7 +489,7 @@ async function streamAnalysis({ apiKey, systemPrompt, userContent, tools, res, f
     const requestBody = JSON.stringify({
       model: 'claude-sonnet-4-6',
       max_tokens: 16000,
-      thinking: { type: 'adaptive', effort: 'high' },
+      thinking: { type: 'adaptive'},
       system: [
         {
           type: 'text',
