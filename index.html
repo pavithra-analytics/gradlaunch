@@ -737,14 +737,12 @@ button{cursor:pointer}
           </svg>
         </div>
         <div class="dz-title">Drop your resume here</div>
-        <div class="dz-sub">or click anywhere to browse</div>
+        <div class="dz-sub">or click anywhere to browse · PDF only · max 3MB</div>
         <div class="dz-fmts">
           <span class="fmt">PDF</span>
-          <span class="fmt">DOCX</span>
-          <span class="fmt">TXT</span>
         </div>
         <div class="dz-tip">LinkedIn: Profile → More → Save to PDF</div>
-        <input type="file" id="file-input" accept=".pdf,.docx,.txt"
+        <input type="file" id="file-input" accept=".pdf"
                style="display:none" onchange="handleFile(this)"/>
       </div>
       <div id="dz-processing" style="display:none">
@@ -1275,12 +1273,8 @@ async function handleFile(input) {
   const name = file.name;
   const ext  = name.split('.').pop().toLowerCase();
 
-  if (ext === 'doc')
-    return showFileErr(name, 'Old .doc format not supported. Save as .docx or PDF.');
-  if (!['pdf','docx','txt'].includes(ext))
-    return showFileErr(name, 'Only PDF, DOCX, and TXT files are supported.');
-  if (file.size > 3 * 1024 * 1024)
-    return showFileErr(name, 'File too large. Save as a compressed PDF under 3MB.');
+if (ext !== 'pdf') return showFileErr(name, 'Please upload a PDF file. LinkedIn: Profile → More → Save to PDF.');
+if (file.size > 3 * 1024 * 1024) return showFileErr(name, 'File too large. Please compress your PDF to under 3MB.');
 
   // Delete previous orphaned file
   if (resumeFileId) {
