@@ -1594,10 +1594,15 @@ function handleSSE(name, data) {
       break;
 
     case 'linkedin':    renderLinkedIn(data);          break;
+        
     case 'certifications':
-      analysisData.certs = data.certifications;
-      renderCerts(data.certifications);
-      break;
+     analysisData.certs = data.certifications;
+     renderCerts(data.certifications);
+     // Profile tab is now complete — transition from loading to results
+     stopLoading();
+     showPage('results');
+     document.getElementById('back-btn').style.display='block';
+     break;
 
     case 'projects':
       analysisData.projects = data.projects;
