@@ -1,0 +1,3600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>GradLaunch — Beat the recruiter. Before they beat you.</title>
+<meta name="description" content="Upload your resume. Find out exactly what's standing between you and the interview — before a recruiter decides for you."/>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+
+/* ═══════════════════════════════════════════════════
+   RESET + BASE
+═══════════════════════════════════════════════════ */
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:'Plus Jakarta Sans',system-ui,sans-serif;
+  background:var(--bg);color:var(--on-bg);
+  min-height:100vh;font-size:14px;line-height:1.6;
+  transition:background .25s,color .25s;
+  -webkit-font-smoothing:antialiased;
+}
+input,textarea,button,select{font-family:inherit;font-size:inherit}
+a{text-decoration:none;color:inherit}
+button{cursor:pointer;border:none;outline:none}
+
+/* ═══════════════════════════════════════════════════
+   DESIGN TOKENS — light
+═══════════════════════════════════════════════════ */
+:root{
+  /* Primary — deep blue */
+  --primary:#0057bd;
+  --primary-dim:#004ca6;
+  --primary-container:#6e9fff;
+  --on-primary:#f0f2ff;
+
+  /* Secondary — electric indigo */
+  --secondary:#4647d3;
+  --secondary-container:#cdcdff;
+  --on-secondary-container:#2f2ebf;
+
+  /* Tertiary — mint green */
+  --tertiary:#006947;
+  --tertiary-fixed:#69f6b8;
+
+  /* Error */
+  --error:#b31b25;
+  --error-container:#fb5151;
+
+  /* Surfaces */
+  --bg:#f5f7f9;
+  --surface:#f5f7f9;
+  --surface-low:#eef1f3;
+  --surface-container:#e5e9eb;
+  --surface-high:#dfe3e6;
+  --surface-highest:#d9dde0;
+  --card-bg:#ffffff;
+
+  /* Text */
+  --on-bg:#2c2f31;
+  --on-surface:#2c2f31;
+  --on-surface-v:#595c5e;
+  --outline:#747779;
+  --outline-v:#abadaf;
+
+  /* Semantic colours (kept for backward compat with render fns) */
+  --navy:#0057bd;
+  --navy-mid:#004ca6;
+  --navy-light:#eef3ff;
+  --navy-border:#c2d3f0;
+  --amber:#d97706;
+  --amber-light:#fffbeb;
+  --amber-border:#fde68a;
+  --amber-text:#92400e;
+  --green:#006947;
+  --green-light:#e8fef4;
+  --green-border:#6ee7b7;
+  --red:#b31b25;
+  --red-light:#fff0f0;
+  --red-border:#fca5a5;
+
+  /* Input */
+  --input-bg:#eef1f3;
+  --border:#e5e9eb;
+  --border-soft:#eef1f3;
+
+  /* Text aliases */
+  --text:#2c2f31;
+  --text-2:#595c5e;
+  --text-3:#747779;
+  --text-4:#abadaf;
+}
+
+/* ═══════════════════════════════════════════════════
+   DARK MODE — Tailwind class-based
+═══════════════════════════════════════════════════ */
+.dark{
+  /* Surfaces — more distinct layers so cards pop off background */
+  --bg:#0c0e14;
+  --surface:#0c0e14;
+  --surface-low:#13161f;
+  --surface-container:#191c28;
+  --surface-high:#1f2233;
+  --surface-highest:#262940;
+  --card-bg:#191c28;
+
+  /* Text — high contrast, properly stepped */
+  --on-bg:#edeaf6;
+  --on-surface:#edeaf6;
+  --on-surface-v:#a8a4c0;
+  --outline:#5c5f74;
+  --outline-v:#3c3f52;
+
+  /* Semantic */
+  --navy-light:#0d1929;
+  --navy-border:#1e3a5f;
+  --input-bg:#13161f;
+  --border:#252840;
+  --border-soft:#191c28;
+
+  /* Text aliases */
+  --text:#edeaf6;
+  --text-2:#a8a4c0;
+  --text-3:#6e6e88;
+  --text-4:#42425a;
+
+  /* Semantic colours — warmer, more visible in dark */
+  --amber-light:#1f1400;
+  --amber-border:#4a3200;
+  --amber-text:#fbbf24;
+  --green-light:#071a0d;
+  --green-border:#0d3d1a;
+  --red-light:#1a0608;
+  --red-border:#4d1010;
+}
+
+/* ═══════════════════════════════════════════════════
+   PAGE ROUTING
+═══════════════════════════════════════════════════ */
+.page{display:none}
+.page.active{display:block}
+#pg-loading.active{display:flex;align-items:center;justify-content:center}
+
+/* ═══════════════════════════════════════════════════
+   MATERIAL SYMBOLS
+═══════════════════════════════════════════════════ */
+.material-symbols-outlined{
+  font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24;
+  line-height:1;vertical-align:middle;
+}
+
+/* ═══════════════════════════════════════════════════
+   NAV — glassmorphism
+═══════════════════════════════════════════════════ */
+.nav{
+  background:rgba(245,247,249,.85);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  border-bottom:1px solid rgba(0,87,189,.08);
+  padding:0 1.5rem;height:58px;
+  display:flex;align-items:center;justify-content:space-between;
+  position:sticky;top:0;z-index:100;
+}
+.dark .nav{
+  background:rgba(15,17,23,.85);
+  border-bottom:1px solid rgba(255,255,255,.06);
+}
+.logo{display:flex;align-items:center;gap:9px;cursor:pointer}
+.logo-mark{
+  width:32px;height:32px;border-radius:10px;
+  background:linear-gradient(135deg,var(--primary),var(--primary-container));
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+  box-shadow:0 2px 8px rgba(0,87,189,.3);
+}
+.logo-name{
+  font-size:15px;font-weight:800;color:var(--on-surface);
+  letter-spacing:-.4px;
+}
+.nav-right{display:flex;align-items:center;gap:8px}
+.nav-badge{
+  display:inline-flex;align-items:center;gap:6px;
+  background:rgba(0,87,189,.08);color:var(--primary);
+  border:1px solid rgba(0,87,189,.15);
+  border-radius:99px;font-size:11px;font-weight:700;padding:5px 12px;
+}
+.dark .nav-badge{
+  background:rgba(110,159,255,.1);color:var(--primary-container);
+  border-color:rgba(110,159,255,.2);
+}
+.live-dot{
+  width:6px;height:6px;border-radius:50%;
+  background:#22c55e;flex-shrink:0;animation:blink 2s infinite;
+}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
+.dark-btn{
+  width:32px;height:32px;border-radius:10px;
+  background:var(--surface-low);border:1px solid var(--border);
+  display:flex;align-items:center;justify-content:center;
+  font-size:15px;transition:all .15s;color:var(--text-2);
+}
+.dark-btn:hover{background:var(--surface-container);border-color:var(--outline-v)}
+#back-btn{
+  font-size:12px;font-weight:700;color:var(--on-surface-v);
+  background:var(--surface-low);border:1px solid var(--border);
+  border-radius:99px;padding:6px 14px;display:none;
+  transition:all .15s;
+}
+#back-btn:hover{background:var(--surface-container);color:var(--on-surface)}
+
+/* ═══════════════════════════════════════════════════
+   INPUT PAGE — full-screen hero layout
+═══════════════════════════════════════════════════ */
+.input-hero-wrap{
+  max-width:1400px;margin:0 auto;
+  padding:3rem 3rem 2.5rem;
+  display:grid;grid-template-columns:7fr 5fr;gap:4rem;align-items:start;
+}
+
+/* Hero text — left aligned, large */
+.hero{margin-bottom:2rem;text-align:left}
+.hero h1{
+  font-size:64px;font-weight:900;color:var(--primary);
+  line-height:1.05;margin-bottom:1.1rem;letter-spacing:-1.5px;
+}
+.hero h1 em{color:var(--secondary);font-style:normal}
+.hero-sub{
+  font-size:18px;color:var(--on-surface-v);line-height:1.65;
+  max-width:540px;
+}
+
+/* Upload zone wrapper */
+.upload-zone-wrap{position:relative;margin-top:1.5rem}
+
+/* Floating match-score badge */
+.match-badge{
+  position:absolute;top:-20px;right:-20px;z-index:20;
+  background:var(--card-bg);
+  border-radius:16px;padding:12px 16px;
+  box-shadow:0 8px 32px rgba(0,87,189,.15),0 2px 8px rgba(44,47,49,.08);
+  display:flex;flex-direction:column;align-items:center;gap:6px;
+  border:1px solid rgba(0,87,189,.08);
+  transition:transform .3s cubic-bezier(.34,1.56,.64,1);
+}
+.match-badge:hover{transform:scale(1.08)}
+.match-badge-label{
+  font-size:10px;font-weight:800;color:var(--secondary);
+  text-transform:uppercase;letter-spacing:.1em;
+}
+.match-ring-wrap{position:relative;width:64px;height:64px}
+.match-ring-svg{width:64px;height:64px;transform:rotate(-90deg)}
+.match-ring-bg{stroke:var(--surface-container)}
+.match-ring-fill{
+  stroke:var(--tertiary);
+  transition:stroke-dashoffset 1.4s cubic-bezier(.34,1.56,.64,1);
+}
+.match-ring-pct{
+  position:absolute;inset:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:14px;font-weight:900;color:var(--on-surface);
+}
+
+/* Large drop zone */
+.dz-large{
+  padding:2.5rem 2rem;border-width:3px;border-radius:20px;
+  background:linear-gradient(135deg,rgba(0,87,189,.03),rgba(70,71,211,.03));
+}
+.dz-icon-lg{
+  width:64px;height:64px;border-radius:18px;
+  background:linear-gradient(135deg,var(--primary),var(--primary-container));
+  display:flex;align-items:center;justify-content:center;
+  margin:0 auto 16px;
+  box-shadow:0 6px 20px rgba(0,87,189,.3);
+}
+.dz-large .dz-title{font-size:18px;margin-bottom:6px}
+
+/* Right form panel — sticky so it stays put while left scrolls */
+.input-hero-right{
+  background:var(--card-bg);
+  border-radius:24px;padding:2rem;
+  box-shadow:0 4px 40px rgba(44,47,49,.08),0 1px 4px rgba(44,47,49,.04);
+  position:sticky;top:74px;
+}
+.dark .input-hero-right{box-shadow:0 4px 40px rgba(0,0,0,.3)}
+
+/* ── Instant Insights below ── */
+.insights-below-wrap{
+  max-width:1400px;margin:0 auto;
+  padding:2rem 3rem 3rem;
+}
+.insights-title{
+  font-size:28px;font-weight:900;color:var(--on-surface);
+  letter-spacing:-.4px;margin-bottom:1.5rem;
+}
+.insights-grid-full{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:20px;
+}
+
+/* Insight card */
+.insight-card-v2{
+  background:var(--card-bg);
+  border-radius:20px;padding:1.75rem;
+  position:relative;overflow:hidden;
+  border:1px solid rgba(0,87,189,.07);
+  box-shadow:0 1px 4px rgba(44,47,49,.06),0 4px 16px rgba(44,47,49,.03);
+  transition:box-shadow .25s,transform .25s;
+  cursor:default;
+}
+.insight-card-v2:hover{
+  box-shadow:0 8px 40px rgba(44,47,49,.12),0 2px 8px rgba(44,47,49,.06);
+  transform:translateY(-2px);
+}
+.insight-card-v2::before{
+  content:'';position:absolute;top:0;right:0;
+  width:96px;height:96px;border-radius:0 20px 0 100%;
+  transition:transform .4s cubic-bezier(.34,1.56,.64,1);
+}
+.insight-card-v2:hover::before{transform:scale(1.6)}
+.insight-card-v2.ic-blue::before{background:rgba(0,87,189,.07)}
+.insight-card-v2.ic-indigo::before{background:rgba(70,71,211,.07)}
+.insight-card-v2.ic-green::before{background:rgba(0,105,71,.07)}
+.insight-card-v2.ic-navy::before{background:rgba(0,87,189,.05)}
+
+.ic-mat-icon{font-size:36px;margin-bottom:1.25rem;display:block;font-variation-settings:'FILL' 1,'wght' 400}
+.ic-blue .ic-mat-icon{color:var(--primary)}
+.ic-indigo .ic-mat-icon{color:var(--secondary)}
+.ic-green .ic-mat-icon{color:var(--tertiary)}
+.ic-navy .ic-mat-icon{color:var(--primary-dim,#004ca6)}
+.ic-title{font-size:16px;font-weight:800;color:var(--on-surface);margin-bottom:8px}
+.ic-sub{font-size:13px;color:var(--on-surface-v);line-height:1.6;margin-bottom:1.25rem}
+
+.ic-ats-bar{height:8px;width:100%;background:var(--surface-container);border-radius:99px;overflow:hidden}
+.ic-ats-fill{height:100%;width:0%;border-radius:99px;background:var(--primary);transition:width 1.4s cubic-bezier(.34,1.56,.64,1)}
+.insight-card-v2:hover .ic-ats-fill{width:100% !important}
+.ic-dots{display:flex;gap:8px}
+.ic-dot{width:12px;height:12px;border-radius:50%;background:var(--secondary);animation:ic-bounce .9s ease-in-out infinite}
+@keyframes ic-bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+.ic-gen{display:flex;align-items:center;gap:8px}
+.ic-spin{font-size:18px;color:var(--tertiary);animation:spin .9s linear infinite;display:block}
+.ic-gen-lbl{font-size:11px;font-weight:800;color:var(--tertiary);text-transform:uppercase;letter-spacing:.08em}
+.ic-shimmer-wrap{display:flex;flex-direction:column;gap:8px}
+.ic-shimmer-bar{height:8px;border-radius:99px;background:linear-gradient(90deg,var(--surface-container) 25%,var(--surface-high) 50%,var(--surface-container) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite}
+
+/* ── Responsive cascade ── */
+@media(max-width:1200px){
+  .input-hero-wrap{padding:2.5rem 2rem 2rem;gap:3rem}
+  .hero h1{font-size:52px}
+  .insights-below-wrap{padding:2rem 2rem 3rem}
+  .insights-grid-full{grid-template-columns:repeat(2,1fr)}
+}
+@media(max-width:900px){
+  .input-hero-wrap{grid-template-columns:1fr;padding:2rem 1.5rem}
+  .input-hero-right{position:static}
+  .hero{text-align:center}
+  .hero h1{font-size:40px}
+  .hero-sub{max-width:100%;margin:0 auto}
+  .match-badge{right:-8px;top:-16px}
+  .insights-below-wrap{padding:1.5rem 1.5rem 2.5rem}
+  .insights-grid-full{grid-template-columns:repeat(2,1fr);gap:14px}
+}
+@media(max-width:600px){
+  .hero h1{font-size:30px;letter-spacing:-.8px}
+  .hero-sub{font-size:15px}
+  .input-hero-right{padding:1.25rem}
+  .match-badge{display:none}
+  /* I11: 2x2 grid on mobile — NOT single column */
+  .insights-grid-full{grid-template-columns:repeat(2,1fr);gap:12px}
+  .insights-title{font-size:20px}
+  .dz-large{padding:1.75rem 1.25rem}
+  .insights-below-wrap{padding:1.25rem 1.25rem 2rem}
+}
+
+/* Cards */
+.card{
+  background:var(--card-bg);
+  border-radius:18px;padding:1rem 1.2rem;margin-bottom:12px;
+  box-shadow:0 1px 3px rgba(44,47,49,.06),0 8px 24px rgba(44,47,49,.04);
+}
+.dark .card{
+  box-shadow:0 1px 3px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.2);
+}
+.cl{
+  font-size:10px;font-weight:800;color:var(--outline);
+  letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px;
+}
+
+/* Upload zone */
+.dz{
+  border:2px dashed rgba(0,87,189,.25);border-radius:14px;
+  padding:1.5rem 1rem;text-align:center;cursor:pointer;
+  background:linear-gradient(135deg,rgba(0,87,189,.03),rgba(70,71,211,.03));
+  transition:all .2s;
+}
+.dz:hover,.dz.drag{
+  border-color:var(--primary);
+  background:linear-gradient(135deg,rgba(0,87,189,.07),rgba(70,71,211,.05));
+}
+.dark .dz{border-color:rgba(110,159,255,.2);background:rgba(0,87,189,.05)}
+.dark .dz:hover{background:rgba(0,87,189,.12)}
+.dz-icon{
+  width:48px;height:48px;
+  background:linear-gradient(135deg,var(--primary),var(--primary-container));
+  border-radius:14px;
+  display:flex;align-items:center;justify-content:center;
+  margin:0 auto 12px;
+  box-shadow:0 4px 12px rgba(0,87,189,.25);
+}
+.dz-title{font-size:14px;font-weight:800;color:var(--on-surface);margin-bottom:4px}
+.dz-sub{font-size:12px;color:var(--on-surface-v);margin-bottom:8px}
+.dz-fmts{display:flex;gap:6px;justify-content:center;margin-bottom:6px}
+.fmt{
+  font-size:10px;font-weight:800;color:var(--primary);
+  background:rgba(0,87,189,.08);border:1px solid rgba(0,87,189,.15);
+  border-radius:6px;padding:3px 9px;letter-spacing:.03em;
+}
+.dz-tip{font-size:11px;color:var(--text-4)}
+
+/* File states */
+.file-processing,.file-ok,.file-err{
+  display:flex;align-items:center;gap:12px;
+  border-radius:12px;padding:10px 14px;
+}
+.file-processing{background:var(--amber-light);border:1px solid var(--amber-border)}
+.file-ok{background:var(--green-light);border:1px solid var(--green-border)}
+.file-err{background:var(--red-light);border:1px solid var(--red-border)}
+.fic{
+  width:34px;height:34px;border-radius:10px;background:var(--card-bg);
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;border:1px solid var(--green-border);
+}
+.fic-err{border-color:var(--red-border)}
+.fic svg{width:16px;height:16px}
+.fname{font-size:13px;font-weight:700;color:var(--green)}
+.fname-err{color:var(--red);font-size:13px;font-weight:700}
+.fst{font-size:11px;color:var(--green);margin-top:1px;font-weight:600}
+.fst-err{font-size:11px;color:var(--red);line-height:1.4;margin-top:1px}
+.frem{
+  margin-left:auto;font-size:11px;color:var(--red);font-weight:700;
+  background:none;border:1px solid var(--red-border);
+  border-radius:8px;padding:4px 11px;flex-shrink:0;
+  transition:all .15s;
+}
+.frem:hover{background:var(--red-light)}
+.spinner{
+  width:18px;height:18px;
+  border:2.5px solid var(--amber-border);border-top-color:var(--amber);
+  border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Form fields */
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.finput{
+  width:100%;border:1.5px solid var(--border);border-radius:10px;
+  padding:9px 12px;color:var(--on-surface);background:var(--input-bg);
+  outline:none;transition:border-color .15s,box-shadow .15s;
+  font-weight:500;
+}
+.finput:focus{
+  border-color:var(--primary);background:var(--card-bg);
+  box-shadow:0 0 0 3px rgba(0,87,189,.12);
+}
+.fhint{font-size:11px;color:var(--text-4);margin-top:4px;font-weight:500}
+
+/* JD collapsible */
+.jd-hd{display:flex;align-items:center;justify-content:space-between;cursor:pointer}
+.jd-arr{
+  width:22px;height:22px;border-radius:99px;
+  border:1.5px solid var(--border);background:var(--input-bg);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+  transition:transform .2s;
+}
+.jd-body{overflow:hidden;max-height:0;transition:max-height .3s ease}
+.jd-body.open{max-height:260px}
+.paste-box{
+  width:100%;border:1.5px solid var(--border);border-radius:10px;
+  padding:9px 12px;color:var(--on-surface);background:var(--input-bg);
+  min-height:80px;resize:vertical;line-height:1.6;outline:none;font-weight:500;
+}
+.paste-box:focus{
+  border-color:var(--primary);background:var(--card-bg);
+  box-shadow:0 0 0 3px rgba(0,87,189,.12);
+}
+
+/* CTA */
+.cta-btn{
+  display:block;width:100%;padding:15px;border-radius:99px;
+  font-size:15px;font-weight:800;letter-spacing:-.1px;
+  background:linear-gradient(135deg,var(--primary),var(--primary-container));
+  color:var(--on-primary);
+  box-shadow:0 4px 20px rgba(0,87,189,.35);
+  transition:all .2s;margin-bottom:10px;
+  animation:pulse-cta 3s ease-in-out infinite;
+}
+.cta-btn:hover:not(:disabled){
+  transform:translateY(-2px);
+  box-shadow:0 8px 28px rgba(0,87,189,.4);
+  animation:none;
+}
+.cta-btn:active:not(:disabled){transform:translateY(0);box-shadow:0 2px 10px rgba(0,87,189,.3)}
+.cta-btn:disabled{
+  background:var(--surface-high);color:var(--text-4);
+  cursor:not-allowed;box-shadow:none;transform:none;animation:none;
+}
+@keyframes pulse-cta{
+  0%,100%{box-shadow:0 4px 20px rgba(0,87,189,.35)}
+  50%{box-shadow:0 4px 28px rgba(0,87,189,.55),0 0 0 6px rgba(0,87,189,.06)}
+}
+.cta-foot{text-align:center;font-size:11px;color:var(--text-4);font-weight:500}
+.rate-note{text-align:center;font-size:11px;color:var(--on-surface-v);margin-top:7px;font-weight:500}
+.error-box{
+  background:var(--red-light);border:1.5px solid var(--red-border);
+  border-radius:12px;padding:.8rem 1rem;margin-bottom:12px;
+  font-size:13px;color:var(--red);line-height:1.5;font-weight:500;
+}
+
+/* ── Instant Insights (front page social proof) ── */
+.insights-section{margin-top:2.5rem}
+.insights-title{
+  font-size:11px;font-weight:800;color:var(--outline);
+  letter-spacing:.1em;text-transform:uppercase;text-align:center;
+  margin-bottom:1.25rem;
+}
+.insights-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:1.5rem}
+.insight-card{
+  background:var(--card-bg);border-radius:16px;padding:1rem;
+  box-shadow:0 1px 3px rgba(44,47,49,.06);
+  position:relative;overflow:hidden;
+}
+.insight-card::before{
+  content:'';position:absolute;top:0;right:0;
+  width:60px;height:60px;border-radius:0 16px 0 60px;
+  opacity:.06;
+}
+.insight-card.blue::before{background:var(--primary)}
+.insight-card.indigo::before{background:var(--secondary)}
+.insight-card.green::before{background:var(--tertiary)}
+.insight-card.full{grid-column:1/-1}
+.insight-icon{
+  font-size:22px;margin-bottom:8px;display:block;
+}
+.insight-label{font-size:11px;font-weight:800;color:var(--on-surface);margin-bottom:3px}
+.insight-sub{font-size:11px;color:var(--on-surface-v);line-height:1.5}
+
+/* Sample bullet preview */
+.bullet-preview{
+  background:var(--card-bg);border-radius:16px;padding:1rem 1.1rem;
+  box-shadow:0 1px 3px rgba(44,47,49,.06);margin-bottom:10px;
+}
+.bp-before{
+  font-size:12px;color:var(--text-3);padding:8px 10px;
+  background:var(--red-light);border-left:3px solid var(--red);
+  border-radius:0 8px 8px 0;margin-bottom:6px;line-height:1.5;
+}
+.bp-arrow{
+  text-align:center;font-size:11px;font-weight:800;
+  color:var(--primary);margin:4px 0;letter-spacing:.05em;
+}
+.bp-after{
+  font-size:12px;color:#14532d;padding:8px 10px;
+  background:var(--green-light);border-left:3px solid var(--green);
+  border-radius:0 8px 8px 0;line-height:1.5;font-weight:600;
+}
+.dark .bp-after{color:#6ee7b7}
+
+/* Quote cards (social proof) */
+.quotes-grid{display:grid;grid-template-columns:1fr;gap:8px}
+.quote-card{
+  background:var(--card-bg);border-radius:14px;
+  padding:.85rem 1rem;
+  box-shadow:0 1px 3px rgba(44,47,49,.05);
+}
+.quote-text{font-size:12px;color:var(--on-surface);line-height:1.65;margin-bottom:6px;font-weight:500}
+.quote-attr{font-size:11px;color:var(--on-surface-v);font-weight:700}
+.quote-attr span{color:var(--primary)}
+
+/* ═══════════════════════════════════════════════════
+   LOADING PAGE — full screen, premium feel
+═══════════════════════════════════════════════════ */
+#pg-loading{
+  min-height:100vh;
+  background:linear-gradient(160deg,#f0f4ff 0%,#f5f7f9 60%,#eef3ff 100%);
+  display:flex;align-items:center;justify-content:center;
+}
+#pg-loading.active{display:flex}
+.dark #pg-loading{
+  background:linear-gradient(160deg,#0a0d18 0%,#0c0e14 60%,#0d1020 100%);
+}
+.loading-wrap{
+  width:100%;max-width:640px;
+  padding:3rem 2.5rem;text-align:center;
+}
+.loading-brand{
+  display:flex;align-items:center;justify-content:center;gap:10px;
+  margin-bottom:2.5rem;
+}
+.loading-brand-mark{
+  width:36px;height:36px;border-radius:11px;
+  background:linear-gradient(135deg,var(--primary),var(--primary-container));
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 4px 16px rgba(0,87,189,.3);
+}
+.loading-brand-name{font-size:17px;font-weight:900;color:var(--primary);letter-spacing:-.3px}
+.loading-icon{
+  width:72px;height:72px;border-radius:20px;
+  background:linear-gradient(135deg,var(--primary),var(--primary-container));
+  box-shadow:0 12px 40px rgba(0,87,189,.35);
+  display:flex;align-items:center;justify-content:center;
+  margin:0 auto 1.75rem;
+  animation:loading-float 3s ease-in-out infinite;
+}
+@keyframes loading-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+.loading-title{
+  font-size:20px;font-weight:800;color:var(--on-surface);
+  margin-bottom:.5rem;line-height:1.35;letter-spacing:-.3px;
+  min-height:28px;
+}
+.loading-sub{
+  font-size:14px;color:var(--on-surface-v);
+  margin-bottom:2rem;line-height:1.6;font-weight:500;
+}
+.loading-steps{
+  display:flex;flex-direction:column;gap:8px;
+  text-align:left;margin-bottom:1.75rem;
+  max-width:480px;margin-left:auto;margin-right:auto;
+}
+.lstep{
+  display:flex;align-items:center;gap:12px;
+  padding:12px 16px;border-radius:14px;
+  font-size:13px;font-weight:600;
+  border:1.5px solid var(--border);
+  background:var(--card-bg);color:var(--text-3);
+  transition:all .4s cubic-bezier(.34,1.56,.64,1);
+}
+.lstep.done{
+  background:var(--green-light);border-color:var(--green-border);
+  color:var(--green);transform:translateX(4px);
+}
+.lstep.active{
+  background:rgba(0,87,189,.06);border-color:rgba(0,87,189,.25);
+  color:var(--primary);
+}
+.lstep-ic{
+  width:24px;height:24px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;font-size:11px;font-weight:800;
+  border:1.5px solid currentColor;transition:all .3s;
+}
+.lstep.done .lstep-ic{background:var(--green);color:#fff;border-color:var(--green);font-size:13px}
+.lstep.active .lstep-ic{background:var(--primary);color:#fff;border-color:var(--primary)}
+.progress-bar{
+  height:6px;background:var(--border);border-radius:99px;
+  overflow:hidden;max-width:480px;margin:0 auto;
+}
+.progress-fill{
+  height:100%;
+  background:linear-gradient(90deg,var(--primary),var(--primary-container));
+  border-radius:99px;
+  transition:width .6s cubic-bezier(.34,1.56,.64,1);
+}
+@media(max-width:600px){
+  .loading-wrap{padding:2rem 1.25rem}
+  .loading-title{font-size:17px}
+}
+
+/* ═══════════════════════════════════════════════════
+   VERDICT BAR
+═══════════════════════════════════════════════════ */
+.sum-card{display:none}
+.sum-inner{max-width:960px;margin:0 auto}
+.sum-eyebrow{
+  font-size:10px;font-weight:800;color:rgba(255,255,255,.5);
+  letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px;
+  display:flex;align-items:center;gap:6px;flex-wrap:wrap;
+}
+.sum-title{
+  font-size:15px;font-weight:800;color:#fff;
+  margin-bottom:3px;line-height:1.4;letter-spacing:-.2px;
+}
+.sum-desc{font-size:12px;color:rgba(255,255,255,.65);line-height:1.5;margin-bottom:10px}
+.sum-row{display:grid;grid-template-columns:repeat(3,auto) 1fr 1fr;gap:7px;align-items:stretch}
+.smet{
+  background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);
+  border-radius:10px;padding:9px 13px;text-align:center;min-width:64px;
+}
+.smv{font-size:22px;font-weight:900;color:#fff;letter-spacing:-.5px}
+.sml{font-size:9px;color:rgba(255,255,255,.5);margin-top:1px;line-height:1.3;font-weight:600}
+.smet-wide{
+  background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);
+  border-radius:10px;padding:9px 11px;
+}
+.smet-lbl{
+  font-size:9px;font-weight:800;color:rgba(255,255,255,.5);
+  text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px;
+}
+.smet-val{font-size:11px;font-weight:600;color:#fff;line-height:1.4}
+.live-badge{
+  display:inline-flex;align-items:center;gap:4px;
+  font-size:10px;font-weight:800;color:#4ade80;
+  background:rgba(74,222,128,.12);border:1px solid rgba(74,222,128,.3);
+  border-radius:99px;padding:2px 9px;
+}
+
+/* ═══════════════════════════════════════════════════
+   BOTTOM TAB BAR (results pages)
+═══════════════════════════════════════════════════ */
+.tab-bar{
+  position:fixed;bottom:0;left:0;right:0;
+  background:rgba(245,247,249,.92);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  border-top:1px solid rgba(0,87,189,.08);
+  z-index:100;padding-bottom:env(safe-area-inset-bottom);
+}
+.dark .tab-bar{
+  background:rgba(15,17,23,.92);
+  border-top:1px solid rgba(255,255,255,.06);
+}
+.tab-bar-inner{
+  max-width:960px;margin:0 auto;
+  display:flex;padding:0 1rem;
+}
+.tab-btn{
+  flex:1;padding:10px 8px 12px;border:none;background:transparent;
+  font-size:10px;font-weight:700;color:var(--text-3);
+  display:flex;flex-direction:column;align-items:center;gap:4px;
+  transition:color .15s;letter-spacing:.03em;text-transform:uppercase;
+}
+.tab-btn:hover{color:var(--primary)}
+.tab-btn.on{color:var(--primary)}
+.ticon{font-size:20px;line-height:1}
+.tab-pill{
+  background:transparent;border:1.5px solid transparent;
+  border-radius:99px;padding:3px 12px;
+  font-size:10px;font-weight:800;transition:all .15s;
+}
+.tab-btn.on .tab-pill{
+  background:rgba(0,87,189,.1);color:var(--primary);
+  border-color:rgba(0,87,189,.2);
+}
+.dark .tab-btn.on .tab-pill{
+  background:rgba(110,159,255,.12);border-color:rgba(110,159,255,.25);
+}
+.tab-btn.hidden{display:none}
+
+/* Results content needs bottom padding for fixed tab bar */
+.tab-panel{
+  display:none;padding:2rem 3rem 6rem;
+  max-width:1400px;margin:0 auto;width:100%;
+}
+.tab-panel.on{display:block}
+@media(max-width:1200px){.tab-panel{padding:1.75rem 2rem 6rem}}
+@media(max-width:768px){.tab-panel{padding:1.25rem 1.25rem 6rem}}
+
+/* ═══════════════════════════════════════════════════
+   SHARED RESULT COMPONENTS
+═══════════════════════════════════════════════════ */
+.rcard{
+  background:var(--card-bg);border-radius:16px;
+  padding:1rem 1.2rem;margin-bottom:12px;
+  box-shadow:0 1px 3px rgba(44,47,49,.05),0 4px 12px rgba(44,47,49,.03);
+}
+.dark .rcard{box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.rcl{
+  font-size:10px;font-weight:800;color:var(--outline);
+  letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px;
+}
+.g2r{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+/* Pills */
+.pill{
+  display:inline-flex;align-items:center;
+  font-size:10px;font-weight:800;padding:3px 9px;border-radius:99px;
+  letter-spacing:.02em;
+}
+.p-g{background:var(--green-light);color:var(--green);border:1px solid var(--green-border)}
+.p-r{background:var(--red-light);color:var(--red);border:1px solid var(--red-border)}
+.p-a{background:var(--amber-light);color:var(--amber-text);border:1px solid var(--amber-border)}
+.p-b{background:rgba(0,87,189,.08);color:var(--primary);border:1px solid rgba(0,87,189,.15)}
+.p-gr{background:var(--surface-container);color:var(--text-3);border:1px solid var(--border)}
+.p-indigo{background:rgba(70,71,211,.08);color:var(--secondary);border:1px solid rgba(70,71,211,.15)}
+
+/* Buttons */
+.copy-btn{
+  width:100%;padding:10px;border-radius:10px;
+  font-size:12px;font-weight:800;
+  background:linear-gradient(135deg,var(--primary),var(--primary-container));
+  color:var(--on-primary);
+  box-shadow:0 2px 8px rgba(0,87,189,.2);
+  transition:all .2s;
+}
+.copy-btn:hover{box-shadow:0 4px 14px rgba(0,87,189,.3);transform:translateY(-1px)}
+.copy-btn.copied{background:linear-gradient(135deg,var(--green),#15803d);box-shadow:none;transform:none}
+.copy-btn-sm{
+  padding:5px 12px;border-radius:8px;
+  font-size:11px;font-weight:800;
+  background:rgba(0,87,189,.08);color:var(--primary);
+  border:1px solid rgba(0,87,189,.15);
+  transition:all .15s;white-space:nowrap;flex-shrink:0;
+}
+.copy-btn-sm:hover{background:var(--primary);color:var(--on-primary)}
+.copy-btn-sm.copied{background:var(--green);color:#fff;border-color:var(--green)}
+
+/* ═══════════════════════════════════════════════════
+   TAB 1 — PROFILE  (design-matched)
+═══════════════════════════════════════════════════ */
+
+/* ── Hero score + stats row ── */
+.profile-hero{
+  display:grid;grid-template-columns:1.3fr 0.7fr;gap:20px;
+  margin-bottom:24px;
+}
+@media(max-width:900px){.profile-hero{grid-template-columns:1fr}}
+@media(max-width:640px){.profile-hero{grid-template-columns:1fr}}
+
+/* Big score card */
+.score-hero-card{
+  background:linear-gradient(135deg,#0a3d7a,var(--primary));
+  border-radius:20px;padding:1.75rem;
+  display:flex;align-items:center;gap:1.5rem;
+  box-shadow:0 8px 32px rgba(0,87,189,.25);
+  overflow:hidden;position:relative;
+}
+.score-hero-card::after{
+  content:'';position:absolute;top:-40%;left:-20%;
+  width:200%;height:200%;
+  background:radial-gradient(circle,rgba(255,255,255,.06) 0%,transparent 65%);
+  pointer-events:none;
+}
+.score-ring-wrap{position:relative;flex-shrink:0}
+.score-ring-svg{width:120px;height:120px;transform:rotate(-90deg)}
+.score-ring-bg{stroke:rgba(255,255,255,.15)}
+.score-ring-fill{
+  stroke:#fff;stroke-linecap:round;
+  stroke-dasharray:440;stroke-dashoffset:440;
+  transition:stroke-dashoffset 1.6s cubic-bezier(.34,1.56,.64,1);
+}
+.score-ring-inner{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+}
+.score-ring-pct{font-size:28px;font-weight:900;color:#fff;letter-spacing:-.5px;line-height:1}
+.score-ring-lbl{font-size:9px;font-weight:800;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.1em;margin-top:2px}
+.score-hero-text h2{font-size:22px;font-weight:900;color:#fff;margin-bottom:8px;letter-spacing:-.3px}
+.score-hero-text p{font-size:12px;color:rgba(255,255,255,.75);line-height:1.6;font-style:italic;font-weight:500}
+@media(max-width:480px){
+  .score-hero-card{flex-direction:column;text-align:center}
+  .score-ring-svg{width:100px;height:100px}
+  .score-ring-pct{font-size:22px}
+}
+
+/* Stats column */
+.stats-col{display:flex;flex-direction:column;gap:12px}
+.stat-card{
+  background:var(--card-bg);border-radius:16px;padding:1.1rem 1.2rem;
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  box-shadow:0 1px 4px rgba(44,47,49,.06);
+  transition:background .3s,box-shadow .3s;cursor:default;
+}
+.stat-card:hover{box-shadow:0 4px 20px rgba(44,47,49,.1)}
+.stat-card.ats-card:hover{background:rgba(70,71,211,.06)}
+.stat-card.sal-card:hover{background:rgba(0,105,71,.06)}
+.stat-lbl{font-size:11px;font-weight:800;color:var(--on-surface-v);margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em}
+.stat-val{font-size:26px;font-weight:900;letter-spacing:-.5px;line-height:1}
+.stat-val.ats{color:var(--secondary)}
+.stat-val.sal{font-size:18px;color:var(--tertiary)}
+.stat-note{font-size:11px;color:var(--on-surface-v);margin-top:4px;font-weight:500;line-height:1.4}
+.stat-icon-wrap{
+  width:44px;height:44px;border-radius:50%;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  transition:background .3s;
+}
+.ats-card .stat-icon-wrap{background:rgba(70,71,211,.1)}
+.ats-card:hover .stat-icon-wrap{background:rgba(70,71,211,.18)}
+.sal-card .stat-icon-wrap{background:rgba(0,105,71,.1)}
+.sal-card:hover .stat-icon-wrap{background:rgba(0,105,71,.18)}
+
+/* ── Skills / Gaps two-col ── */
+.skills-gaps-grid{
+  display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px;
+}
+@media(max-width:768px){.skills-gaps-grid{grid-template-columns:1fr}}
+
+.sg-card{
+  background:var(--surface-low);border-radius:20px;
+  padding:1.2rem;
+  box-shadow:0 2px 12px rgba(44,47,49,.05);
+}
+.sg-head{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:1rem;
+}
+.sg-title{font-size:15px;font-weight:800;color:var(--on-surface)}
+.sg-badge{
+  font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.08em;
+  padding:3px 9px;border-radius:6px;
+}
+.sg-badge.validated{background:var(--tertiary);color:#fff}
+
+/* Skill rows */
+.sk-row{margin-bottom:14px}
+.sk-row:last-child{margin-bottom:0}
+.sk-row-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px}
+.sk-name{font-size:12px;font-weight:700;color:var(--on-surface)}
+.sk-pct{font-size:12px;font-weight:800;color:var(--primary)}
+.sk-bar-track{height:6px;background:var(--surface-container);border-radius:99px;overflow:hidden}
+.sk-bar-fill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--primary),var(--primary-container));width:0%;transition:width 1s cubic-bezier(.34,1.56,.64,1);min-width:0}
+
+/* Gap rows */
+.gap-item{
+  display:flex;align-items:center;gap:10px;
+  background:var(--surface);border-radius:10px;
+  padding:9px 11px;margin-bottom:8px;
+  transition:background .25s;cursor:default;
+}
+.gap-item:last-child{margin-bottom:0}
+.gap-item:hover{background:var(--surface-container)}
+.gap-badge{
+  width:34px;height:34px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.04em;
+}
+.gap-crit{background:rgba(179,27,37,.1);color:var(--error)}
+.gap-high{background:rgba(70,71,211,.1);color:var(--secondary)}
+.gap-mid{background:rgba(0,87,189,.1);color:var(--primary)}
+.gap-low{background:var(--surface-container);color:var(--outline)}
+.gap-item:hover .gap-badge{background:rgba(255,255,255,.9)}
+.gap-name-txt{font-size:13px;font-weight:700;color:var(--on-surface);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gap-sub-txt{font-size:10px;font-weight:600;color:var(--on-surface-v);text-transform:uppercase;letter-spacing:.04em;margin-top:1px}
+
+/* ── LinkedIn card ── */
+.li-new-card{
+  background:var(--surface-container);
+  border-radius:20px;padding:1.75rem;
+  margin-bottom:20px;position:relative;overflow:hidden;
+}
+.li-new-card::before{
+  content:'';position:absolute;top:-64px;right:-64px;
+  width:180px;height:180px;border-radius:50%;
+  background:rgba(70,71,211,.07);
+  transition:transform .5s cubic-bezier(.34,1.56,.64,1);
+}
+.li-new-card:hover::before{transform:scale(1.6)}
+.li-inner{display:flex;gap:2rem;align-items:flex-start}
+.li-left{flex-shrink:0;width:220px}
+.li-icon-box{
+  background:var(--card-bg);border-radius:16px;padding:14px;
+  display:inline-flex;box-shadow:0 4px 16px rgba(44,47,49,.1);
+  transform:rotate(3deg);margin-bottom:14px;
+}
+.li-left h3{font-size:18px;font-weight:900;color:var(--on-surface);margin-bottom:6px;letter-spacing:-.2px}
+.li-left p{font-size:12px;color:var(--on-surface-v);line-height:1.6;font-weight:500;margin-bottom:16px}
+.li-skills-label{font-size:10px;font-weight:900;color:var(--on-surface-v);text-transform:uppercase;letter-spacing:.12em;margin-bottom:8px}
+.li-skill-chips{display:flex;flex-wrap:wrap;gap:6px}
+.li-skill-chip{
+  background:var(--card-bg);border-radius:99px;
+  padding:4px 12px;font-size:11px;font-weight:700;
+  color:var(--secondary);border:1px solid rgba(70,71,211,.2);
+}
+.li-right{flex:1;display:flex;flex-direction:column;gap:12px}
+.li-box{
+  background:rgba(255,255,255,.55);backdrop-filter:blur(8px);
+  border-radius:14px;padding:1rem;
+  border:1px solid rgba(255,255,255,.6);
+  display:flex;align-items:flex-start;gap:12px;
+}
+.dark .li-box{background:rgba(26,29,39,.6);border-color:rgba(255,255,255,.08)}
+.li-box-content{flex:1}
+.li-box-lbl{font-size:10px;font-weight:900;color:var(--secondary);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px}
+.li-box-text{font-size:12px;font-weight:600;color:var(--on-surface);line-height:1.6;font-style:italic}
+.li-box-body{font-size:12px;color:var(--on-surface-v);line-height:1.7;font-weight:500}
+.li-copy-btn{
+  flex-shrink:0;display:flex;align-items:center;gap:5px;
+  background:var(--secondary);color:#fff;
+  border:none;border-radius:8px;padding:6px 12px;
+  font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.06em;
+  cursor:pointer;transition:all .15s;
+}
+.li-copy-btn:hover{filter:brightness(1.15)}
+.li-copy-btn.copied{background:var(--tertiary)}
+@media(max-width:700px){
+  .li-inner{flex-direction:column}
+  .li-left{width:100%}
+}
+
+/* ── Certifications ── */
+.certs-section{margin-bottom:20px}
+.certs-section-head{margin-bottom:16px}
+.certs-section-head h3{font-size:16px;font-weight:800;color:var(--on-surface)}
+.cert-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+@media(max-width:900px){.cert-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:500px){.cert-grid{grid-template-columns:1fr}}
+.cert-card{
+  background:var(--card-bg);border-radius:16px;padding:1.1rem;
+  display:flex;flex-direction:column;justify-content:space-between;
+  border:1.5px solid transparent;
+  box-shadow:0 1px 4px rgba(44,47,49,.06);
+  transition:border-color .2s,box-shadow .2s,transform .2s;
+}
+.cert-card:hover{
+  border-color:rgba(0,87,189,.25);
+  box-shadow:0 6px 24px rgba(0,87,189,.12);
+  transform:translateY(-2px);
+}
+.cert-icon-wrap{
+  width:44px;height:44px;border-radius:12px;margin-bottom:12px;
+  background:linear-gradient(135deg,var(--primary),var(--primary-container));
+  display:flex;align-items:center;justify-content:center;
+}
+.cert-name-txt{font-size:13px;font-weight:800;color:var(--on-surface);margin-bottom:3px;line-height:1.3}
+.cert-provider{font-size:11px;color:var(--on-surface-v);font-weight:500;margin-bottom:8px}
+.cert-why-txt{font-size:11px;color:var(--on-surface-v);line-height:1.5;margin-bottom:10px}
+.cert-meta-chips{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:12px}
+.cert-meta-chip{font-size:10px;font-weight:700;color:var(--outline);background:var(--surface-container);border-radius:99px;padding:2px 8px}
+.cert-enroll{
+  display:flex;align-items:center;gap:4px;
+  font-size:11px;font-weight:900;color:var(--primary);
+  text-transform:uppercase;letter-spacing:.06em;
+  background:none;border:none;cursor:pointer;padding:0;
+  transition:gap .15s;
+}
+.cert-enroll:hover{gap:8px}
+.cert-enroll .material-symbols-outlined{font-size:16px;transition:transform .15s}
+.cert-enroll:hover .material-symbols-outlined{transform:translateX(3px)}
+
+/* JD breakdown */
+.req-item{
+  display:flex;gap:10px;padding:8px 0;
+  border-bottom:1px solid var(--border-soft);align-items:flex-start;
+}
+.req-item:last-child{border-bottom:none}
+.req-ic{
+  width:20px;height:20px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;font-size:10px;font-weight:800;
+}
+.req-y{background:var(--green-light);color:var(--green);border:1px solid var(--green-border)}
+.req-n{background:var(--red-light);color:var(--red);border:1px solid var(--red-border)}
+
+/* Salary */
+.sal-hero{background:linear-gradient(135deg,#0a3d7a,#0057bd);border-radius:16px;padding:1.2rem;margin-bottom:12px}
+.sal-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.sal-card{background:rgba(255,255,255,.12);border-radius:12px;padding:12px 8px;text-align:center;border:1px solid rgba(255,255,255,.15)}
+.sal-v{font-size:15px;font-weight:900;color:#fff;letter-spacing:-.3px}
+.sal-l{font-size:10px;color:rgba(255,255,255,.6);margin-top:3px;font-weight:600}
+
+/* old compat aliases kept so JS render fns still work */
+.skills-tags{display:flex;flex-wrap:wrap;gap:6px}
+.hl-text{background:var(--surface-low);border-radius:10px;padding:11px 13px;font-size:13px;font-weight:600;color:var(--on-surface);line-height:1.6;margin-bottom:9px;min-height:50px}
+.about-text{background:var(--surface-low);border-radius:10px;padding:11px 13px;font-size:12px;color:var(--on-surface-v);line-height:1.75;margin-bottom:9px}
+
+/* ═══════════════════════════════════════════════════
+   TAB 2 — PROJECTS
+═══════════════════════════════════════════════════ */
+.proj-intro{
+  background:linear-gradient(135deg,#0a3d7a,#0057bd);
+  border-radius:16px;padding:1rem 1.2rem;margin-bottom:16px;
+}
+.proj-cards{display:flex;flex-direction:column;gap:10px;margin-bottom:18px}
+.proj-card{
+  border:2px solid var(--border);border-radius:16px;
+  padding:1rem 1.1rem;background:var(--card-bg);
+  transition:all .2s cubic-bezier(.34,1.56,.64,1);
+  position:relative;cursor:pointer;
+  box-shadow:0 1px 3px rgba(44,47,49,.04);
+}
+.proj-card:hover{
+  border-color:rgba(0,87,189,.3);
+  box-shadow:0 4px 16px rgba(0,87,189,.1);
+}
+.proj-card.selected{
+  border-color:var(--primary);
+  background:rgba(0,87,189,.03);
+  box-shadow:0 0 0 4px rgba(0,87,189,.1);
+}
+.proj-card.dimmed{opacity:.45}
+.proj-rec{
+  position:absolute;top:10px;right:10px;
+  font-size:10px;font-weight:800;color:var(--on-primary);
+  background:linear-gradient(135deg,var(--primary),var(--primary-container));
+  border-radius:99px;padding:3px 10px;
+  box-shadow:0 2px 6px rgba(0,87,189,.25);
+}
+.proj-signal{
+  display:inline-flex;align-items:center;gap:5px;
+  font-size:10px;font-weight:800;color:var(--secondary);
+  background:rgba(70,71,211,.08);border:1px solid rgba(70,71,211,.15);
+  border-radius:99px;padding:3px 10px;margin-bottom:8px;
+}
+.proj-title{font-size:14px;font-weight:800;color:var(--on-surface);margin-bottom:4px}
+.proj-just{font-size:12px;color:var(--on-surface-v);line-height:1.5}
+.proj-footer{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-top:10px;
+}
+.proj-time{font-size:11px;color:var(--text-4);font-weight:600}
+.proj-sel-btn{
+  font-size:11px;font-weight:800;color:var(--primary);
+  background:rgba(0,87,189,.08);border:1.5px solid rgba(0,87,189,.15);
+  border-radius:8px;padding:5px 12px;transition:all .15s;
+}
+.proj-sel-btn:hover{background:var(--primary);color:var(--on-primary)}
+
+/* Project details */
+.proj-details{display:none;margin-top:4px}
+.proj-details.open{display:block}
+.detail-card{
+  background:var(--card-bg);border-radius:16px;
+  padding:1rem 1.2rem;margin-bottom:12px;
+  box-shadow:0 1px 3px rgba(44,47,49,.05);
+}
+.detail-lbl{
+  font-size:10px;font-weight:800;color:var(--outline);
+  letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px;
+}
+.detail-desc{font-size:13px;color:var(--on-surface-v);line-height:1.65;margin-bottom:10px;font-weight:500}
+.skill-chips{display:flex;flex-wrap:wrap;gap:6px}
+.prompt-box{
+  background:var(--surface-low);border:1.5px solid var(--border);
+  border-left:4px solid var(--primary);
+  border-radius:0 10px 10px 0;
+  padding:12px 14px;font-size:12px;color:var(--on-surface-v);
+  line-height:1.75;white-space:pre-wrap;margin-bottom:10px;
+  max-height:220px;overflow-y:auto;font-family:inherit;
+}
+.bullet-row{display:flex;align-items:flex-start;gap:10px;padding:7px 0;border-bottom:1px solid var(--border-soft)}
+.bullet-row:last-of-type{border-bottom:none}
+.bullet-txt{flex:1;font-size:12px;color:var(--on-surface-v);line-height:1.55;font-weight:500}
+.bullet-note{font-size:11px;color:var(--text-4);margin-top:10px;font-style:italic;font-weight:500}
+
+/* ═══════════════════════════════════════════════════
+   TAB 3 — RESUME SCORE  (design-matched)
+═══════════════════════════════════════════════════ */
+
+/* Hero diagnosis banner */
+.score-diagnosis{
+  background:linear-gradient(135deg,#0a3d7a,var(--primary));
+  border-radius:20px;padding:2rem 2.25rem;margin-bottom:24px;
+  position:relative;overflow:hidden;
+  box-shadow:0 8px 32px rgba(0,87,189,.22);
+}
+.score-diagnosis::after{
+  content:'';position:absolute;right:-64px;bottom:-64px;
+  width:256px;height:256px;border-radius:50%;
+  background:rgba(255,255,255,.07);filter:blur(2px);
+}
+.score-diagnosis-badge{
+  display:inline-flex;align-items:center;
+  background:rgba(255,255,255,.18);backdrop-filter:blur(8px);
+  border-radius:99px;padding:4px 14px;
+  font-size:10px;font-weight:800;color:#fff;
+  text-transform:uppercase;letter-spacing:.12em;
+  margin-bottom:14px;
+}
+.score-diagnosis-badge .material-symbols-outlined{font-size:14px;margin-right:5px;font-variation-settings:'FILL' 1}
+.score-diagnosis-txt{
+  font-size:20px;font-weight:800;color:#fff;
+  line-height:1.45;letter-spacing:-.2px;
+  max-width:680px;position:relative;z-index:1;
+}
+
+/* 3 gauge rings */
+.score-gauges{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-bottom:28px;
+}
+.score-gauge-card{
+  background:var(--card-bg);border-radius:20px;padding:2rem 1.5rem;
+  display:flex;flex-direction:column;align-items:center;text-align:center;
+  box-shadow:0 2px 16px rgba(44,47,49,.06);
+  transition:transform .2s;
+}
+.score-gauge-card:hover{transform:scale(1.025)}
+.score-gauge-wrap{position:relative;width:128px;height:128px;margin-bottom:16px}
+.score-gauge-svg{width:128px;height:128px;transform:rotate(-90deg)}
+.score-gauge-bg{stroke:var(--surface-container)}
+.score-gauge-fill{
+  stroke-dasharray:364.4;stroke-dashoffset:364.4;
+  stroke-linecap:round;
+  transition:stroke-dashoffset 1.2s cubic-bezier(.34,1.56,.64,1);
+}
+.score-gauge-label{
+  position:absolute;inset:0;display:flex;
+  align-items:center;justify-content:center;
+  font-size:22px;font-weight:900;color:var(--on-surface);letter-spacing:-.5px;
+}
+.score-gauge-title{font-size:15px;font-weight:800;color:var(--on-surface);margin-bottom:4px}
+.score-gauge-sub{font-size:12px;color:var(--on-surface-v);font-weight:500;line-height:1.4}
+
+/* ATS notice */
+.ats-notice{
+  background:var(--amber-light);border:1.5px solid var(--amber-border);
+  border-radius:14px;padding:12px 16px;font-size:13px;
+  color:var(--amber-text);line-height:1.55;margin-bottom:20px;font-weight:500;
+}
+
+/* Score tab layout: bullets full-width first, action list compact below */
+.score-body{display:flex;flex-direction:column;gap:24px}
+
+/* Bullet list */
+.score-bullets-col h3{
+  font-size:18px;font-weight:800;color:var(--on-surface);
+  display:flex;align-items:center;gap:8px;margin-bottom:16px;
+}
+.score-bullets-scroll{display:flex;flex-direction:column;gap:12px}
+
+/* Bullet item */
+.bullet-item{
+  background:var(--card-bg);border-radius:14px;padding:1.1rem 1.2rem;
+  border-left:4px solid transparent;
+  box-shadow:0 1px 4px rgba(44,47,49,.05);
+  transition:box-shadow .2s;
+}
+.bullet-item.red{border-left-color:var(--error);cursor:pointer}
+.bullet-item.red:hover{box-shadow:0 4px 20px rgba(179,27,37,.14)}
+.bullet-item.green{border-left-color:var(--tertiary)}
+.bullet-tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.btag{
+  font-size:10px;font-weight:800;padding:2px 9px;border-radius:99px;
+  text-transform:uppercase;letter-spacing:.04em;
+}
+.btag-red{background:rgba(179,27,37,.1);color:var(--error)}
+.btag-green{background:rgba(0,105,71,.1);color:var(--tertiary)}
+.bullet-text{font-size:13px;color:var(--on-surface);line-height:1.65;font-weight:500}
+.bullet-suggestion{
+  margin-top:10px;font-size:12px;font-weight:600;
+  color:var(--secondary);font-style:italic;line-height:1.5;
+}
+.bullet-see-more{
+  margin-top:10px;font-size:11px;font-weight:700;color:var(--error);
+  display:flex;align-items:center;gap:4px;
+}
+
+/* Company group label */
+.co-group{margin-bottom:4px}
+.co-lbl{
+  font-size:10px;font-weight:800;color:var(--outline);
+  text-transform:uppercase;letter-spacing:.1em;
+  display:flex;align-items:center;gap:6px;
+  margin-bottom:10px;margin-top:4px;
+}
+
+/* Action list — compact grid below bullet analysis */
+.score-action-col{
+  background:var(--surface-low);border-radius:20px;padding:1.5rem 1.75rem;
+}
+.score-action-col h3{
+  font-size:16px;font-weight:800;color:var(--on-surface);
+  display:flex;align-items:center;gap:8px;margin-bottom:16px;
+}
+.action-list{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:0 24px;
+}
+@media(max-width:700px){.action-list{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:480px){.action-list{grid-template-columns:1fr}}
+.action-row{
+  display:flex;align-items:flex-start;gap:10px;
+  padding:12px 0;border-bottom:1px solid var(--border-soft);
+}
+.action-row:last-child{border-bottom:none}
+.action-icon{
+  width:36px;height:36px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+  margin-top:1px;
+}
+.action-label{font-size:13px;font-weight:700;color:var(--on-surface);margin-bottom:4px}
+.action-value{font-size:12px;color:var(--on-surface-v);font-weight:500;line-height:1.4}
+.action-chip{
+  display:inline-block;margin-top:4px;
+  padding:3px 10px;background:rgba(70,71,211,.08);
+  color:var(--secondary);border-radius:99px;font-size:11px;font-weight:800;
+}
+.action-ats{display:flex;align-items:center;gap:8px;margin-top:4px}
+.action-ats-from{font-size:13px;color:var(--outline);text-decoration:line-through;font-weight:600}
+.action-ats-to{font-size:18px;font-weight:900;color:var(--tertiary)}
+.action-ats-note{font-size:10px;font-weight:400;color:var(--outline)}
+
+/* Flagged count badge */
+.flagged-badge{
+  font-size:11px;font-weight:700;color:var(--error);
+  background:var(--red-light);border:1px solid var(--red-border);
+  border-radius:99px;padding:3px 10px;
+}
+
+/* Dialog */
+.dlg-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.6);
+  z-index:300;display:none;align-items:center;
+  justify-content:center;padding:1rem;
+  backdrop-filter:blur(4px);
+}
+.dlg-overlay.open{display:flex}
+.dlg{
+  background:var(--card-bg);border-radius:20px;
+  max-width:540px;width:100%;max-height:88vh;
+  overflow-y:auto;box-shadow:0 30px 80px rgba(0,0,0,.35);
+  animation:dlg-in .25s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes dlg-in{from{transform:scale(.9) translateY(20px);opacity:0}to{transform:none;opacity:1}}
+.dlg-hdr{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:14px 16px;border-bottom:1px solid var(--border);
+  position:sticky;top:0;background:var(--card-bg);z-index:1;
+  border-radius:20px 20px 0 0;
+}
+.dlg-hdr-title{font-size:13px;font-weight:800;color:var(--on-surface)}
+.dlg-x{
+  width:28px;height:28px;border-radius:50%;
+  border:1.5px solid var(--border);background:var(--surface-low);
+  display:flex;align-items:center;justify-content:center;
+  font-size:13px;color:var(--on-surface-v);transition:all .15s;
+}
+.dlg-x:hover{background:var(--surface-container);border-color:var(--outline-v)}
+.dlg-body{padding:16px}
+.dlg-lbl{font-size:10px;font-weight:800;color:var(--outline);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px}
+.dlg-orig{
+  background:var(--red-light);border-left:3px solid var(--red);
+  border-radius:0 10px 10px 0;padding:10px 12px;font-size:12px;
+  color:var(--red);line-height:1.6;margin-bottom:14px;font-weight:500;
+}
+.dlg-verdict{font-size:13px;color:var(--on-surface-v);line-height:1.75;font-weight:500;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border-soft)}
+.dlg-rewrite{
+  background:var(--green-light);border-left:3px solid var(--green);
+  border-radius:0 10px 10px 0;padding:10px 12px;font-size:12px;color:#14532d;
+  line-height:1.6;margin-bottom:8px;font-weight:600;
+}
+.dark .dlg-rewrite{color:#6ee7b7}
+.dlg-note{font-size:11px;color:var(--on-surface-v);font-style:italic;line-height:1.5;margin-bottom:14px;font-weight:500}
+.dlg-footer{display:flex;gap:8px}
+.dlg-footer .copy-btn{flex:1}
+.dlg-close-btn{
+  flex:.4;padding:10px;border:1.5px solid var(--border);border-radius:10px;
+  font-size:12px;font-weight:800;background:var(--surface-low);color:var(--on-surface-v);transition:all .15s;
+}
+.dlg-close-btn:hover{background:var(--surface-container);border-color:var(--outline-v)}
+
+@media(max-width:768px){
+  .score-gauges{grid-template-columns:1fr}
+  .score-gauge-card{flex-direction:row;text-align:left;padding:1rem 1.25rem;gap:1rem}
+  .score-gauge-wrap{width:80px;height:80px;flex-shrink:0;margin-bottom:0}
+  .score-gauge-svg{width:80px;height:80px}
+  .score-gauge-label{font-size:16px}
+}
+
+/* ═══════════════════════════════════════════════════
+   SKELETON LOADERS
+═══════════════════════════════════════════════════ */
+.skeleton{
+  background:linear-gradient(90deg,var(--surface-container) 25%,var(--surface-high) 50%,var(--surface-container) 75%);
+  background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:8px;
+}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.sk-line{height:13px;margin-bottom:9px}
+.sk-line-sm{height:10px;margin-bottom:6px;width:60%}
+.sk-box{height:80px;margin-bottom:12px;border-radius:16px}
+
+/* ═══════════════════════════════════════════════════
+   RESPONSIVE
+═══════════════════════════════════════════════════ */
+@media(max-width:768px){
+  .g2{grid-template-columns:1fr}
+  .g2r{grid-template-columns:1fr}
+  .sal-grid{grid-template-columns:1fr}
+  .tab-btn .tab-pill{display:none}
+  .tab-bar-inner{padding:0 .25rem}
+  /* Project cards — stack on mobile */
+  #proj-cards > div[style*="grid-template-columns:repeat(3"]{
+    grid-template-columns:1fr !important;
+  }
+  /* Blueprint bento — stack on mobile */
+  #proj-details div[style*="grid-template-columns:1fr 1fr"]{
+    grid-template-columns:1fr !important;
+  }
+  #proj-details div[style*="border-right:1px"]{
+    border-right:none !important;
+    border-bottom:1px solid var(--border);
+  }
+}
+@media(max-width:480px){
+  .tab-panel{padding:1rem 1rem 6rem}
+  .action-list{grid-template-columns:1fr}
+}
+
+/* ═══════════════════════════════════════════════════
+   FEEDBACK SECTION
+═══════════════════════════════════════════════════ */
+.feedback-section{
+  max-width:1400px;margin:2.5rem auto 0;padding:0 3rem 3.5rem;
+}
+.feedback-card{
+  background:var(--surface-container);
+  border-radius:24px;padding:2.5rem;
+  position:relative;overflow:hidden;
+}
+.feedback-card::before{
+  content:'';position:absolute;right:-48px;bottom:-48px;
+  width:256px;height:256px;border-radius:50%;
+  background:rgba(0,87,189,.05);filter:blur(32px);
+}
+.feedback-inner{display:flex;gap:2rem;align-items:center}
+.feedback-form{flex:1}
+.feedback-h{font-size:28px;font-weight:900;color:var(--on-surface);line-height:1.15;margin-bottom:8px;letter-spacing:-.4px}
+.feedback-sub{font-size:14px;color:var(--on-surface-v);font-weight:500;margin-bottom:16px}
+.feedback-ta{
+  width:100%;background:var(--card-bg);border:1.5px solid var(--border);
+  border-radius:12px;padding:14px 16px;
+  min-height:120px;font-size:13px;color:var(--on-surface);
+  line-height:1.65;resize:vertical;outline:none;
+  font-family:inherit;transition:border-color .15s,box-shadow .15s;
+}
+.feedback-ta:focus{border-color:var(--secondary);box-shadow:0 0 0 3px rgba(70,71,211,.12)}
+.feedback-btn{
+  display:inline-flex;align-items:center;gap:8px;
+  margin-top:14px;padding:14px 28px;
+  background:var(--secondary);color:#fff;
+  border-radius:99px;font-size:14px;font-weight:800;
+  border:none;cursor:pointer;
+  box-shadow:0 4px 16px rgba(70,71,211,.3);
+  transition:all .2s;
+}
+.feedback-btn:hover{filter:brightness(1.1);box-shadow:0 6px 24px rgba(70,71,211,.4);transform:translateY(-1px)}
+.feedback-btn:active{transform:none}
+.feedback-img{
+  width:192px;height:192px;border-radius:16px;overflow:hidden;
+  flex-shrink:0;transform:rotate(3deg);
+  border:4px solid var(--card-bg);
+  box-shadow:0 12px 40px rgba(44,47,49,.15);
+}
+.feedback-img img{width:100%;height:100%;object-fit:cover}
+.footer-brand{text-align:center;padding-top:2rem;padding-bottom:1rem}
+.footer-brand-row{display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:6px}
+.footer-copy{font-size:12px;color:var(--text-4)}
+@media(max-width:900px){
+  .feedback-inner{flex-direction:column}
+  .feedback-img{display:none}
+  .feedback-h{font-size:22px}
+  .feedback-section{padding:0 1.5rem 2rem}
+  .feedback-card{padding:1.75rem}
+}
+@media(max-width:600px){
+  .feedback-section{padding:0 1rem 2rem}
+  .feedback-card{padding:1.5rem}
+}
+
+/* ═══════════════════════════════════════════════════
+   DARK MODE OVERRIDES — comprehensive component fixes
+═══════════════════════════════════════════════════ */
+
+/* Cards — ensure all card types pick up the right bg */
+.dark .card,.dark .rcard,.dark .li-section,.dark .proj-card,
+.dark .score-box,.dark .bitem,.dark .summary-card,.dark .detail-card,
+.dark .bullet-preview,.dark .quote-card,.dark .insight-card,
+.dark .insight-card-v2,.dark .score-gauge-card,.dark .sg-card,
+.dark .cert-card,.dark .stat-card,.dark .score-hero-card + *,
+.dark .bullet-item{
+  background:var(--card-bg);
+}
+
+/* Input panel */
+.dark .input-hero-right{
+  background:var(--card-bg);
+  box-shadow:0 4px 40px rgba(0,0,0,.5),0 1px 4px rgba(0,0,0,.3);
+}
+
+/* Profile hero score card — keep the gradient but darken it */
+.dark .score-hero-card{
+  background:linear-gradient(135deg,#061526,#0a2550);
+}
+
+/* Stat cards hover tints in dark */
+.dark .stat-card.ats-card:hover{background:rgba(70,71,211,.12)}
+.dark .stat-card.sal-card:hover{background:rgba(0,105,71,.12)}
+
+/* LinkedIn card */
+.dark .li-new-card{background:var(--surface-container)}
+.dark .li-box{
+  background:rgba(255,255,255,.04);
+  border-color:rgba(255,255,255,.07);
+}
+.dark .li-copy-btn{background:var(--secondary)}
+
+/* Skills/gaps cards */
+.dark .gap-item{background:var(--surface-high)}
+.dark .gap-item:hover{background:var(--surface-highest)}
+
+/* Insight cards */
+.dark .insight-card-v2{
+  background:var(--card-bg);
+  border-color:rgba(255,255,255,.06);
+}
+.dark .insight-card-v2.ic-blue::before{background:rgba(0,87,189,.15)}
+.dark .insight-card-v2.ic-indigo::before{background:rgba(70,71,211,.15)}
+.dark .insight-card-v2.ic-green::before{background:rgba(0,105,71,.15)}
+
+/* Score page */
+.dark .score-diagnosis{background:linear-gradient(135deg,#061526,#0a2550)}
+.dark .score-action-col{background:var(--surface-container)}
+.dark .bullet-item{background:var(--card-bg)}
+.dark .bullet-item.red{background:rgba(179,27,37,.06)}
+.dark .bullet-item.green{background:rgba(0,105,71,.06)}
+
+/* Dialog */
+.dark .dlg,.dark .dlg-hdr{background:var(--card-bg)}
+.dark .dlg-orig{color:#fca5a5}
+.dark .dlg-rewrite{color:#6ee7b7}
+
+/* Project tab */
+.dark .sum-card,.dark .proj-intro,.dark .headline-roast,
+.dark .score-hero-card-gradient{
+  background:linear-gradient(135deg,#071e42,#0a3470);
+}
+
+/* Loading page */
+.dark #pg-loading{background:var(--bg)}
+.dark .loading-wrap{background:transparent}
+.dark .lstep{background:var(--card-bg);border-color:var(--border)}
+.dark .lstep.active{
+  background:rgba(110,159,255,.08);
+  border-color:rgba(110,159,255,.25);
+  color:var(--primary-container,#6e9fff);
+}
+.dark .lstep.done{background:rgba(0,105,71,.1);border-color:var(--green-border)}
+
+/* Feedback card */
+.dark .feedback-card{background:var(--surface-container)}
+.dark .feedback-ta{
+  background:var(--card-bg);
+  border-color:var(--border);
+  color:var(--on-surface);
+}
+
+/* Cert cards */
+.dark .cert-card{
+  background:var(--card-bg);
+  border-color:transparent;
+}
+.dark .cert-card:hover{border-color:rgba(0,87,189,.35)}
+
+/* Skill bars */
+.dark .sk-bar-track{background:var(--surface-high)}
+
+/* Action list */
+.dark .action-row{border-color:var(--border)}
+
+/* Copy buttons */
+.dark .copy-btn-sm{
+  background:rgba(110,159,255,.1);
+  border-color:rgba(110,159,255,.2);
+  color:var(--primary-container,#6e9fff);
+}
+.dark .copy-btn-sm:hover{background:var(--primary);color:#fff}
+
+/* Nav badge */
+.dark .nav-badge{
+  background:rgba(110,159,255,.1);
+  color:var(--primary-container,#6e9fff);
+  border-color:rgba(110,159,255,.2);
+}
+
+/* Match badge on front page */
+.dark .match-badge{
+  background:var(--card-bg);
+  border-color:rgba(110,159,255,.12);
+}
+
+/* Form fields in dark */
+.dark .finput,.dark .paste-box,.dark .feedback-ta{
+  background:var(--input-bg);
+  color:var(--on-surface);
+  border-color:var(--border);
+}
+.dark .finput::placeholder,.dark .paste-box::placeholder{color:var(--text-3)}
+.dark .finput:focus,.dark .paste-box:focus{
+  background:var(--card-bg);
+  border-color:var(--primary);
+}
+
+/* JD section */
+.dark .jd-hd{background:var(--surface-low)}
+
+/* Tab bar */
+.dark .tab-bar{
+  background:rgba(12,14,20,.92);
+  border-top-color:rgba(255,255,255,.06);
+}
+.dark .tab-btn.on .tab-pill{
+  background:rgba(110,159,255,.12);
+  border-color:rgba(110,159,255,.25);
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════
+     NAV
+═══════════════════════════════════════════════════ -->
+<nav class="nav">
+  <a class="logo" onclick="goBack()" href="#">
+    <div class="logo-mark">
+      <svg width="15" height="15" viewBox="0 0 15 15" fill="none"
+           stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="1,11 4.5,6.5 7.5,8.5 12,3"/>
+        <circle cx="12" cy="3" r="1.8" fill="#fff" stroke="none"/>
+      </svg>
+    </div>
+    <div class="logo-name">GradLaunch</div>
+  </a>
+  <div class="nav-right">
+    <span class="nav-badge">
+      Free
+    </span>
+    <button class="dark-btn" id="dark-btn" onclick="toggleDark()" title="Toggle dark mode">🌙</button>
+    <button id="back-btn" onclick="goBack()">← Start over</button>
+  </div>
+</nav>
+
+<!-- ═══════════════════════════════════════════════════
+     INPUT PAGE
+═══════════════════════════════════════════════════ -->
+<div id="pg-input" class="page active">
+
+  <!-- ── HERO SECTION: full-width, two-column ── -->
+  <div class="input-hero-wrap">
+
+    <!-- LEFT: Title + Upload zone with floating gauge -->
+    <div class="input-hero-left">
+      <div class="hero">
+        <h1>Beat the <em>AI Recruiter.</em></h1>
+        <p class="hero-sub">The job market is tough. We make you tougher. Get tailored project ideas, ATS-friendly hints, salary ranges, and LinkedIn optimisation — all for free.</p>
+      </div>
+
+      <!-- Upload zone with floating 85% match badge -->
+      <div class="upload-zone-wrap">
+        <!-- Floating match score badge -->
+        <div class="match-badge" id="match-badge">
+          <div class="match-badge-label">Match Score</div>
+          <div class="match-ring-wrap">
+            <svg class="match-ring-svg" viewBox="0 0 64 64">
+              <circle class="match-ring-bg" cx="32" cy="32" r="28" fill="transparent" stroke-width="6"/>
+              <circle class="match-ring-fill" id="match-ring-fill" cx="32" cy="32" r="28" fill="transparent"
+                stroke-width="6" stroke-linecap="round"
+                stroke-dasharray="175.9" stroke-dashoffset="175.9"/>
+            </svg>
+            <span class="match-ring-pct" id="match-ring-pct"></span>
+          </div>
+        </div>
+
+        <!-- Drop zone -->
+        <div id="dz-empty" class="dz dz-large" onclick="triggerFile()"
+             ondragover="event.preventDefault();this.classList.add('drag')"
+             ondragleave="this.classList.remove('drag')"
+             ondrop="event.preventDefault();this.classList.remove('drag');handleFile({files:event.dataTransfer.files})">
+          <div class="dz-icon dz-icon-lg">
+            <span class="material-symbols-outlined" style="color:#fff;font-size:36px;font-variation-settings:'FILL' 1">cloud_upload</span>
+          </div>
+          <div class="dz-title" style="font-size:18px">Drop your resume here</div>
+          <div class="dz-sub">PDF only · Max 3MB</div>
+          <div class="dz-tip" style="margin-top:4px">LinkedIn: Profile → More → Save to PDF</div>
+          <input type="file" id="file-input" accept=".pdf" style="display:none" onchange="handleFile(this)"/>
+        </div>
+
+        <div id="dz-processing" style="display:none">
+          <div class="file-processing">
+            <div class="spinner"></div>
+            <div>
+              <div style="font-size:13px;font-weight:700;color:var(--amber-text)" id="processing-name">Reading resume…</div>
+              <div style="font-size:11px;color:var(--amber-text);margin-top:2px;font-weight:500">Extracting text, takes a second</div>
+            </div>
+          </div>
+        </div>
+        <div id="dz-error" style="display:none">
+          <div class="file-err">
+            <div class="fic fic-err"><span class="material-symbols-outlined" style="color:var(--red);font-size:18px">error</span></div>
+            <div style="flex:1">
+              <div class="fname-err" id="err-filename">File error</div>
+              <div class="fst-err" id="err-message">Could not read this file.</div>
+            </div>
+            <button class="frem" onclick="resetUpload()">Try again</button>
+          </div>
+        </div>
+        <div id="dz-ok" style="display:none">
+          <div class="file-ok">
+            <div class="fic"><span class="material-symbols-outlined" style="color:var(--green);font-size:18px;font-variation-settings:'FILL' 1">task</span></div>
+            <div style="flex:1">
+              <div class="fname" id="fname-display">resume.pdf</div>
+              <div class="fst">Ready to analyse</div>
+            </div>
+            <button class="frem" onclick="resetUpload()">Remove</button>
+          </div>
+        </div>
+      </div><!-- /upload-zone-wrap -->
+    </div><!-- /input-hero-left -->
+
+    <!-- RIGHT: Form panel -->
+    <div class="input-hero-right">
+      <div id="input-error" class="error-box" style="display:none"></div>
+
+      <div style="margin-bottom:18px">
+        <div class="cl">Target role <span id="role-optional-note" style="font-weight:500;text-transform:none;color:var(--text-4);font-size:9px;display:none"> (optional if JD provided)</span><span id="role-required-star" style="color:var(--error)">*</span></div>
+        <input class="finput" id="target-role" placeholder="e.g. Data Analyst" maxlength="80"
+          oninput="document.getElementById('role-optional-note').style.display=this.value?'none':'inline';document.getElementById('role-required-star').style.display=this.value?'inline':'none'"/>
+        <div class="fhint">Be specific — or paste a JD below and we'll detect it</div>
+      </div>
+
+      <div style="margin-bottom:18px">
+        <div class="cl">Location <span style="font-weight:500;text-transform:none;color:var(--text-4);font-size:9px">(optional)</span></div>
+        <input class="finput" id="target-location" placeholder="e.g. New York NY" maxlength="50"/>
+        <div class="fhint">City + state, or leave blank for national</div>
+      </div>
+
+      <!-- Job Description — open by default (I9) -->
+      <div style="margin-bottom:18px;background:var(--surface-low);border-radius:12px;overflow:hidden">
+        <div class="jd-hd" onclick="togJD()" style="padding:12px 14px">
+          <div>
+            <div style="display:flex;align-items:center;gap:7px;margin-bottom:2px">
+              <span style="font-size:11px;font-weight:800;color:var(--on-surface);text-transform:uppercase;letter-spacing:.08em">Job description</span>
+              <span style="font-size:9px;font-weight:700;color:var(--tertiary);background:rgba(0,105,71,.08);border:1px solid rgba(0,105,71,.2);border-radius:99px;padding:1px 7px">Recommended</span>
+            </div>
+            <div style="font-size:12px;color:var(--on-surface-v);font-weight:500">Better results · auto-detects your role · requirement-by-requirement match</div>
+          </div>
+          <div class="jd-arr">
+            <svg id="jd-svg" viewBox="0 0 9 9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" style="width:9px;height:9px;transition:transform .2s;transform:rotate(180deg)">
+              <polyline points="1.5,3 4.5,6 7.5,3"/>
+            </svg>
+          </div>
+        </div>
+        <div class="jd-body open" id="jd-body">
+          <div style="padding:0 14px 14px">
+            <textarea class="paste-box" id="jd-paste" placeholder="Paste the full job description here — we'll detect the role, pull real salary data, and match every requirement…" oninput="onJDInput(this.value)"></textarea>
+            <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:7px;align-items:center">
+              <span style="font-size:10px;color:var(--text-3);font-weight:600">Unlocks:</span>
+              <span class="pill p-b">Role detection</span>
+              <span class="pill p-b">Exact match %</span>
+              <span class="pill p-indigo">ATS rewrites</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <button class="cta-btn" id="launch-btn" onclick="launchAnalysis()" disabled>
+        Get my full analysis
+        <span class="material-symbols-outlined" style="font-size:18px;vertical-align:middle;margin-left:4px">bolt</span>
+      </button>
+      <div class="rate-note" id="rate-note" style="display:none"></div>
+    </div><!-- /input-hero-right -->
+
+  </div><!-- /input-hero-wrap -->
+
+  <!-- ── INSTANT INSIGHTS: full-width below the hero ── -->
+  <div class="insights-below-wrap">
+    <div class="insights-title">Instant Insights</div>
+    <div class="insights-grid-full">
+
+      <!-- Card 1: ATS Score -->
+      <div class="insight-card-v2 ic-blue">
+        <span class="material-symbols-outlined ic-mat-icon">analytics</span>
+        <div class="ic-title">ATS Score</div>
+        <div class="ic-sub">Real-time readability check against top corporate tracking systems. See exactly what % of ATS systems reject your resume before a human reads it.</div>
+        <div class="ic-ats-bar">
+          <div class="ic-ats-fill" id="ic-ats-fill" style="width:0%"></div>
+        </div>
+      </div>
+
+      <!-- Card 2: Skill Gaps -->
+      <div class="insight-card-v2 ic-indigo">
+        <span class="material-symbols-outlined ic-mat-icon">workspace_premium</span>
+        <div class="ic-title">Skill Gaps</div>
+        <div class="ic-sub">Gaps ranked by how often they appear in real job postings — not guesses. Mapping your credentials to industry-standard skill benchmarks.</div>
+        <div class="ic-dots">
+          <div class="ic-dot" style="animation-delay:0s"></div>
+          <div class="ic-dot" style="animation-delay:.2s"></div>
+          <div class="ic-dot" style="animation-delay:.4s"></div>
+        </div>
+      </div>
+
+      <!-- Card 3: Weekend Project -->
+      <div class="insight-card-v2 ic-green">
+        <span class="material-symbols-outlined ic-mat-icon">construction</span>
+        <div class="ic-title">Weekend Project</div>
+        <div class="ic-sub">A specific portfolio project that closes your biggest gap, with an AI prompt to build it. Custom suggestions that bridge your experience gaps.</div>
+        <div class="ic-gen">
+          <span class="material-symbols-outlined ic-spin">autorenew</span>
+          <span class="ic-gen-lbl">Generating…</span>
+        </div>
+      </div>
+
+      <!-- Card 4: LinkedIn Rewrite -->
+      <div class="insight-card-v2 ic-navy">
+        <span class="material-symbols-outlined ic-mat-icon">psychology</span>
+        <div class="ic-title">LinkedIn Rewrite</div>
+        <div class="ic-sub">A headline that sounds like you built something — not like you're looking for a job. Contextual suggestions for every bullet point on your CV.</div>
+        <div class="ic-shimmer-wrap">
+          <div class="ic-shimmer-bar" style="width:100%"></div>
+          <div class="ic-shimmer-bar" style="width:65%"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── FEEDBACK SECTION ── -->
+  <div class="feedback-section">
+    <div class="feedback-card">
+      <div class="feedback-inner">
+        <div class="feedback-form">
+          <h2 class="feedback-h">Make GradLaunch Better</h2>
+          <p class="feedback-sub">Spotted a bug or have a feature idea? Let us know.</p>
+          <textarea class="feedback-ta" id="feedback-ta"
+            placeholder="I wish the ATS score showed specifically which keywords were missing…"></textarea>
+          <button class="feedback-btn" onclick="submitFeedback()">
+            Submit Feedback
+            <span class="material-symbols-outlined" style="font-size:18px">send</span>
+          </button>
+        </div>
+        <div class="feedback-img">
+          <img src="https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=400&q=80" alt="Students collaborating" loading="lazy"/>
+        </div>
+      </div>
+    </div>
+    <div class="footer-brand">
+      <div class="footer-brand-row">
+        <div class="logo-mark" style="width:24px;height:24px;border-radius:7px">
+          <svg width="11" height="11" viewBox="0 0 15 15" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="1,11 4.5,6.5 7.5,8.5 12,3"/>
+            <circle cx="12" cy="3" r="1.8" fill="#fff" stroke="none"/>
+          </svg>
+        </div>
+        <span style="font-size:13px;font-weight:800;color:var(--on-surface)">GradLaunch</span>
+      </div>
+      <div class="footer-copy">© 2024 GradLaunch. Empowering the next generation of talent.</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     LOADING PAGE
+═══════════════════════════════════════════════════ -->
+<div id="pg-loading" class="page">
+  <div class="loading-wrap">
+
+    <!-- Brand mark -->
+    <div class="loading-brand">
+      <div class="loading-brand-mark">
+        <svg width="16" height="16" viewBox="0 0 15 15" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="1,11 4.5,6.5 7.5,8.5 12,3"/>
+          <circle cx="12" cy="3" r="1.8" fill="#fff" stroke="none"/>
+        </svg>
+      </div>
+      <span class="loading-brand-name">GradLaunch</span>
+    </div>
+
+    <div class="loading-icon">
+      <span class="material-symbols-outlined" style="color:#fff;font-size:34px;font-variation-settings:'FILL' 1,'wght' 600">trending_up</span>
+    </div>
+    <div class="loading-title" id="loading-title">
+      Receiving your life story in PDF form…
+    </div>
+    <div class="loading-sub">
+      This takes about 20 seconds. Your resume has been through worse.
+    </div>
+    <div class="loading-steps">
+      <div class="lstep active" id="ls-1">
+        <div class="lstep-ic">1</div>
+        Receiving your resume
+      </div>
+      <div class="lstep" id="ls-2">
+        <div class="lstep-ic">2</div>
+        Scanning real job postings for your role
+      </div>
+      <div class="lstep" id="ls-3">
+        <div class="lstep-ic">3</div>
+        Counting the gaps. This may sting slightly.
+      </div>
+      <div class="lstep" id="ls-4">
+        <div class="lstep-ic">4</div>
+        Putting your bullets on trial. Most are not innocent.
+      </div>
+      <div class="lstep" id="ls-5">
+        <div class="lstep-ic">5</div>
+        Writing your LinkedIn and project plan.
+      </div>
+    </div>
+    <div class="progress-bar">
+      <div class="progress-fill" id="progress-fill" style="width:8%"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     RESULTS PAGE
+═══════════════════════════════════════════════════ -->
+<div id="pg-results" class="page">
+
+  <!-- TOP APP BAR — blue gradient, sticky -->
+  <div class="sum-card">
+    <div class="sum-inner">
+      <div class="sum-eyebrow" id="sum-eyebrow">Analyzing…</div>
+      <div class="sum-title" id="sum-title">
+        <span class="skeleton" style="display:inline-block;width:70%;height:16px;border-radius:6px;opacity:.3"></span>
+      </div>
+      <div class="sum-desc" id="sum-desc"></div>
+      <div class="sum-row" id="sum-row">
+        <div class="smet"><div class="smv">—</div><div class="sml">Role match</div></div>
+        <div class="smet"><div class="smv" id="skills-count">—</div><div class="sml">Skills present</div></div>
+        <div class="smet"><div class="smv" id="gaps-count">—</div><div class="sml">Gaps found</div></div>
+        <div class="smet-wide">
+          <div class="smet-lbl">ATS Reality</div>
+          <div class="smet-val">Analyzing your resume…</div>
+        </div>
+        <div class="smet-wide">
+          <div class="smet-lbl">Salary Reality</div>
+          <div class="smet-val" id="salary-reality-val">Loading…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 1 — YOUR PROFILE -->
+  <div class="tab-panel on" id="tab-profile">
+
+    <!-- Hero: Score ring + ATS/Salary stats -->
+    <div class="profile-hero">
+
+      <!-- Score ring card -->
+      <div class="score-hero-card">
+        <div class="score-ring-wrap">
+          <svg class="score-ring-svg" viewBox="0 0 160 160">
+            <circle class="score-ring-bg" cx="80" cy="80" r="70" fill="transparent" stroke-width="12"/>
+            <circle class="score-ring-fill" id="profile-score-ring" cx="80" cy="80" r="70" fill="transparent" stroke-width="12"/>
+          </svg>
+          <div class="score-ring-inner">
+            <span class="score-ring-pct" id="profile-score-pct">—</span>
+            <span class="score-ring-lbl">Match</span>
+          </div>
+        </div>
+        <div class="score-hero-text">
+          <h2 id="profile-role-title">Analysing…</h2>
+          <p id="profile-verdict-sub">Your full profile breakdown is loading.</p>
+          <div id="live-data-badge" style="display:none;margin-top:10px;font-size:10px;font-weight:700;color:#69f6b8;background:rgba(105,246,184,.12);border:1px solid rgba(105,246,184,.25);border-radius:99px;padding:3px 10px;width:fit-content"></div>
+        </div>
+      </div>
+
+      <!-- Stats column -->
+      <div class="stats-col">
+        <div class="stat-card ats-card">
+          <div>
+            <div class="stat-lbl">ATS Reality</div>
+            <div class="stat-val ats" id="profile-ats-val">—</div>
+            <div class="stat-note" id="profile-ats-note">Analysing your resume…</div>
+          </div>
+          <div class="stat-icon-wrap">
+            <span class="material-symbols-outlined" style="color:var(--secondary);font-size:28px;font-variation-settings:'FILL' 1">warning</span>
+          </div>
+        </div>
+        <div class="stat-card sal-card">
+          <div>
+            <div class="stat-lbl">Salary Range</div>
+            <div class="stat-val sal" id="profile-sal-val">Loading…</div>
+          </div>
+          <div class="stat-icon-wrap">
+            <span class="material-symbols-outlined" style="color:var(--tertiary);font-size:24px;font-variation-settings:'FILL' 1">payments</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Skills + Gaps two-col -->
+    <div class="skills-gaps-grid">
+
+      <!-- Superpowers -->
+      <div class="sg-card">
+        <div class="sg-head">
+          <div class="sg-title">Your Superpowers</div>
+          <span class="sg-badge validated">Validated</span>
+        </div>
+        <div id="skills-have">
+          <div class="skeleton sk-line"></div>
+          <div class="skeleton sk-line" style="margin-top:8px"></div>
+          <div class="skeleton sk-line" style="width:75%;margin-top:8px"></div>
+        </div>
+      </div>
+
+      <!-- Growth Gaps -->
+      <div class="sg-card">
+        <div class="sg-head">
+          <div class="sg-title">Your Growth Gaps</div>
+        </div>
+        <div id="skills-gaps">
+          <div class="skeleton sk-line"></div>
+          <div class="skeleton sk-line" style="margin-top:8px"></div>
+          <div class="skeleton sk-line" style="width:80%;margin-top:8px"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- JD match section -->
+    <div id="jd-match-section" style="display:none;margin-bottom:20px"></div>
+
+    <!-- LinkedIn Optimisation -->
+    <div class="li-new-card" id="linkedin-section">
+      <div class="li-inner">
+        <div class="li-left">
+          <div class="li-icon-box">
+            <span class="material-symbols-outlined" style="color:var(--secondary);font-size:36px;font-variation-settings:'FILL' 1">share</span>
+          </div>
+          <h3>LinkedIn Optimisation</h3>
+          <p>Boost your discoverability with these strategic profile updates.</p>
+          <div class="li-skills-label">Skills to Add</div>
+          <div class="li-skill-chips" id="li-skill-tags"></div>
+        </div>
+        <div class="li-right">
+          <!-- Headline -->
+          <div class="li-box">
+            <div class="li-box-content">
+              <div class="li-box-lbl">Headline Suggestion</div>
+              <div class="li-box-text hl-text" id="li-hl-text" style="background:transparent;border:none;padding:0;margin:0;min-height:auto">
+                <span class="skeleton sk-line" style="width:90%;display:block"></span>
+              </div>
+            </div>
+            <button class="li-copy-btn" onclick="copyEl('li-hl-text',this)">
+              <span class="material-symbols-outlined" style="font-size:14px">content_copy</span> Copy
+            </button>
+          </div>
+          <!-- About -->
+          <div class="li-box" style="min-height:140px;align-items:flex-start">
+            <div class="li-box-content">
+              <div class="li-box-lbl">About Section</div>
+              <div class="li-box-body about-text" id="li-ab-text" style="background:transparent;border:none;padding:0;margin:0">
+                <span class="skeleton sk-line" style="display:block;margin-bottom:6px"></span>
+                <span class="skeleton sk-line" style="display:block;margin-bottom:6px"></span>
+                <span class="skeleton sk-line" style="display:block;width:70%"></span>
+              </div>
+            </div>
+            <button class="li-copy-btn" onclick="copyEl('li-ab-text',this)">
+              <span class="material-symbols-outlined" style="font-size:14px">content_copy</span> Copy
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Certifications -->
+    <div class="certs-section">
+      <div class="certs-section-head">
+        <h3>Recommended Certifications</h3>
+        <div style="font-size:12px;color:var(--on-surface-v);font-weight:500;margin-top:4px">One cert that actually closes a gap. Not the 40 that look good on paper.</div>
+      </div>
+      <div class="cert-grid" id="certs-list">
+        <div class="skeleton sk-box" style="height:180px;border-radius:16px"></div>
+        <div class="skeleton sk-box" style="height:180px;border-radius:16px"></div>
+        <div class="skeleton sk-box" style="height:180px;border-radius:16px"></div>
+      </div>
+    </div>
+
+    <div id="salary-section"></div>
+
+  </div>
+
+  <!-- TAB 2 — YOUR PROJECT -->
+  <div class="tab-panel" id="tab-project">
+    <div class="proj-intro" id="proj-intro">
+      <div style="display:inline-flex;align-items:center;gap:6px;background:rgba(105,246,184,.15);border:1px solid rgba(105,246,184,.25);border-radius:99px;padding:3px 10px;margin-bottom:10px">
+        <span style="width:6px;height:6px;border-radius:50%;background:#69f6b8;display:inline-block"></span>
+        <span style="font-size:10px;font-weight:800;color:#69f6b8;text-transform:uppercase;letter-spacing:.1em">Analysis Active</span>
+      </div>
+      <div style="font-size:20px;font-weight:900;color:#fff;line-height:1.25;margin-bottom:6px;letter-spacing:-.3px" id="proj-intro-txt">
+        Here's the skill costing you the most interviews right now.
+      </div>
+      <div style="font-size:13px;color:rgba(255,255,255,.7);font-weight:500" id="proj-sub-txt"></div>
+    </div>
+    <div class="proj-cards" id="proj-cards">
+      <div class="skeleton sk-box" style="height:120px;border-radius:16px"></div>
+      <div class="skeleton sk-box" style="height:120px;border-radius:16px"></div>
+      <div class="skeleton sk-box" style="height:120px;border-radius:16px"></div>
+    </div>
+    <div class="proj-details" id="proj-details"></div>
+  </div>
+
+  <!-- TAB 3 — RESUME SCORE -->
+  <div class="tab-panel" id="tab-score">
+
+    <!-- Hero diagnosis banner -->
+    <div class="score-diagnosis">
+      <div class="score-diagnosis-badge">
+        <span class="material-symbols-outlined">diagnosis</span>
+        Critical Diagnosis
+      </div>
+      <div class="score-diagnosis-txt" id="roast-txt">
+        <span class="skeleton" style="display:inline-block;width:80%;height:20px;border-radius:6px;opacity:.3"></span>
+      </div>
+    </div>
+
+    <!-- 3 animated gauge rings -->
+    <div class="score-gauges" id="score-boxes">
+      <div class="score-gauge-card">
+        <div class="score-gauge-wrap">
+          <svg class="score-gauge-svg" viewBox="0 0 128 128">
+            <circle class="score-gauge-bg" cx="64" cy="64" r="58" fill="transparent" stroke-width="8"/>
+            <circle class="score-gauge-fill" id="gauge-bq" cx="64" cy="64" r="58" fill="transparent" stroke="var(--secondary)" stroke-width="8"/>
+          </svg>
+          <span class="score-gauge-label" id="gauge-bq-pct">—</span>
+        </div>
+        <div class="score-gauge-title">Bullet Quality</div>
+        <div class="score-gauge-sub" id="gauge-bq-sub">Analysing…</div>
+      </div>
+      <div class="score-gauge-card">
+        <div class="score-gauge-wrap">
+          <svg class="score-gauge-svg" viewBox="0 0 128 128">
+            <circle class="score-gauge-bg" cx="64" cy="64" r="58" fill="transparent" stroke-width="8"/>
+            <circle class="score-gauge-fill" id="gauge-im" cx="64" cy="64" r="58" fill="transparent" stroke="var(--tertiary-fixed,#69f6b8)" stroke-width="8"/>
+          </svg>
+          <span class="score-gauge-label" id="gauge-im-pct">—</span>
+        </div>
+        <div class="score-gauge-title">Impact &amp; Metrics</div>
+        <div class="score-gauge-sub" id="gauge-im-sub">Analysing…</div>
+      </div>
+      <div class="score-gauge-card">
+        <div class="score-gauge-wrap">
+          <svg class="score-gauge-svg" viewBox="0 0 128 128">
+            <circle class="score-gauge-bg" cx="64" cy="64" r="58" fill="transparent" stroke-width="8"/>
+            <circle class="score-gauge-fill" id="gauge-ats" cx="64" cy="64" r="58" fill="transparent" stroke="var(--primary)" stroke-width="8"/>
+          </svg>
+          <span class="score-gauge-label" id="gauge-ats-pct">—</span>
+        </div>
+        <div class="score-gauge-title">ATS Alignment</div>
+        <div class="score-gauge-sub" id="gauge-ats-sub">Analysing…</div>
+      </div>
+    </div>
+
+    <div class="ats-notice" id="ats-notice" style="display:none"></div>
+
+    <!-- 2-col: bullets left, action list right -->
+    <div class="score-body">
+
+      <!-- Bullet list -->
+      <section class="score-bullets-col">
+        <h3>
+          <span class="material-symbols-outlined" style="color:var(--secondary);font-variation-settings:'FILL' 1">description</span>
+          Resume Analysis
+          <span id="bullets-flagged-count" class="flagged-badge" style="display:none"></span>
+        </h3>
+        <div class="score-bullets-scroll" id="bullets-list">
+          <div class="skeleton sk-box" style="height:100px;border-radius:14px"></div>
+          <div class="skeleton sk-box" style="height:80px;border-radius:14px"></div>
+          <div class="skeleton sk-box" style="height:90px;border-radius:14px"></div>
+        </div>
+      </section>
+
+      <!-- Action list -->
+      <aside class="score-action-col" id="summary-card">
+        <h3>
+          <span class="material-symbols-outlined" style="color:var(--primary);font-variation-settings:'FILL' 1">checklist</span>
+          Your Action List
+        </h3>
+        <div class="action-list">
+          <div class="action-row">
+            <div class="skeleton" style="width:36px;height:36px;border-radius:50%;flex-shrink:0"></div>
+            <div style="flex:1"><div class="skeleton sk-line"></div><div class="skeleton sk-line-sm"></div></div>
+          </div>
+          <div class="action-row">
+            <div class="skeleton" style="width:36px;height:36px;border-radius:50%;flex-shrink:0"></div>
+            <div style="flex:1"><div class="skeleton sk-line"></div><div class="skeleton sk-line-sm"></div></div>
+          </div>
+        </div>
+      </aside>
+
+    </div>
+  </div>
+
+  <!-- BOTTOM TAB BAR — fixed, glassmorphism -->
+  <div class="tab-bar">
+    <div class="tab-bar-inner">
+      <button class="tab-btn on" id="t-profile" onclick="showTab('profile')">
+        <span class="material-symbols-outlined ticon" style="font-variation-settings:'FILL' 1">person</span>
+        <span class="tab-pill">Profile</span>
+      </button>
+      <button class="tab-btn" id="t-project" onclick="showTab('project')">
+        <span class="material-symbols-outlined ticon">rocket_launch</span>
+        <span class="tab-pill">Projects</span>
+      </button>
+      <button class="tab-btn" id="t-score" onclick="showTab('score')">
+        <span class="material-symbols-outlined ticon">query_stats</span>
+        <span class="tab-pill">Score</span>
+      </button>
+    </div>
+  </div>
+
+</div>
+
+
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     BULLET ROAST DIALOG
+═══════════════════════════════════════════════════ -->
+<div class="dlg-overlay" id="dlg-overlay" onclick="closeDlg(event)">
+  <div class="dlg" onclick="event.stopPropagation()">
+    <div class="dlg-hdr">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span class="material-symbols-outlined" style="color:var(--error);font-size:18px;font-variation-settings:'FILL' 1">diagnosis</span>
+        <div class="dlg-hdr-title">What a recruiter actually thinks</div>
+      </div>
+      <button class="dlg-x" onclick="closeDlg()">
+        <span class="material-symbols-outlined" style="font-size:16px">close</span>
+      </button>
+    </div>
+    <div class="dlg-body" id="dlg-body"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ═══════════════════════════════════════════════════
+// PDF.JS WORKER
+// ═══════════════════════════════════════════════════
+if (typeof pdfjsLib !== 'undefined') {
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+}
+
+// ═══════════════════════════════════════════════════
+// APP STATE
+// ═══════════════════════════════════════════════════
+let resumeText      = '';
+let resumeFileId    = null;
+let currentRole     = '';
+let currentLocation = '';
+let lvlTimer        = null;
+let abortCtrl       = null;
+let analysisData    = {};
+let _currentEvent   = '';
+
+// ═══════════════════════════════════════════════════
+// DARK MODE
+// ═══════════════════════════════════════════════════
+function toggleDark() {
+  const isDark = document.documentElement.classList.contains('dark');
+  document.documentElement.classList.toggle('dark', !isDark);
+  document.getElementById('dark-btn').textContent = isDark ? '🌙' : '☀️';
+  localStorage.setItem('gl-theme', isDark ? 'light' : 'dark');
+}
+(function () {
+  const saved = localStorage.getItem('gl-theme');
+  if (saved) {
+    document.documentElement.classList.toggle('dark', saved === 'dark');
+    document.addEventListener('DOMContentLoaded', () => {
+      const b = document.getElementById('dark-btn');
+      if (b) b.textContent = saved === 'dark' ? '☀️' : '🌙';
+    });
+  }
+})();
+
+// ═══════════════════════════════════════════════════
+// FILE HELPERS
+// ═══════════════════════════════════════════════════
+function triggerFile() { document.getElementById('file-input').click(); }
+
+function showDZ(s) {
+  ['empty','processing','error','ok'].forEach(id =>
+    document.getElementById('dz-'+id).style.display = id===s ? 'block' : 'none');
+}
+
+function setLaunchEnabled(on) {
+  document.getElementById('launch-btn').disabled = !on;
+}
+
+function resetUpload() {
+  if (resumeFileId) {
+    fetch('/api/upload', {
+      method: 'DELETE',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ fileId: resumeFileId })
+    }).catch(()=>{});
+    resumeFileId = null;
+  }
+  document.getElementById('file-input').value = '';
+  resumeText = '';
+  showDZ('empty');
+  setLaunchEnabled(false);
+}
+
+function showFileErr(name, msg) {
+  document.getElementById('err-filename').textContent = name;
+  document.getElementById('err-message').textContent  = msg;
+  showDZ('error');
+  setLaunchEnabled(false);
+}
+
+function showFileOk(name) {
+  document.getElementById('fname-display').textContent = name;
+  showDZ('ok');
+  setLaunchEnabled(true);
+}
+
+const readAB   = f => new Promise((res,rej)=>{ const r=new FileReader(); r.onload=e=>res(e.target.result); r.onerror=rej; r.readAsArrayBuffer(f); });
+const readB64  = f => new Promise((res,rej)=>{ const r=new FileReader(); r.onload=e=>res(e.target.result.split(',')[1]); r.onerror=rej; r.readAsDataURL(f); });
+const readTxt  = f => new Promise((res,rej)=>{ const r=new FileReader(); r.onload=e=>res(e.target.result); r.onerror=rej; r.readAsText(f); });
+
+async function handleFile(input) {
+  const file = input.files[0]; if (!file) return;
+  const name = file.name;
+  const ext  = name.split('.').pop().toLowerCase();
+
+  if (ext !== 'pdf') {
+    return showFileErr(name, 'Please upload a PDF file. In LinkedIn: Profile → More → Save to PDF.');
+  }
+  if (file.size > 3 * 1024 * 1024)
+    return showFileErr(name, 'File too large. Please compress your PDF to under 3MB.');
+
+  // Delete previous orphaned file
+  if (resumeFileId) {
+    fetch('/api/upload',{method:'DELETE',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({fileId:resumeFileId})}).catch(()=>{});
+    resumeFileId = null;
+  }
+
+  document.getElementById('processing-name').textContent = 'Reading '+name+'…';
+  showDZ('processing');
+
+  try {
+    // Try Files API first
+    const b64 = await readB64(file);
+    const upRes = await fetch('/api/upload',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({filename:name, data:b64})
+    });
+    const upData = await upRes.json().catch(()=>({fallback:true}));
+
+    if (!upData.fallback && upData.fileId) {
+      resumeFileId = upData.fileId;
+      resumeText   = '';
+      showFileOk(name);
+      return;
+    }
+
+    // Fallback: browser PDF parsing
+    let text = '';
+    if (typeof pdfjsLib === 'undefined')
+      return showFileErr(name, 'PDF reader failed. Refresh and try again.');
+    const pdf = await pdfjsLib.getDocument({data: await readAB(file)}).promise;
+    const pages = [];
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const pg = await pdf.getPage(i);
+      const ct = await pg.getTextContent();
+      pages.push(ct.items.map(x=>x.str).join(' '));
+    }
+    text = pages.join('\n');
+
+    const m = text.replace(/[^a-zA-Z0-9\s]/g,'').replace(/\s+/g,' ').trim();
+    if (m.length < 200) {
+      if (ext==='pdf') return showFileErr(name,'This PDF appears to be a scanned image. Save as a text-based PDF and try again.');
+      return showFileErr(name,'Resume appears too short. Please check the file.');
+    }
+    resumeText   = text.substring(0,4000);
+    resumeFileId = null;
+    showFileOk(name);
+
+  } catch(e) {
+    showFileErr(name,'Could not read this file. Try saving as PDF and uploading again.');
+  }
+}
+
+// Drag and drop
+const _dz = document.getElementById('dz-empty');
+if (_dz) {
+  _dz.addEventListener('dragover', e=>{ e.preventDefault(); _dz.classList.add('drag'); });
+  _dz.addEventListener('dragleave', ()=> _dz.classList.remove('drag'));
+  _dz.addEventListener('drop', e=>{
+    e.preventDefault(); _dz.classList.remove('drag');
+    const f = e.dataTransfer.files[0];
+    if (f) {
+      const dt=new DataTransfer(); dt.items.add(f);
+      document.getElementById('file-input').files=dt.files;
+      handleFile(document.getElementById('file-input'));
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════
+// JD TOGGLE
+// ═══════════════════════════════════════════════════
+// JD starts open (I9)
+let jdOpen = true;
+
+function togJD() {
+  jdOpen = !jdOpen;
+  document.getElementById('jd-body').className = 'jd-body'+(jdOpen?' open':'');
+  document.getElementById('jd-svg').style.transform = jdOpen?'rotate(180deg)':'none';
+}
+
+// Live role detection as user types/pastes into JD (I7)
+function onJDInput(val) {
+  if (val.length < 100) return;
+  const roleEl = document.getElementById('target-role');
+  if (roleEl && roleEl.value.trim()) return; // don't override user's explicit input
+  const detected = extractRoleFromJD(val);
+  if (detected) {
+    roleEl.value = detected;
+    showDetectedRoleBadge(detected);
+    setLaunchEnabled(!!(resumeText || resumeFileId));
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// LOADING ANIMATION
+// ═══════════════════════════════════════════════════
+const LOADING_COPY = [
+  'Receiving your life story in PDF form…',
+  'Interrogating the job market on your behalf…',
+  'Counting the gaps. This may sting slightly.',
+  'Putting your bullets on trial. Most are not innocent.',
+  'Almost done. Your resume has been through a lot today.'
+];
+
+function startLoading(role) {
+  let i = 0;
+  document.getElementById('progress-fill').style.width = '8%';
+  // I14: Personalise step 2 text if we have a role
+  const step2El = document.getElementById('ls-2');
+  if (step2El && role) {
+    step2El.lastChild.textContent = ` Scanning real ${role} postings`;
+  }
+  lvlTimer = setInterval(()=>{
+    if (i>0) {
+      const p=document.getElementById('ls-'+i);
+      if(p){ p.className='lstep done'; p.querySelector('.lstep-ic').textContent='✓'; }
+    }
+    i++;
+    if (i<=5) {
+      const c=document.getElementById('ls-'+i);
+      if(c) c.className='lstep active';
+      document.getElementById('progress-fill').style.width=(i*18)+'%';
+      document.getElementById('loading-title').textContent=LOADING_COPY[i-1];
+    } else clearInterval(lvlTimer);
+  }, 2200);
+}
+
+function stopLoading() {
+  if (lvlTimer){ clearInterval(lvlTimer); lvlTimer=null; }
+  document.getElementById('progress-fill').style.width='100%';
+}
+
+// ═══════════════════════════════════════════════════
+// RATE LIMIT UI
+// ═══════════════════════════════════════════════════
+function updateRateNote(remaining, resetAt) {
+  const el = document.getElementById('rate-note'); if (!el) return;
+  if (typeof remaining !== 'number') { el.style.display='none'; return; }
+  if (remaining<=0 && resetAt) {
+    const t=new Date(resetAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+    el.textContent=`All 5 analyses used. Limit resets at ${t}.`;
+    el.style.display='block';
+  } else if (remaining<5) {
+    el.textContent=`${remaining} ${remaining===1?'analysis':'analyses'} remaining this hour.`;
+    el.style.display='block';
+  } else { el.style.display='none'; }
+  const btn=document.getElementById('launch-btn');
+  if (btn&&remaining>0&&remaining<5) btn.textContent=`Re-run analysis (${remaining} remaining) →`;
+  else if(btn&&remaining>0) btn.textContent='Show me the truth about my resume →';
+}
+
+// ═══════════════════════════════════════════════════
+// STATE — gate for showing results only on 'done'
+// ═══════════════════════════════════════════════════
+let resultReady = false;
+
+// ═══════════════════════════════════════════════════
+// ROLE EXTRACTION FROM JD (client-side)
+// Mirrors the server-side logic in analyze.js
+// ═══════════════════════════════════════════════════
+const CLIENT_ROLES = [
+  'Data Analyst','Data Engineer','Data Scientist','Business Analyst',
+  'Software Engineer','Product Manager','Machine Learning Engineer',
+  'Analytics Engineer','Business Intelligence Analyst','Financial Analyst',
+  'Marketing Analyst','Operations Analyst','Product Analyst','Strategy Analyst',
+  'Quantitative Analyst','UX Researcher','Project Manager','Program Manager',
+  'Solutions Architect','Data Architect','AI Engineer','Research Scientist',
+  'Growth Analyst','Revenue Operations','Sales Operations','Supply Chain Analyst',
+  'Risk Analyst','Pricing Analyst','Healthcare Data Analyst','Cybersecurity Analyst'
+];
+
+const STRIP = ['senior','sr','junior','jr','lead','principal','staff','associate',
+  'manager','director','vp','head of','intern','contract','contractor','remote'];
+
+function clientFuzzyMatch(raw) {
+  if (!raw) return null;
+  let n = raw.toLowerCase().trim();
+  STRIP.forEach(w => { n = n.replace(new RegExp('\\b'+w+'\\b','gi'),'').trim(); });
+  n = n.replace(/\s+/g,' ').trim();
+  const exact = CLIENT_ROLES.find(r => r.toLowerCase() === n);
+  if (exact) return exact;
+  const sub = CLIENT_ROLES.find(r => { const rl=r.toLowerCase(); return n.includes(rl)||rl.includes(n); });
+  if (sub) return sub;
+  const sw = new Set(n.split(' ').filter(w=>w.length>2));
+  let best=null,bs=0;
+  CLIENT_ROLES.forEach(r => {
+    const ov = r.toLowerCase().split(' ').filter(w=>sw.has(w)).length;
+    if(ov>bs){bs=ov;best=r;}
+  });
+  return bs>0?best:null;
+}
+
+function extractRoleFromJD(jd) {
+  const lines = jd.split('\n').map(l=>l.trim()).filter(Boolean).slice(0,5);
+  const pats = [
+    /^(?:job\s+title|position|role|title)\s*[:]\s*(.+)$/i,
+    /^we(?:'re| are) hiring\s+(?:a\s+)?(.+)$/i,
+  ];
+  for (const line of lines) {
+    for (const pat of pats) {
+      const m = line.match(pat);
+      if (m && m[1]) { const r=clientFuzzyMatch(m[1].trim()); if(r) return r; }
+    }
+  }
+  for (const line of lines) {
+    if (line.length>4 && line.length<80 && !/http|www|@/.test(line)) {
+      const r = clientFuzzyMatch(line);
+      if (r) return r;
+    }
+  }
+  return null;
+}
+
+// ═══════════════════════════════════════════════════
+// SHOW DETECTED ROLE BADGE
+// Small pill shown below role field when auto-detected
+// ═══════════════════════════════════════════════════
+function showDetectedRoleBadge(role) {
+  let badge = document.getElementById('detected-role-badge');
+  if (!badge) {
+    badge = document.createElement('div');
+    badge.id = 'detected-role-badge';
+    badge.style.cssText = 'font-size:11px;font-weight:700;color:var(--secondary);background:rgba(70,71,211,.08);border:1px solid rgba(70,71,211,.2);border-radius:99px;padding:3px 10px;margin-top:6px;display:inline-flex;align-items:center;gap:5px';
+    const roleEl = document.getElementById('target-role');
+    if (roleEl && roleEl.parentNode) roleEl.parentNode.appendChild(badge);
+  }
+  badge.innerHTML = `<span class="material-symbols-outlined" style="font-size:13px">auto_awesome</span> Detected from job description: ${esc(role)}`;
+  badge.style.display = 'inline-flex';
+}
+
+// ═══════════════════════════════════════════════════
+// SHOW ERROR STATE (I15)
+// Styled error card with retry button
+// ═══════════════════════════════════════════════════
+function showErrorState(message) {
+  const errBox = document.getElementById('input-error');
+  if (!errBox) return;
+  // Soften rate limit message
+  const display = message.includes('5 analyses') || message.includes('rate')
+    ? `You've run 5 analyses this hour — we cap it to keep the service free for everyone. ${message.match(/resets? at (.+)/i)?.[0] || 'Try again soon.'}`
+    : message;
+  errBox.innerHTML = `<div style="display:flex;align-items:flex-start;gap:10px">
+    <span class="material-symbols-outlined" style="color:var(--error);font-size:20px;flex-shrink:0;margin-top:1px;font-variation-settings:'FILL' 1">error</span>
+    <div style="flex:1">
+      <div style="font-weight:700;margin-bottom:4px;color:var(--error)">Something went wrong</div>
+      <div style="font-size:12px;color:var(--on-surface-v);line-height:1.5">${esc(display)}</div>
+    </div>
+  </div>`;
+  errBox.style.display = 'block';
+}
+
+// ═══════════════════════════════════════════════════
+// LAUNCH ANALYSIS
+// ═══════════════════════════════════════════════════
+async function launchAnalysis() {
+  let role       = document.getElementById('target-role').value.trim();
+  const location = document.getElementById('target-location').value.trim();
+  const jd       = document.getElementById('jd-paste').value.trim();
+  const errBox   = document.getElementById('input-error');
+
+  if (!resumeText && !resumeFileId) {
+    errBox.textContent='Please upload your resume first.'; errBox.style.display='block'; return;
+  }
+
+  // I7: Role not mandatory when JD is provided — try to extract from JD
+  if (!role && jd.length > 100) {
+    const detected = extractRoleFromJD(jd);
+    if (detected) {
+      role = detected;
+      // I8: Populate the role field so user can see and correct it
+      const roleEl = document.getElementById('target-role');
+      if (roleEl) roleEl.value = role;
+      showDetectedRoleBadge(role);
+    }
+  }
+
+  // I8: Updated validation — need at least role OR JD
+  if (!role && jd.length <= 100) {
+    errBox.textContent='Please enter a target role, or paste a job description and we will detect the role.';
+    errBox.style.display='block'; return;
+  }
+  if (!role) {
+    errBox.textContent='We could not detect the role from the job description. Please type it in the Target Role field.';
+    errBox.style.display='block'; return;
+  }
+
+  errBox.style.display='none';
+
+  const last = parseInt(sessionStorage.getItem('gl_last')||'0');
+  if (Date.now()-last < 30000) {
+    const s=Math.ceil((30000-(Date.now()-last))/1000);
+    errBox.textContent=`Please wait ${s} seconds before re-running.`;
+    errBox.style.display='block'; return;
+  }
+
+  currentRole=role; currentLocation=location;
+  analysisData={}; _currentEvent='';
+  bulletStore.clear(); bulletStoreIdx=0;
+  resultReady = false; // I10: reset gate
+
+  document.getElementById('bullets-list').innerHTML = '<div class="skeleton sk-box"></div>';
+
+  showPage('loading');
+  document.getElementById('back-btn').style.display='none';
+  startLoading(role);
+
+  if (abortCtrl) abortCtrl.abort();
+  abortCtrl = new AbortController();
+  const { signal } = abortCtrl;
+
+  const safetyTimer = setTimeout(() => {
+    if (document.getElementById('pg-loading').classList.contains('active')) {
+      stopLoading();
+      showPage('results');
+      document.getElementById('back-btn').style.display='block';
+      if (analysisData.ats_pass_rate) {
+        const sc = document.getElementById('summary-card');
+        if (sc && !sc.innerHTML.includes('action-row')) {
+          sc.innerHTML = '<div style="padding:1rem;font-size:13px;color:var(--on-surface-v);text-align:center">Analysis took longer than expected. Most sections loaded. Try re-running for complete results.</div>';
+        }
+      }
+    }
+  }, 60000);
+
+  try {
+    await runStream({ role, location, jd, signal });
+    clearTimeout(safetyTimer);
+    sessionStorage.setItem('gl_last', Date.now().toString());
+    // Results page is shown by the 'scores' SSE event (Stream A done)
+    // Stream B (LinkedIn/certs/projects) populates async after that
+  } catch(err) {
+    clearTimeout(safetyTimer);
+    if (err.name==='AbortError') return;
+    stopLoading();
+    showPage('input');
+    document.getElementById('back-btn').style.display='none';
+    // I15: Styled error state
+    showErrorState(err.message || 'Something went wrong. Please try again.');
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// STREAMING SSE READER
+// ═══════════════════════════════════════════════════
+async function runStream({ role, location, jd, signal }) {
+  const payload = {
+    role:     role.substring(0,80),
+    location: location.substring(0,50),
+    jd:       jd.substring(0,1200)
+  };
+  if (resumeFileId) payload.fileId = resumeFileId;
+  else payload.resume = resumeText.substring(0,4000);
+
+  const res = await fetch('/api/analyze',{
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(payload), signal
+  });
+
+  if (res.status===429) {
+    const d=await res.json().catch(()=>({}));
+    const t=d.resetAt?new Date(d.resetAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'soon';
+    throw new Error(`You've run 5 analyses this hour — we cap it to keep the service free for everyone. Resets at ${t}.`);
+  }
+  if (!res.ok) {
+    const e=await res.json().catch(()=>({error:'Analysis failed'}));
+    throw new Error(e.error||'Analysis failed. Please try again.');
+  }
+
+  // Mobile Safari / old WebView fallback — no ReadableStream
+  if (!res.body || typeof res.body.getReader !== 'function') {
+    // Streaming not available — show friendly message
+    throw new Error('Live analysis requires a modern browser. Please try Chrome or Firefox.');
+  }
+
+  const reader  = res.body.getReader();
+  const decoder = new TextDecoder();
+  let   buf     = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, {stream:true});
+    const lines = buf.split('\n');
+    buf = lines.pop();
+    for (const line of lines) {
+      if (line.startsWith('event: ')) { _currentEvent=line.slice(7).trim(); continue; }
+      if (line.startsWith('data: ')) {
+        const raw=line.slice(6).trim(); if(!raw) continue;
+        try { handleSSE(_currentEvent, JSON.parse(raw)); _currentEvent=''; }
+        catch(e) { /* skip malformed */ }
+      }
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// SSE EVENT ROUTER
+// ═══════════════════════════════════════════════════
+function handleSSE(name, data) {
+  switch(name) {
+    case 'metadata':
+      if (data.rateRemaining!==undefined) updateRateNote(data.rateRemaining, data.rateResetAt);
+      analysisData.hasLiveData  = data.hasLiveData  || false;
+      analysisData.matchedRole  = data.matchedRole  || null;
+      analysisData.totalJobs    = data.totalJobs    || null;
+      if (data.roleFromJD && data.detectedRole) {
+        const roleEl = document.getElementById('target-role');
+        if (roleEl && !roleEl.value.trim()) roleEl.value = data.detectedRole;
+        showDetectedRoleBadge(data.detectedRole);
+      }
+      if (data.hasLiveData && data.matchedRole) {
+        const jobs  = data.totalJobs || 40;
+        const step2 = document.getElementById('ls-2');
+        if (step2) step2.lastChild.textContent = ` Scanning ${jobs} real ${data.matchedRole} postings`;
+        const badge = document.getElementById('live-data-badge');
+        if (badge) {
+          badge.textContent    = `Based on ${jobs} real ${data.matchedRole} postings`;
+          badge.style.display  = 'inline-flex';
+        }
+      }
+      break;
+
+    case 'verdict':
+      renderVerdict(data);
+      break;
+
+    case 'skills':
+      analysisData.skills_present  = data.skills_present;
+      analysisData.skill_levels    = data.skill_levels;
+      analysisData.skill_relevance = data.skill_relevance || {};
+      renderSkills(data.skills_present, data.skill_levels, data.skill_relevance);
+      break;
+
+    case 'gaps':
+      analysisData.gaps = data.gaps;
+      renderGaps(data.gaps);
+      break;
+
+    case 'scores':
+      renderScores(data);
+      // ── Fix 1: Stream A is done when scores arrive (last Stream A tool) ──
+      // Show results immediately so user can read Profile tab while
+      // Stream B (LinkedIn, certs, projects) continues loading async.
+      if (!resultReady) {
+        resultReady = true;
+        renderSummaryCard();
+        stopLoading();
+        showPage('results');
+        document.getElementById('back-btn').style.display = 'block';
+        // Animate skill bars now that the profile tab is visible
+        setTimeout(() => {
+          document.querySelectorAll('.sk-bar-fill').forEach(b => {
+            b.style.width = b.dataset.w + '%';
+          });
+        }, 150);
+      }
+      break;
+
+    case 'bullet_group': appendBulletGroup(data);       break;
+    case 'jd_breakdown': renderJDBreakdown(data.jd_breakdown); break;
+
+    case 'linkedin':
+      renderLinkedIn(data);
+      break;
+
+    case 'certifications':
+      analysisData.certs = data.certifications;
+      renderCerts(data.certifications);
+      break;
+
+    case 'projects':
+      analysisData.projects = data.projects;
+      renderProjects(data.projects);
+      break;
+
+    case 'project_prompt':
+      if (analysisData.projects && analysisData.projects[data.index] !== undefined) {
+        analysisData.projects[data.index].ai_prompt = data.prompt;
+        const promptBox = document.getElementById('prompt-box-' + data.index);
+        if (promptBox) promptBox.textContent = data.prompt;
+      }
+      break;
+
+    case 'done':
+      // Stream B also complete — ensure results are showing (safety net)
+      if (!resultReady) {
+        resultReady = true;
+        renderSummaryCard();
+        stopLoading();
+        showPage('results');
+        document.getElementById('back-btn').style.display = 'block';
+        setTimeout(() => {
+          document.querySelectorAll('.sk-bar-fill').forEach(b => {
+            b.style.width = b.dataset.w + '%';
+          });
+        }, 150);
+      }
+      break;
+
+    case 'partial':
+      if (!resultReady) {
+        resultReady = true;
+        stopLoading();
+        showPage('results');
+        document.getElementById('back-btn').style.display = 'block';
+      }
+      break;
+
+    case 'error':
+      throw new Error(data.message || 'Analysis error');
+  }
+}
+
+
+
+// ═══════════════════════════════════════════════════
+// NAVIGATION
+// ═══════════════════════════════════════════════════
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.getElementById('pg-'+name).classList.add('active');
+  window.scrollTo(0,0);
+}
+
+function goBack() {
+  if (abortCtrl){ abortCtrl.abort(); abortCtrl=null; }
+  stopLoading();
+  showPage('input');
+  document.getElementById('back-btn').style.display='none';
+  resultReady = false;
+  // Clear role and JD only — keep resume loaded so user can try a different role
+  const roleEl = document.getElementById('target-role');
+  const jdEl   = document.getElementById('jd-paste');
+  if (roleEl) roleEl.value = '';
+  if (jdEl)   jdEl.value  = '';
+  // Clear detected role badge
+  const badge = document.getElementById('detected-role-badge');
+  if (badge) badge.style.display = 'none';
+  // Clear input error
+  const errBox = document.getElementById('input-error');
+  if (errBox) { errBox.style.display='none'; errBox.innerHTML=''; }
+  // Re-enable launch button only if resume is still loaded
+  setLaunchEnabled(!!(resumeText || resumeFileId));
+}
+
+function showTab(t) {
+  ['profile','project','score'].forEach(id=>{
+    document.getElementById('tab-'+id).classList.toggle('on', id===t);
+    const b=document.getElementById('t-'+id);
+    if(b) b.classList.toggle('on', id===t);
+  });
+  // Re-animate skill bars whenever Profile tab becomes active
+  if (t === 'profile') {
+    setTimeout(() => {
+      document.querySelectorAll('.sk-bar-fill').forEach(b => {
+        b.style.width = b.dataset.w + '%';
+      });
+    }, 80);
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// ACCORDION
+// ═══════════════════════════════════════════════════
+function togAcc(bodyId, arrId) {
+  const body=document.getElementById(bodyId);
+  const arr =document.getElementById(arrId);
+  const open=body.classList.contains('open');
+  body.classList.toggle('open',!open);
+  if(arr) arr.classList.toggle('open',!open);
+}
+
+// ═══════════════════════════════════════════════════
+// RENDER — VERDICT BAR
+// salary is now included in verdict data from analyze.js
+// ═══════════════════════════════════════════════════
+function renderVerdict(d) {
+  const sal = d.salary || {};
+  const eyebrow = currentRole + (currentLocation ? ' · ' + currentLocation : '');
+  const badge   = analysisData.hasLiveData
+    ? ' <span class="live-badge" style="font-size:10px;padding:2px 8px">Based on job postings</span>'
+    : '';
+  document.getElementById('sum-eyebrow').innerHTML = esc(eyebrow) + badge;
+  document.getElementById('sum-title').textContent = d.verdict_headline || 'Analysis complete';
+  document.getElementById('sum-desc').textContent  = d.verdict_sub || '';
+
+  const atsText = (d.ats_pass_rate || 0) < 60
+    ? `${100-(d.ats_pass_rate||50)}% of ATS systems bin you before a human blinks. Fixable.`
+    : `ATS-friendly at ${d.ats_pass_rate}%. The human is your next problem.`;
+  const salText = sal.e
+    ? `Entry ${sal.e} · Mid ${sal.m} · Senior ${sal.s}`
+    : '';
+
+  document.getElementById('sum-row').innerHTML =
+    `<div class="smet"><div class="smv">${d.match_score||0}%</div><div class="sml">Role match</div></div>`+
+    `<div class="smet"><div class="smv" id="skills-count">—</div><div class="sml">Skills present</div></div>`+
+    `<div class="smet"><div class="smv" id="gaps-count">—</div><div class="sml">Gaps found</div></div>`+
+    `<div class="smet-wide"><div class="smet-lbl">ATS Reality</div><div class="smet-val">${atsText}</div></div>`+
+    (salText?`<div class="smet-wide"><div class="smet-lbl">Salary Reality</div><div class="smet-val">${salText}${sal.e?'<br><span style="font-size:10px;opacity:.7">If they offer below entry range, that\'s a test.</span>':''}</div></div>`:'');
+
+  // ── Profile hero card ──
+  const matchPct = d.match_score || 0;
+  // Animate score ring: r=70, circumference=440
+  const ringEl = document.getElementById('profile-score-ring');
+  const pctEl  = document.getElementById('profile-score-pct');
+  if (ringEl) {
+    setTimeout(() => {
+      ringEl.style.strokeDashoffset = 440 * (1 - matchPct / 100);
+    }, 200);
+  }
+  if (pctEl) {
+    let cur = 0;
+    const step = () => { cur = Math.min(cur + 1, matchPct); pctEl.textContent = cur + '%'; if (cur < matchPct) setTimeout(step, 18); };
+    setTimeout(step, 200);
+  }
+  const roleTitle = document.getElementById('profile-role-title');
+  const verdictSub = document.getElementById('profile-verdict-sub');
+  if (roleTitle) roleTitle.textContent = currentRole || 'Your Role';
+  if (verdictSub) verdictSub.textContent = d.verdict_sub || d.verdict_headline || '';
+
+  // ATS stat card
+  const atsVal  = document.getElementById('profile-ats-val');
+  const atsNote = document.getElementById('profile-ats-note');
+  if (atsVal)  atsVal.textContent  = (d.ats_pass_rate || '—') + (d.ats_pass_rate ? '%' : '');
+  if (atsNote) atsNote.textContent = (d.ats_pass_rate || 0) < 60
+    ? `of ATS systems pass you. Fixable.`
+    : `ATS pass rate — solid.`;
+
+  // Salary stat card — show only lowest–highest (I1)
+  const salVal = document.getElementById('profile-sal-val');
+  if (salVal) {
+    // Backend now sends sal.low and sal.high (single values, not ranges)
+    // Fallback: parse the first number from sal.e and last from sal.s
+    const low  = sal.low  || (sal.e || '').split('–')[0].trim() || sal.e || '';
+    const high = sal.high || (() => { const p = (sal.s||'').split('–'); return (p[1]||p[0]||'').trim(); })() || sal.s || '';
+    salVal.textContent = (low && high) ? `${low} – ${high}` : low || 'Calculating…';
+  }
+
+  // Store ATS data for summary card
+  analysisData.ats_pass_rate      = d.ats_pass_rate;
+  analysisData.ats_potential       = d.ats_potential;
+  analysisData.ats_missing_keyword = d.ats_missing_keyword;
+  analysisData.salary              = sal;
+  // Salary rendered in stat card above via salVal
+}
+
+// salary-section kept as empty div for layout compatibility
+
+// ═══════════════════════════════════════════════════
+// RENDER — SKILLS (Tab 1) — top 5 mixed levels
+// ═══════════════════════════════════════════════════
+function renderSkills(skills, levels, relevance) {
+  const el = document.getElementById('skills-have');
+  if (!skills || !skills.length) {
+    el.innerHTML = '<div style="font-size:13px;color:var(--on-surface-v)">No skills detected.</div>';
+    return;
+  }
+  const rel = relevance || {};
+  const lvl = levels    || {};
+
+  // Sort by relevance % descending (highest market demand first), cap at 6
+  const sorted = [...skills].sort((a, b) => (rel[b] || 0) - (rel[a] || 0)).slice(0, 6);
+
+  el.innerHTML = sorted.map(s => {
+    // I4: Use actual market data relevance %, not skill level mapping
+    const pct     = Math.round(rel[s] || 0);
+    const level   = lvl[s] || 'Intermediate';
+    // Colour by level (how well they know it), width by market relevance (how often it's needed)
+    const col     = level === 'Strong' ? 'var(--tertiary)' : level === 'Intermediate' ? 'var(--primary)' : 'var(--outline)';
+    const label   = pct > 0 ? `${pct}%` : level === 'Strong' ? 'Strong' : level === 'Basic' ? 'Basic' : 'Present';
+    return `<div class="sk-row">
+      <div class="sk-row-top">
+        <span class="sk-name">${esc(s)}</span>
+        <span class="sk-pct" style="color:${col}">${label}</span>
+      </div>
+      <div class="sk-bar-track">
+        <div class="sk-bar-fill" data-w="${pct || 50}" style="width:0%;background:linear-gradient(90deg,${col},${col}99)"></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // I5: Bars animated by 'done' event handler when tab becomes visible
+  // Small fallback for when profile tab is already active
+  if (document.getElementById('tab-profile').classList.contains('on')) {
+    setTimeout(() => {
+      el.querySelectorAll('.sk-bar-fill').forEach(b => { b.style.width = b.dataset.w + '%'; });
+    }, 120);
+  }
+
+  const sc = document.getElementById('skills-count');
+  if (sc) sc.textContent = skills.length;
+}
+
+// ═══════════════════════════════════════════════════
+// RENDER — GAPS (Tab 1) — compact, no how_to_fix
+// ═══════════════════════════════════════════════════
+function renderGaps(gaps) {
+  const el = document.getElementById('skills-gaps');
+  if (!gaps || !gaps.length) {
+    el.innerHTML = '<div style="font-size:13px;color:var(--on-surface-v)">No critical gaps identified.</div>';
+    return;
+  }
+  el.innerHTML = gaps.map(g => {
+    const isCrit = g.priority === 'Critical';
+    const isImp  = g.priority === 'Important';
+    const cls    = isCrit ? 'gap-crit' : isImp ? 'gap-high' : g.priority === 'Nice-to-have' ? 'gap-low' : 'gap-mid';
+    const lbl    = isCrit ? 'CRIT' : isImp ? 'HIGH' : g.priority === 'Nice-to-have' ? 'LOW' : 'MID';
+    const sub    = isCrit ? 'Critical Gap' : isImp ? 'Recommended' : g.priority === 'Nice-to-have' ? 'Nice to have' : 'Competitive edge';
+    return `<div class="gap-item">
+      <div class="gap-badge ${cls}">${lbl}</div>
+      <div style="flex:1;min-width:0">
+        <div class="gap-name-txt">${esc(g.skill)}</div>
+        <div class="gap-sub-txt">${sub}${g.how_often ? ' · ' + g.how_often + '% of postings' : ''}</div>
+      </div>
+    </div>`;
+  }).join('');
+  const gc = document.getElementById('gaps-count');
+  if (gc) gc.textContent = gaps.length;
+}
+
+// ═══════════════════════════════════════════════════
+// BULLET DATA STORE — avoids JSON encoding in onclick
+// ═══════════════════════════════════════════════════
+const bulletStore = new Map();
+let bulletStoreIdx = 0;
+
+// ═══════════════════════════════════════════════════
+// RENDER — LINKEDIN (Tab 1 accordion)
+// ═══════════════════════════════════════════════════
+function renderLinkedIn(d) {
+  // Headline — format with | separators for LinkedIn style
+  const hlEl = document.getElementById('li-hl-text');
+  if (hlEl) {
+    const raw = d.linkedin_headline || '';
+    // If the headline is a plain sentence, split on commas/conjunctions and reformat with |
+    let formatted = raw;
+    if (raw && !raw.includes('|')) {
+      // Split on common separators and rejoin with |
+      const parts = raw.split(/\s*[,·•]\s*/).filter(Boolean);
+      formatted = parts.length > 1 ? parts.join(' | ') : raw;
+    }
+    hlEl.textContent = formatted;
+  }
+
+  // About — display as-is (comes from API, assumed strong)
+  const abEl = document.getElementById('li-ab-text');
+  if (abEl) abEl.textContent = d.linkedin_about || '';
+
+  // Skills — cap at 5
+  const skEl = document.getElementById('li-skill-tags');
+  if (skEl) skEl.innerHTML = (d.linkedin_skills || [])
+    .slice(0, 5)
+    .map(s => `<span class="li-skill-chip">${esc(s)}</span>`).join('');
+}
+
+// ═══════════════════════════════════════════════════
+// RENDER — CERTIFICATIONS (Tab 1)
+// 3 cards horizontal, Enroll Now links
+// ═══════════════════════════════════════════════════
+function renderCerts(certs) {
+  const el = document.getElementById('certs-list');
+  if (!certs || !certs.length) {
+    el.innerHTML = '<div style="font-size:13px;color:var(--on-surface-v)">No certifications available.</div>';
+    return;
+  }
+  el.innerHTML = certs.map(c => `
+    <div class="cert-card">
+      <div>
+        <div class="cert-icon-wrap">
+          <span class="material-symbols-outlined" style="color:#fff;font-size:22px;font-variation-settings:'FILL' 1">workspace_premium</span>
+        </div>
+        <div class="cert-name-txt">${esc(c.name)}</div>
+        <div class="cert-provider">${esc(c.provider)}</div>
+        <div class="cert-why-txt">${esc(c.why)}</div>
+        <div class="cert-meta-chips">
+          <span class="cert-meta-chip">${esc(c.cost)}</span>
+          <span class="cert-meta-chip">${esc(c.duration)}</span>
+        </div>
+      </div>
+      ${c.url ? `<a href="${c.url}" target="_blank" rel="noopener" class="cert-enroll">
+        Enroll Now <span class="material-symbols-outlined">arrow_forward</span>
+      </a>` : ''}
+    </div>`
+  ).join('');
+  // Note: showPage('results') intentionally removed — only 'done' event triggers that (I10)
+}
+
+// ═══════════════════════════════════════════════════
+// RENDER — JD BREAKDOWN (Tab 1, only when JD provided)
+// ═══════════════════════════════════════════════════
+function renderJDBreakdown(breakdown) {
+  if (!breakdown || !breakdown.length) return;
+  const el = document.getElementById('jd-match-section');
+  el.style.display = 'block';
+  el.innerHTML = `<div class="rcard">
+    <div class="rcl">Job Description — Requirement Breakdown</div>
+    ${breakdown.map(r =>
+      `<div class="req-item">
+        <div class="req-ic ${r.met?'req-y':'req-n'}">${r.met?'✓':'✗'}</div>
+        <div>
+          <div style="font-size:12px;font-weight:600;color:var(--text)">${esc(r.requirement)}</div>
+          <div style="font-size:11px;color:${r.met?'var(--green)':'var(--red)'}">${esc(r.note)}</div>
+        </div>
+      </div>`
+    ).join('')}
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════
+// RENDER — PROJECTS (Tab 2)
+// 3-column card grid matching design file
+// ═══════════════════════════════════════════════════
+function renderProjects(projects) {
+  if (!projects || !projects.length) {
+    document.getElementById('proj-cards').innerHTML =
+      `<div style="font-size:13px;color:var(--on-surface-v);padding:1rem 0">No project suggestions available. Try re-running with a more specific role.</div>`;
+    return;
+  }
+
+  const topGap = (analysisData.gaps && analysisData.gaps[0]) ? analysisData.gaps[0].skill : 'your top gap';
+  document.getElementById('proj-intro-txt').textContent =
+    `Closing your biggest gap right now: ${topGap}. Pick a project. Build proof.`;
+
+  // Icon map by index for variety
+  const icons = ['account_tree', 'speed', 'payments'];
+  const colors = ['var(--primary)', 'var(--secondary)', 'var(--secondary)'];
+
+  document.getElementById('proj-cards').innerHTML =
+    `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+      ${projects.map((p,i) => `
+        <div id="pc-${i}" onclick="selProject(${i})"
+          style="background:var(--card-bg);border-radius:16px;padding:18px;cursor:pointer;
+                 border:2px solid transparent;
+                 box-shadow:0 1px 3px rgba(44,47,49,.06);
+                 transition:all .2s;position:relative">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
+            <span class="material-symbols-outlined" style="color:${colors[i]};font-size:28px">${icons[i]||'build'}</span>
+            <div style="text-align:right">
+              <div style="font-size:20px;font-weight:900;color:${colors[i]};line-height:1">${p.market_signal}%</div>
+              <div style="font-size:9px;font-weight:800;color:var(--outline);text-transform:uppercase;letter-spacing:.08em;margin-top:1px">market signal</div>
+            </div>
+          </div>
+          <div style="font-size:13px;font-weight:800;color:var(--on-surface);margin-bottom:6px;line-height:1.3">${esc(p.title)}</div>
+          <div style="font-size:11px;color:var(--on-surface-v);line-height:1.55;font-weight:500">${esc(p.justification)}</div>
+          <div style="margin-top:10px;font-size:10px;font-weight:700;color:var(--outline)">
+            ~${p.time_hours}hrs · ${p.time_hours<=8?'1 weekend':'2 weekends'}
+          </div>
+        </div>`
+      ).join('')}
+    </div>`;
+
+  // Auto-select top project
+  selProject(0);
+}
+
+function selProject(idx) {
+  const projects = analysisData.projects;
+  if (!projects || !projects[idx]) return;
+  const p = projects[idx];
+
+  // Update all card visual states
+  projects.forEach((_, i) => {
+    const card = document.getElementById('pc-' + i);
+    if (!card) return;
+    const isSelected = i === idx;
+
+    card.style.borderColor = isSelected ? 'var(--primary)' : 'transparent';
+    card.style.boxShadow   = isSelected
+      ? '0 0 0 4px rgba(0,87,189,.1),0 4px 16px rgba(0,87,189,.12)'
+      : '0 1px 3px rgba(44,47,49,.06)';
+    card.style.opacity = '1'; // ensure never dimmed
+
+    // Fix 2: Remove ALL existing badges from every card first,
+    // then only add to the selected card. This prevents stale badges.
+    card.querySelectorAll('[data-sel-badge]').forEach(b => b.remove());
+
+    if (isSelected) {
+      const badge = document.createElement('div');
+      badge.setAttribute('data-sel-badge', '1');
+      badge.style.cssText = 'position:absolute;top:-10px;left:14px;' +
+        'background:linear-gradient(135deg,var(--primary),var(--primary-container));' +
+        'color:#fff;font-size:9px;font-weight:900;padding:3px 10px;' +
+        'border-radius:99px;text-transform:uppercase;letter-spacing:.08em;z-index:2';
+      badge.textContent = 'Selected';
+      card.appendChild(badge);
+    }
+  });
+
+  // Build bullets HTML — if bullets missing show placeholder
+  const bulletsHtml = (p.bullets && p.bullets.length)
+    ? (p.bullets.map((b, bi) => {
+        const bulletId = `proj-bullet-${idx}-${bi}`;
+        return `<div style="position:relative;background:rgba(0,87,189,.03);border:1px solid var(--border);border-left:3px solid var(--primary-container);border-radius:0 12px 12px 0;padding:12px 40px 12px 14px;transition:background .15s" onmouseover="this.style.background='rgba(0,87,189,.06)'" onmouseout="this.style.background='rgba(0,87,189,.03)'">
+          <div id="${bulletId}" style="font-size:12px;font-weight:600;color:var(--on-surface);line-height:1.6">${esc(b)}</div>
+          <button onclick="copyEl('${bulletId}',this)" title="Copy bullet" style="position:absolute;top:10px;right:10px;background:none;border:none;cursor:pointer;color:var(--outline-v);transition:color .15s" onmouseover="this.style.color='var(--primary)'" onmouseout="this.style.color='var(--outline-v)'">
+            <span class="material-symbols-outlined" style="font-size:16px">content_copy</span>
+          </button>
+        </div>`;
+      }).join(''))
+    : `<div style="font-size:12px;color:var(--on-surface-v);padding:10px 0;font-style:italic">Resume bullets will appear here once the project prompt generates. Re-run for full results.</div>`;
+
+  // Render Blueprint bento section (no Catalyst Bar)
+  const det = document.getElementById('proj-details');
+  det.className = 'proj-details open';
+  det.innerHTML =
+    `<div style="background:var(--surface-low);border-radius:20px;overflow:hidden;margin-top:4px;border:1px solid var(--border)">
+
+      <!-- Blueprint header -->
+      <div style="padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px">
+        <div style="width:48px;height:48px;border-radius:14px;background:linear-gradient(135deg,var(--primary),var(--primary-container));display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(0,87,189,.25)">
+          <span class="material-symbols-outlined" style="color:#fff;font-size:22px;font-variation-settings:'FILL' 1">auto_awesome</span>
+        </div>
+        <div>
+          <div style="font-size:16px;font-weight:900;color:var(--on-surface);letter-spacing:-.2px">Project Blueprint: ${esc(p.title)}</div>
+          <div style="font-size:11px;font-weight:800;color:var(--primary);text-transform:uppercase;letter-spacing:.08em;margin-top:2px">Bridging your biggest gap</div>
+        </div>
+      </div>
+
+      <!-- Bento grid -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0">
+
+        <!-- Left: Skills + AI Prompt -->
+        <div style="padding:20px 24px;border-right:1px solid var(--border)">
+          <div style="margin-bottom:20px">
+            <div style="font-size:10px;font-weight:900;color:var(--outline);text-transform:uppercase;letter-spacing:.12em;margin-bottom:10px">What you are building</div>
+            <div style="font-size:13px;color:var(--on-surface-v);line-height:1.65;font-weight:500;margin-bottom:12px">${esc(p.description)}</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px">
+              ${(p.skills||[]).map(s=>`<span style="font-size:11px;font-weight:700;color:var(--secondary);background:rgba(70,71,211,.08);border:1px solid rgba(70,71,211,.15);border-radius:99px;padding:3px 10px">${esc(s)}</span>`).join('')}
+            </div>
+          </div>
+          <div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+              <div style="font-size:10px;font-weight:900;color:var(--outline);text-transform:uppercase;letter-spacing:.12em">Your AI Prompt</div>
+              <button onclick="copyEl('prompt-box-${idx}',this)" style="display:flex;align-items:center;gap:5px;font-size:10px;font-weight:900;color:var(--primary);text-transform:uppercase;letter-spacing:.06em;background:none;border:none;cursor:pointer;transition:opacity .15s" onmouseover="this.style.opacity='.7'" onmouseout="this.style.opacity='1'">
+                <span class="material-symbols-outlined" style="font-size:14px">content_copy</span>
+                Copy full prompt
+              </button>
+            </div>
+            <div id="prompt-box-${idx}" style="background:var(--card-bg);border:1.5px solid var(--border);border-left:4px solid var(--primary);border-radius:0 10px 10px 0;padding:12px 14px;font-size:12px;color:var(--on-surface-v);line-height:1.75;white-space:pre-wrap;max-height:200px;overflow-y:auto;font-family:inherit">${esc(p.ai_prompt||'Generating your AI prompt…')}</div>
+          </div>
+        </div>
+
+        <!-- Right: Resume bullets -->
+        <div style="padding:20px 24px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <div style="font-size:10px;font-weight:900;color:var(--outline);text-transform:uppercase;letter-spacing:.12em">Generated Resume Results</div>
+            <span style="font-size:10px;font-weight:800;color:var(--primary);background:rgba(0,87,189,.06);border-radius:99px;padding:3px 10px;text-transform:uppercase;letter-spacing:.06em">Optimized for ATS</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:10px">${bulletsHtml}</div>
+        </div>
+      </div>
+    </div>`;
+
+  det.scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+
+// ═══════════════════════════════════════════════════
+// RENDER — SCORES + ROAST (Tab 3)
+// Circular gauge rings matching design file
+// ═══════════════════════════════════════════════════
+function renderScores(d) {
+  document.getElementById('roast-txt').textContent = d.headline_roast || 'Your resume has been through a lot today.';
+  analysisData.headline_roast = d.headline_roast;
+  analysisData.bullet_quality = d.bullet_quality;
+  analysisData.impact_metrics = d.impact_metrics;
+  analysisData.ats_alignment  = d.ats_alignment;
+
+  const bq  = Math.round((d.bullet_quality || 5) * 10);
+  const im  = Math.round((d.impact_metrics  || 5) * 10);
+  const ats = Math.round((d.ats_alignment   || 5) * 10);
+
+  // r=58, circumference = 2π×58 ≈ 364.4
+  const circ = 364.4;
+  function animateGauge(fillId, pctId, pct) {
+    const fill = document.getElementById(fillId);
+    const lbl  = document.getElementById(pctId);
+    if (!fill || !lbl) return;
+    setTimeout(() => {
+      fill.style.strokeDashoffset = circ * (1 - pct / 100);
+      let cur = 0;
+      const step = () => { cur = Math.min(cur + 2, pct); lbl.textContent = cur + '%'; if (cur < pct) setTimeout(step, 20); };
+      step();
+    }, 150);
+  }
+
+  animateGauge('gauge-bq',  'gauge-bq-pct',  bq);
+  animateGauge('gauge-im',  'gauge-im-pct',  im);
+  animateGauge('gauge-ats', 'gauge-ats-pct', ats);
+
+  const bqSub  = document.getElementById('gauge-bq-sub');
+  const imSub  = document.getElementById('gauge-im-sub');
+  const atsSub = document.getElementById('gauge-ats-sub');
+  if (bqSub)  bqSub.textContent  = bq  >= 70 ? 'Strong phrasing, needs focus' : 'Needs stronger action verbs';
+  if (imSub)  imSub.textContent  = im  >= 70 ? 'Well quantified results'       : 'Under-quantified results';
+  if (atsSub) atsSub.textContent = ats >= 70 ? 'Keyword match optimal'         : 'Missing key ATS terms';
+
+  if (analysisData.ats_missing_keyword) {
+    const an = document.getElementById('ats-notice');
+    an.style.display = 'block';
+    an.textContent = `Right now ${100-(analysisData.ats_pass_rate||50)}% of ATS systems bin your resume before a human reads it. Biggest missing keyword: "${analysisData.ats_missing_keyword}". Adding it could push you from ${analysisData.ats_pass_rate||50}% to ${analysisData.ats_potential||75}%.`;
+  }
+
+  // Clear bullet skeleton
+  const bl = document.getElementById('bullets-list');
+  if (bl && bl.querySelector('.skeleton')) {
+    bl.innerHTML = `<div style="font-size:13px;color:var(--on-surface-v);padding:10px 0;font-weight:500">Analysing your bullets…</div>`;
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// RENDER — BULLET GROUPS (Tab 3) — called once per company
+// Left border color coding + tags + inline suggestion
+// ═══════════════════════════════════════════════════
+function appendBulletGroup(data) {
+  const list = document.getElementById('bullets-list');
+  if (list.querySelector('.skeleton') || list.querySelector('[style*="Analysing"]')) {
+    list.innerHTML = '';
+  }
+
+  const items = (data.items||[]).map(item => {
+    const isRed = item.status !== 'green';
+    const tags  = item.tags || [];
+    const tagHtml = tags.map(t => {
+      const isGood = ['Strong','Impact Validated','Quantified'].includes(t);
+      return `<span class="btag ${isGood?'btag-green':'btag-red'}">${t}</span>`;
+    }).join('');
+
+    if (!isRed) {
+      return `<div class="bullet-item green">
+        ${tagHtml ? `<div class="bullet-tags">${tagHtml}</div>` : ''}
+        <p class="bullet-text">${esc(item.text)}</p>
+      </div>`;
+    }
+
+    const idx = bulletStoreIdx++;
+    bulletStore.set(idx, { text: item.text, bh: item.brutal_honey, rw: item.rewrite, tags });
+
+    const suggestion = item.rewrite
+      ? `<div class="bullet-suggestion">Suggested: "${esc(item.rewrite.replace(/\[.*?\]/g,'…').substring(0,110))}${item.rewrite.length>110?'…':''}"</div>`
+      : '';
+
+    return `<div class="bullet-item red" onclick="openDlg(${idx})">
+      ${tagHtml ? `<div class="bullet-tags">${tagHtml}</div>` : ''}
+      <p class="bullet-text">${esc(item.text)}</p>
+      ${suggestion}
+      <div class="bullet-see-more">
+        <span class="material-symbols-outlined" style="font-size:14px">arrow_forward</span>
+        See full analysis
+      </div>
+    </div>`;
+  }).join('');
+
+  const group = document.createElement('div');
+  group.className = 'co-group';
+  group.innerHTML = `<div class="co-lbl">
+    <span class="material-symbols-outlined" style="font-size:14px;font-variation-settings:'FILL' 1">business</span>
+    ${esc(data.company)}
+    <span style="font-weight:500;font-size:10px;color:var(--outline)">${esc(data.role||'')}</span>
+  </div>${items}`;
+  list.appendChild(group);
+
+  const redCount = list.querySelectorAll('.bullet-item.red').length;
+  const badge = document.getElementById('bullets-flagged-count');
+  if (badge && redCount > 0) {
+    badge.textContent = `${redCount} flagged`;
+    badge.style.display = 'inline-flex';
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// RENDER — SUMMARY CARD / ACTION LIST (Tab 3 bottom)
+// Matching the design's Action List with icon circles
+// ═══════════════════════════════════════════════════
+function renderSummaryCard() {
+  const bullets  = document.getElementById('bullets-list');
+  const redCount = bullets ? bullets.querySelectorAll('.bullet-item.red').length : 0;
+  const topGap   = (analysisData.gaps&&analysisData.gaps[0])         ? analysisData.gaps[0].skill     : null;
+  const topCert  = (analysisData.certs&&analysisData.certs[0])       ? analysisData.certs[0].name     : null;
+  const topProj  = (analysisData.projects&&analysisData.projects[0]) ? analysisData.projects[0].title : null;
+  const atsFrom  = analysisData.ats_pass_rate || 50;
+  const atsTo    = analysisData.ats_potential  || 75;
+
+  function row(iconBg, iconColor, icon, label, valueHtml) {
+    return `<div class="action-row">
+      <div class="action-icon" style="background:${iconBg}">
+        <span class="material-symbols-outlined" style="color:${iconColor};font-size:17px;font-variation-settings:'FILL' 1">${icon}</span>
+      </div>
+      <div>
+        <div class="action-label">${label}</div>
+        ${valueHtml}
+      </div>
+    </div>`;
+  }
+
+  document.getElementById('summary-card').innerHTML =
+    `<h3 style="font-size:18px;font-weight:800;color:var(--on-surface);display:flex;align-items:center;gap:8px;margin-bottom:20px">
+      <span class="material-symbols-outlined" style="color:var(--primary);font-variation-settings:'FILL' 1">checklist</span>
+      Your Action List
+    </h3>
+    <div class="action-list">
+      ${row('rgba(70,71,211,.1)','var(--secondary)','edit_note','Bullets to rewrite',
+        `<div class="action-value">Focus on outcome-based engineering verbs</div>
+         <div style="margin-top:6px;width:36px;height:36px;border-radius:50%;background:rgba(70,71,211,.1);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:900;color:var(--secondary)">${redCount}</div>`)}
+      ${topGap ? row('rgba(0,87,189,.1)','var(--primary)','terminal','Top skill to close',
+        `<span class="action-chip">${esc(topGap)}</span>`) : ''}
+      ${topProj ? row('rgba(0,105,71,.1)','var(--tertiary)','architecture','Project to build',
+        `<div class="action-value">${esc(topProj)}</div>`) : ''}
+      ${topCert ? row('var(--surface-container)','var(--outline)','card_membership','Cert to get',
+        `<div class="action-value">${esc(topCert)}</div>`) : ''}
+      ${row('rgba(0,87,189,.08)','var(--primary)','trending_up','ATS improvement',
+        `<div class="action-ats">
+          <span class="action-ats-from">${atsFrom}%</span>
+          <span class="material-symbols-outlined" style="font-size:16px;color:var(--tertiary)">arrow_forward</span>
+          <span class="action-ats-to">${atsTo}%&thinsp;<span class="action-ats-note">(potential)</span></span>
+        </div>`)}
+      ${row('rgba(0,87,189,.08)','var(--primary)','account_circle','LinkedIn headline',
+        `<div class="action-value">Updated in Your Profile tab</div>`)}
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════════
+// DIALOG — BULLET ROAST
+// Matches score tab design aesthetic
+// ═══════════════════════════════════════════════════
+function openDlg(idx) {
+  const d = bulletStore.get(idx);
+  if (!d) return;
+
+  const tagHtml = (d.tags||[]).map(t => {
+    const isGood = ['Strong','Impact Validated','Quantified'].includes(t);
+    return `<span style="font-size:10px;font-weight:800;padding:2px 9px;border-radius:99px;text-transform:uppercase;letter-spacing:.04em;background:${isGood?'rgba(0,105,71,.1)':'rgba(179,27,37,.1)'};color:${isGood?'var(--tertiary)':'var(--error)'}">${t}</span>`;
+  }).join('');
+
+  document.getElementById('dlg-body').innerHTML =
+    `<div style="margin-bottom:14px">
+      <div class="dlg-lbl">Your bullet</div>
+      <div class="dlg-orig">${esc(d.text||'')}</div>
+      ${tagHtml ? `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px">${tagHtml}</div>` : ''}
+    </div>
+    <div class="dlg-verdict">${esc(d.bh||'This bullet needs work.')}</div>
+    ${d.rw ? `
+    <div>
+      <div class="dlg-lbl">What it should sound like</div>
+      <div class="dlg-rewrite" id="dlg-rw-text">${esc(d.rw)}</div>
+      <div class="dlg-note">Don't have exact numbers? "40% faster based on before/after testing" is real data. "Optimized" is not.</div>
+      <div class="dlg-footer">
+        <button class="copy-btn" onclick="copyEl('dlg-rw-text',this)">
+          <span class="material-symbols-outlined" style="font-size:15px;vertical-align:middle;margin-right:4px">content_copy</span>Copy rewrite
+        </button>
+        <button class="dlg-close-btn" onclick="closeDlg()">Close</button>
+      </div>
+    </div>` :
+    `<div style="background:var(--surface-low);border-radius:10px;padding:12px 14px;margin-bottom:12px">
+      <div style="font-size:12px;color:var(--on-surface-v);font-style:italic;font-weight:500">Ask Claude to rewrite this bullet — start with a strong action verb, include your specific metrics, and end with the business impact.</div>
+    </div>
+    <div class="dlg-footer"><button class="copy-btn" onclick="closeDlg()">Close</button></div>`}`;
+
+  document.getElementById('dlg-overlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeDlg(e) {
+  if (e && e.target !== document.getElementById('dlg-overlay')) return;
+  document.getElementById('dlg-overlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+// ═══════════════════════════════════════════════════
+// COPY HELPERS
+// ═══════════════════════════════════════════════════
+function copyEl(elId, btn) {
+  const el   = document.getElementById(elId);
+  const text = el ? (el.innerText || el.textContent || '') : '';
+  navigator.clipboard.writeText(text).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+  });
+  if (btn) {
+    const orig = btn.textContent;
+    btn.textContent = '✓ Copied!'; btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 2500);
+  }
+}
+
+function cpInline(text, btn) {
+  navigator.clipboard.writeText(text).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+  });
+  if (btn) {
+    const orig = btn.textContent;
+    btn.textContent = '✓'; btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 2500);
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// MATCH BADGE + INSIGHT BAR ANIMATIONS (front page)
+// ═══════════════════════════════════════════════════
+(function animateFrontPage() {
+  // Animate the 85% match ring after a short delay
+  setTimeout(() => {
+    const fill = document.getElementById('match-ring-fill');
+    const pct  = document.getElementById('match-ring-pct');
+    if (!fill || !pct) return;
+    const circ = 175.9;
+    const target = 85;
+    fill.style.strokeDashoffset = circ * (1 - target / 100);
+    // Count up the number
+    let cur = 0;
+    const step = () => {
+      cur = Math.min(cur + 2, target);
+      pct.textContent = cur + '%';
+      if (cur < target) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }, 600);
+
+  // Animate the ATS insight bar
+  setTimeout(() => {
+    const bar = document.getElementById('ic-ats-fill');
+    if (bar) bar.style.width = '75%';
+  }, 900);
+})();
+
+// ═══════════════════════════════════════════════════
+// FEEDBACK SUBMISSION
+// ═══════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════
+// FEEDBACK — wired to Formspree (I17)
+// ═══════════════════════════════════════════════════
+async function submitFeedback() {
+  const ta  = document.getElementById('feedback-ta');
+  const btn = document.querySelector('.feedback-btn');
+  if (!ta || !ta.value.trim()) {
+    ta.style.borderColor = 'var(--error)';
+    ta.style.boxShadow   = '0 0 0 3px rgba(179,27,37,.12)';
+    setTimeout(() => { ta.style.borderColor=''; ta.style.boxShadow=''; }, 1800);
+    return;
+  }
+  const message = ta.value.trim();
+  const orig    = btn.innerHTML;
+  btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px;animation:spin .7s linear infinite">autorenew</span> Sending…';
+  btn.disabled  = true;
+
+  try {
+    const res = await fetch('https://formspree.io/f/meepgvnj', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body:    JSON.stringify({ message, _subject: 'GradLaunch Feedback' })
+    });
+
+    if (res.ok) {
+      ta.value      = '';
+      btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px">check_circle</span> Thanks! We read every message.';
+      btn.style.background = 'var(--tertiary)';
+      setTimeout(() => {
+        btn.innerHTML        = orig;
+        btn.style.background = '';
+        btn.disabled         = false;
+      }, 3500);
+    } else {
+      throw new Error('Send failed');
+    }
+  } catch {
+    btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px">error</span> Could not send — try again';
+    btn.style.background = 'var(--error)';
+    setTimeout(() => {
+      btn.innerHTML        = orig;
+      btn.style.background = '';
+      btn.disabled         = false;
+    }, 3000);
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// UTILITY
+// ═══════════════════════════════════════════════════
+function esc(str) {
+  return (str||'')
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+</script>
+</body>
+</html>
