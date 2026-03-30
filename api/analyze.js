@@ -219,7 +219,7 @@ Rules:
   }
 }
 
-
+  const TOOLS = [
   {
     name: 'set_verdict',
     description: 'Set the overall verdict. Call this FIRST — it renders immediately.',
