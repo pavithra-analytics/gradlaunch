@@ -167,7 +167,7 @@ async function generateProjectPrompt(project, apiKey) {
     const { title, description, skills } = project;
     const techStack = (skills || []).slice(0, 6).join(', ');
 
-    const metaPrompt = `You are writing a prompt that a developer will paste into Claude or ChatGPT to get hands-on help building a portfolio project from scratch. The developer is a student with no existing infrastructure — they are starting from zero on their laptop.
+    const metaPrompt = `You are writing a prompt that a developer will paste into Claude or ChatGPT to get hands-on help building a portfolio project from scratch. The developer is a student with no existing infrastructure. They are starting from zero on their laptop.
 
 Project to build: ${title}
 Tech stack: ${techStack}
@@ -177,7 +177,7 @@ Write the prompt following these EXACT rules:
 
 1. Start with "Act as a senior [specific role matching the tech stack]. We are building [project name] together from scratch."
 
-2. IMMEDIATELY specify the exact tools — name the exact free dataset or API (e.g. "We will use the Yahoo Finance API via yfinance" or "We will use the Spotify API with spotipy"), the exact database (SQLite for simple, PostgreSQL for complex), the exact UI framework (Streamlit for data projects, FastAPI for APIs, React for frontends), and what the final output looks like visually (e.g. "a Streamlit dashboard with a bar chart showing X and a table showing Y").
+2. IMMEDIATELY specify the exact tools. Name the exact free dataset or API (e.g. "We will use the Yahoo Finance API via yfinance" or "We will use the Spotify API with spotipy"), the exact database (SQLite for simple, PostgreSQL for complex), the exact UI framework (Streamlit for data projects, FastAPI for APIs, React for frontends), and what the final output looks like visually (e.g. "a Streamlit dashboard with a bar chart showing X and a table showing Y").
 
 3. Phase 1 (2 sentences): Planning only. No code, no file names, no technology choices yet. Tell the AI to ask 2 specific questions about what this project should do and who will use it. End with: "Say 'next phase' when ready."
 
@@ -714,7 +714,7 @@ async function streamAnalysis({ apiKey, systemPrompt, marketDataBlock, userConte
         'Content-Type':      'application/json',
         'x-api-key':         apiKey,
         'anthropic-version': '2023-06-01',
-        ...(fileId ? { 'anthropic-beta': 'files-api-2025-04-14' } : {}),
+        'anthropic-beta':    `prompt-caching-2024-07-31${fileId ? ',files-api-2025-04-14' : ''}`,
         'Content-Length':    Buffer.byteLength(requestBody)
       },
       timeout: 55000
