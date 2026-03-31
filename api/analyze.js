@@ -556,6 +556,7 @@ set_gaps count: ALWAYS output exactly 5 gaps. If fewer than 5 critical gaps exis
 ATS SCORING:
 ats_pass_rate and ats_potential are pre-computed and injected above as PRE-COMPUTED ATS KEYWORD MATCH. Use those EXACT numbers. Do not recalculate.
 ats_missing_keyword: use the top missing keyword from the pre-computed data above.
+CONSISTENCY RULE: The ats_alignment score in set_scores (0-10 scale) MUST equal ats_pass_rate ÷ 10, rounded. If ats_pass_rate is 40%, ats_alignment must be 4. Never let these two numbers contradict each other.
 
 VERDICT QUALITY:
 verdict_headline must name something SPECIFIC from this resume. A company, a tool, a number, a gap. If you could apply the same sentence to a different resume without changing a word, rewrite it.
@@ -581,7 +582,17 @@ Every output must make the student say how did it know that about me, not this c
 If you write something a recruiter has seen before, you have failed.
 Specificity is your only tool. Reference company names from the resume, specific tools they used, specific numbers if present, specific market data percentages.
 
-FORBIDDEN OUTPUTS — if you produce any of these, stop and rewrite before outputting:
+ANTI-HALLUCINATION RULE — CRITICAL:
+You may ONLY reference facts that appear explicitly in the resume text or job description provided. This means:
+- Only mention companies that are named in the resume
+- Only mention projects that are described in the resume
+- Only mention tools, technologies, or skills that appear in the resume
+- Only use numbers or metrics that appear in the resume
+- If the resume does not contain enough specific detail for a sentence, write a more general capability statement instead
+- NEVER invent a project, achievement, company, or metric that is not in the resume
+- If you find yourself writing something specific that you cannot point to in the resume text, replace it with a general statement about skills or direction
+
+LINKEDIN ABOUT RULE: Every sentence in linkedin_about must be directly traceable to content in the RESUME TEXT provided. If you cannot cite the source in the resume, do not write it.
 LinkedIn About openers: I am a, As a, With X years of experience, Passionate about, Dedicated professional, Results-driven, Dynamic, Innovative, Looking for
 Any sentence that could apply to a different person's resume without changing a word
 Cert picks not directly linked to a verified gap in the market data for this specific role
@@ -774,28 +785,7 @@ function emitToolCallA(name, args, res, sal, role, marketData, atsResult) {
         };
       });
 
-      // Safety net: if Claude returned too few gaps or server ATS found verified missing skills,
-      // fill up to 5 using the server-computed missing list (guaranteed real from scrape data)
-      let gaps = claudeGaps;
-      const serverMissing = atsResult?.missingTop || [];
-      if (gaps.length < 5 && serverMissing.length) {
-        const existing = new Set(gaps.map(g => g.skill.toLowerCase()));
-        for (const skill of serverMissing) {
-          if (gaps.length >= 5) break;
-          if (!existing.has(skill.toLowerCase())) {
-            const pct = lookupSkillPct(skill, skillFreq);
-            gaps.push({
-              skill,
-              priority:   gaps.length < 2 ? 'Critical' : 'Important',
-              how_often:  pct || 0,
-              how_to_fix: `Add ${skill} to your resume with a specific project or example.`
-            });
-            existing.add(skill.toLowerCase());
-          }
-        }
-      }
-
-      sendEvent(res, 'gaps', { gaps });
+      sendEvent(res, 'gaps', { gaps: claudeGaps });
       break;
     }
 
