@@ -2872,6 +2872,9 @@ function handleSSE(name, data) {
 function showPage(name) {
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.getElementById('pg-'+name).classList.add('active');
+  // Hide nav during loading (it's in normal document flow and pushes content down)
+  const nav = document.querySelector('.nav');
+  if (nav) nav.style.display = name === 'loading' ? 'none' : '';
   window.scrollTo(0,0);
 }
 
@@ -2993,6 +2996,8 @@ function renderVerdict(d) {
   analysisData.ats_pass_rate      = d.ats_pass_rate;
   analysisData.ats_potential       = d.ats_potential;
   analysisData.ats_missing_keyword = d.ats_missing_keyword;
+  analysisData.ats_missing_list    = d.ats_missing_list || [];
+  analysisData.ats_needed          = d.ats_needed ?? null;
   analysisData.salary              = sal;
   // Salary rendered in stat card above via salVal
 }
@@ -3479,8 +3484,19 @@ function renderSummaryCard() {
   const topGap   = (analysisData.gaps&&analysisData.gaps[0])         ? analysisData.gaps[0].skill     : null;
   const topCert  = (analysisData.certs&&analysisData.certs[0])       ? analysisData.certs[0].name     : null;
   const topProj  = (analysisData.projects&&analysisData.projects[0]) ? analysisData.projects[0].title : null;
-  const atsFrom  = analysisData.ats_pass_rate || 50;
-  const atsTo    = analysisData.ats_potential  || 75;
+  const atsFrom    = analysisData.ats_pass_rate || 0;
+  const atsMissing = analysisData.ats_missing_list || [];
+  const atsNeeded  = analysisData.ats_needed;
+
+  // ATS row: show keywords to add and the 75% target, not an inflated potential %
+  const atsRowContent = atsFrom >= 75
+    ? `<div class="action-ats"><span class="action-ats-to" style="color:var(--tertiary)">${atsFrom}%</span><span class="action-ats-note" style="margin-left:4px">— above ATS threshold</span></div>`
+    : atsMissing.length
+    ? `<div style="margin-top:4px">
+        <div style="font-size:11px;color:var(--on-surface-v);font-weight:500;margin-bottom:4px">${atsFrom}% now · add these to reach 75%+:</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px">${atsMissing.map(k=>`<span style="font-size:10px;font-weight:700;background:rgba(0,87,189,.08);color:var(--primary);border-radius:6px;padding:2px 7px">${esc(k)}</span>`).join('')}</div>
+       </div>`
+    : `<div class="action-ats"><span class="action-ats-from">${atsFrom}%</span><span class="material-symbols-outlined" style="font-size:16px;color:var(--tertiary)">arrow_forward</span><span class="action-ats-to">75%<span class="action-ats-note"> target</span></span></div>`;
 
   function row(iconBg, iconColor, icon, label, valueHtml) {
     return `<div class="action-row">
@@ -3509,12 +3525,7 @@ function renderSummaryCard() {
         `<div class="action-value">${esc(topProj)}</div>`) : ''}
       ${topCert ? row('var(--surface-container)','var(--outline)','card_membership','Cert to get',
         `<div class="action-value">${esc(topCert)}</div>`) : ''}
-      ${row('rgba(0,87,189,.08)','var(--primary)','trending_up','ATS improvement',
-        `<div class="action-ats">
-          <span class="action-ats-from">${atsFrom}%</span>
-          <span class="material-symbols-outlined" style="font-size:16px;color:var(--tertiary)">arrow_forward</span>
-          <span class="action-ats-to">${atsTo}%&thinsp;<span class="action-ats-note">(potential)</span></span>
-        </div>`)}
+      ${row('rgba(0,87,189,.08)','var(--primary)','trending_up','ATS improvement', atsRowContent)}
       ${row('rgba(0,87,189,.08)','var(--primary)','account_circle','LinkedIn headline',
         `<div class="action-value">Updated in Your Profile tab</div>`)}
     </div>`;
