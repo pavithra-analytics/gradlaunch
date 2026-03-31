@@ -333,7 +333,7 @@ async function scrapeRole(role, token) {
   // Poll for completion — max 90 seconds (18 × 5s)
   // warmcache runs overnight so we can afford to wait
   let succeeded = false;
-  for (let i = 0; i < 18; i++) {
+  for (let i = 0; i < 10; i++) {
     await sleep(5000);
     try {
       const s      = await httpGet(`https://api.apify.com/v2/actor-runs/${runId}?token=${token}`);
@@ -347,7 +347,7 @@ async function scrapeRole(role, token) {
   }
 
   if (!succeeded) {
-    console.log(`  ✗ ${role}: timed out after 90s`);
+    console.log(`  ✗ ${role}: timed out after 50s — Apify may be slow, will retry next run`);
     return null;
   }
 
