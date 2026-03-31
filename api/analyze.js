@@ -512,6 +512,7 @@ MARKET DATA IS LAW:
 skill_relevance: The server will override your values using the actual scraped data. Still output your best estimate using the EXACT percentages listed — it helps validation. If SQL appears at 82% in the data, output 82 for SQL. Never output a value higher than what the market data shows for that skill.
 set_gaps how_often: EXACT % from market data. Only name skills that appear in the market data list. Do NOT invent skill name variations like "Advanced SQL" if the market data shows "sql". Use the exact skill name from the market data.
 set_gaps skills: ONLY use skill names that appear verbatim in the market data list provided. If a skill is not in the market data list, do not include it as a gap.
+set_gaps count: ALWAYS output exactly 5 gaps. If fewer than 5 critical gaps exist, add Important or Nice to have items to reach exactly 5. Never output fewer than 5.
 
 ATS SCORING — READ CAREFULLY:
 ats_pass_rate measures what % of the top market data keywords for this role appear in the resume. It is NOT about missing keywords — it is about keywords that ARE present.
@@ -620,15 +621,19 @@ ${hasJD ? `JOB DESCRIPTION:\n${jd}\n\nSince a JD was provided, also call set_jd_
 Call ALL tools in order. Never stop after set_verdict. Every output must reference actual content from this specific resume.`;
 }
 
-function buildAnalysisPromptB(role, locationStr, jd, hasJD, sal, marketDataBlock, resumeText) {
+function buildAnalysisPromptB(role, locationStr, jd, hasJD, sal, marketDataBlock, resumeText, confirmedSkills) {
+  // confirmedSkills comes from Stream A's set_skills output — use these as ground truth
+  // for what's already in the resume so Sonnet never recommends adding a skill they have
+  const skillsNote = confirmedSkills && confirmedSkills.length
+    ? `\nCONFIRMED SKILLS ALREADY IN RESUME (from resume analysis — do NOT recommend adding these to LinkedIn):\n${confirmedSkills.join(', ')}\n`
+    : '';
+
   return `Write LinkedIn optimization, certifications, and project suggestions for a ${role} candidate.
 
 ${marketDataBlock}
-
+${skillsNote}
 ${resumeText ? `RESUME TEXT:\n${resumeText}\n` : ''}
-
 ${hasJD ? `JOB DESCRIPTION:\n${jd}\n` : ''}
-
 Call ALL tools: set_linkedin, set_certifications, set_projects.
 Every LinkedIn sentence must reference something specific from this resume. Every cert must close a real gap from market data. Every project ai_prompt must be complete and copy-pasteable. All 3 project ai_prompts must have identical depth.`;
 }
@@ -784,30 +789,39 @@ function emitToolCallB(name, args, res, role, marketData) {
       });
       break;
     case 'set_projects': {
-      let projects = (args.projects || []).map(p => ({
-        market_signal: clamp(p.market_signal || 0, 0, 100),
-        title:         p.title         || '',
-        justification: p.justification || '',
-        description:   p.description   || '',
-        skills:        p.skills        || [],
-        time_hours:    p.time_hours    || 8,
-        ai_prompt:     p.ai_prompt     || '',
-        bullets:       (p.bullets || []).slice(0, 2)
-      }));
+      let projects = (args.projects || []).map(p => {
+        // Override market_signal server-side — never trust Claude's number
+        // Use the first skill in the project's skills array as the primary skill
+        const primarySkill = (p.skills || [])[0] || p.title || '';
+        const scrapedSignal = lookupSkillPct(primarySkill, skillFreq);
+        const signal = scrapedSignal !== null
+          ? scrapedSignal
+          : clamp(p.market_signal || 0, 0, 100);
 
-      // Sort by market signal descending
+        return {
+          market_signal: signal,
+          title:         p.title         || '',
+          justification: p.justification || '',
+          description:   p.description   || '',
+          skills:        p.skills        || [],
+          time_hours:    p.time_hours    || 8,
+          ai_prompt:     p.ai_prompt     || '',
+          bullets:       (p.bullets || []).slice(0, 2)
+        };
+      });
+
+      // Sort by real signal descending
       projects.sort((a, b) => b.market_signal - a.market_signal);
 
-      // Floor enforcement: if we have 3+ projects above 20%, drop those below
-      // If fewer than 3 are above 20%, keep top 3 regardless (still sorted)
+      // Floor: if 3+ projects above 20%, drop those below
       const SIGNAL_FLOOR = 20;
       const aboveFloor = projects.filter(p => p.market_signal >= SIGNAL_FLOOR);
       if (aboveFloor.length >= 3) {
         projects = aboveFloor;
         const dropped = (args.projects || []).length - aboveFloor.length;
-        if (dropped > 0) console.log(`Projects: dropped ${dropped} below ${SIGNAL_FLOOR}% signal floor`);
+        if (dropped > 0) console.log(`Projects: dropped ${dropped} below ${SIGNAL_FLOOR}% floor`);
       } else {
-        console.log(`Projects: fewer than 3 above ${SIGNAL_FLOOR}% floor, keeping top 3 by signal`);
+        console.log(`Projects: fewer than 3 above ${SIGNAL_FLOOR}%, keeping top 3 by signal`);
       }
 
       sendEvent(res, 'projects', { projects: projects.slice(0, 3) });
@@ -1030,9 +1044,8 @@ module.exports = async function handler(req, res) {
       ]
     : promptA + `\n\nRESUME TEXT:\n${resume}`;
 
-  // Stream B user content — text only (Sonnet gets resume text, not the file)
+  // Stream B user content built dynamically after Stream A emits set_skills
   const resumeForB = resume || '';
-  const userContentB = buildAnalysisPromptB(role, locationStr, jd, hasJD, sal, marketDataBlock, resumeForB);
 
   // SSE headers
   res.setHeader('Content-Type',      'text/event-stream');
@@ -1060,34 +1073,68 @@ module.exports = async function handler(req, res) {
     }
   };
 
+  // ── Stream A launches immediately ──
+  // Stream B waits until Stream A emits set_skills (~4-6s).
+  // This gives Stream B the actual skills_present list so it never
+  // recommends adding a skill the user already has in their resume.
+  // Cost: ~5s before Stream B starts. Benefit: zero contradictions.
+
+  let streamASkills = []; // populated by set_skills before B launches
+
+  // Promise that resolves when Stream A emits set_skills
+  let resolveSkillsReady;
+  const skillsReady = new Promise(r => { resolveSkillsReady = r; });
+
+  // Wrap emitToolCallA to intercept set_skills and trigger Stream B launch
+  const emitA = (name, args) => {
+    emitToolCallA(name, args, res, sal, role, marketData);
+    if (name === 'set_skills') {
+      streamASkills = (args.skills_present || []).slice(0, 6);
+      resolveSkillsReady(streamASkills);
+    }
+  };
+
   try {
-    // Launch both streams simultaneously
-    const [anthropicResA, anthropicResB] = await Promise.all([
-      makeStreamRequest({
-        apiKey,
-        model:       MODEL_A,
-        system:      systemPromptA,
-        userContent: userContentA,
-        tools:       TOOLS_A,
-        fileId,
-        maxTokens:   8000
-      }),
-      makeStreamRequest({
+    // Launch Stream A immediately
+    const anthropicResA = await makeStreamRequest({
+      apiKey,
+      model:       MODEL_A,
+      system:      systemPromptA,
+      userContent: userContentA,
+      tools:       TOOLS_A,
+      fileId,
+      maxTokens:   8000
+    });
+
+    // Start processing Stream A — it will trigger skillsReady when set_skills arrives
+    const streamAPromise = processStream(anthropicResA, emitA);
+
+    // Wait for Stream A to emit set_skills (typically 4-6 seconds in)
+    // then launch Stream B with the real skills list injected
+    const launchStreamB = async () => {
+      const confirmedSkills = await skillsReady;
+
+      // Build Stream B prompt now — injecting confirmed skills_present
+      const userContentB = buildAnalysisPromptB(
+        role, locationStr, jd, hasJD, sal, marketDataBlock,
+        resumeForB, confirmedSkills
+      );
+
+      const anthropicResB = await makeStreamRequest({
         apiKey,
         model:       MODEL_B,
         system:      systemPromptB,
         userContent: userContentB,
         tools:       TOOLS_B,
         fileId:      null,
-        maxTokens:   6000
-      })
-    ]);
+        maxTokens:   3500  // capped for speed — Sonnet is verbose, 3500 is enough
+      });
 
-    // Process both concurrently
-    await Promise.all([
-      processStream(anthropicResA, (name, args) => emitToolCallA(name, args, res, sal, role, marketData)),
-      processStream(anthropicResB, (name, args) => emitToolCallB(name, args, res, role, marketData))
-    ]);
+      return processStream(anthropicResB, (name, args) => emitToolCallB(name, args, res, role, marketData));
+    };
+
+    // Both streams run concurrently — A is already going, B launches mid-A
+    await Promise.all([streamAPromise, launchStreamB()]);
 
     await cleanupFile();
     sendEvent(res, 'done', { complete: true });
