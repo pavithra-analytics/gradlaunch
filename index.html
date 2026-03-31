@@ -3523,8 +3523,64 @@ function renderSummaryCard() {
 }
 
 // ═══════════════════════════════════════════════════
+// BULLET REWRITE — Haiku micro-call
+// Fires when dialog opens and rewrite is null.
+// Generates a role-relevant replacement in ~2 seconds.
+// ═══════════════════════════════════════════════════
+async function generateBulletRewrite(bulletText, brutalHoney, role) {
+  const rwEl   = document.getElementById('dlg-rw-text');
+  const copyBtn = document.getElementById('dlg-copy-btn');
+  if (!rwEl) return;
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model:      'claude-haiku-4-5',
+        max_tokens: 120,
+        messages: [{
+          role:    'user',
+          content: `You are rewriting a resume bullet for a ${role} role.
+
+Original bullet: "${bulletText}"
+
+Why it doesn't work: ${brutalHoney || 'Not relevant to the target role.'}
+
+Write ONE replacement bullet under 25 words that:
+- Starts with a strong action verb
+- Shows a product, user, or business outcome (not a technical process)
+- Includes [X] or [Y] placeholders where numbers would strengthen it
+- Sounds like it belongs on a ${role} resume
+
+Output ONLY the single bullet sentence. No explanation. No quotes.`
+        }]
+      })
+    });
+
+    if (!res.ok) throw new Error('API error');
+    const data = await res.json();
+    const text = data?.content?.[0]?.text?.trim();
+    if (text && text.length > 10 && rwEl.isConnected) {
+      rwEl.textContent = text;
+      rwEl.style.fontStyle = 'normal';
+      rwEl.style.opacity   = '1';
+      if (copyBtn) {
+        copyBtn.disabled  = false;
+        copyBtn.onclick   = () => copyEl('dlg-rw-text', copyBtn);
+      }
+    }
+  } catch {
+    if (rwEl && rwEl.isConnected) {
+      rwEl.textContent = `Rewrite this bullet to show a specific ${role} outcome — what decision did you enable or what metric did you move?`;
+      rwEl.style.fontStyle = 'italic';
+      rwEl.style.opacity   = '.8';
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════
 // DIALOG — BULLET ROAST
-// Matches score tab design aesthetic
 // ═══════════════════════════════════════════════════
 function openDlg(idx) {
   const d = bulletStore.get(idx);
@@ -3576,13 +3632,26 @@ function openDlg(idx) {
         <button class="dlg-close-btn" onclick="closeDlg()">Close</button>
       </div>
     </div>` :
-    `<div style="background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25);border-radius:10px;padding:12px 14px;margin-bottom:12px">
-      <div style="font-size:12px;font-weight:600;color:var(--on-surface);line-height:1.6">This bullet should be removed or replaced with a ${esc(currentRole||'target role')}-relevant experience that shows product or business impact.</div>
-    </div>
-    <div class="dlg-footer"><button class="copy-btn" onclick="closeDlg()">Got it</button></div>`}`;
+    `<div>
+      <div class="dlg-lbl">What it should sound like</div>
+      <div id="dlg-rw-text" class="dlg-rewrite" style="font-style:italic;opacity:.7;font-size:12px">
+        Generating a ${esc(currentRole||'target role')}-relevant replacement…
+      </div>
+      <div class="dlg-footer">
+        <button class="copy-btn" id="dlg-copy-btn" disabled onclick="copyEl('dlg-rw-text',this)">
+          <span class="material-symbols-outlined" style="font-size:15px;vertical-align:middle;margin-right:4px">content_copy</span>Copy rewrite
+        </button>
+        <button class="dlg-close-btn" onclick="closeDlg()">Close</button>
+      </div>
+    </div>`}`;
 
   document.getElementById('dlg-overlay').classList.add('open');
   document.body.style.overflow = 'hidden';
+
+  // If no rewrite was provided, generate one via a quick Haiku call
+  if (!isRemoveInstruction && !d.rw) {
+    generateBulletRewrite(d.text, d.bh, currentRole);
+  }
 }
 
 function closeDlg(e) {
