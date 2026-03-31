@@ -2940,20 +2940,16 @@ function renderVerdict(d) {
     ? `${d.ats_pass_rate||0}% of top keywords found. ${100-(d.ats_pass_rate||50)}% missing — fixable.`
     : `${d.ats_pass_rate}% keyword coverage — ATS-friendly.`;
 
-  // Salary: show mid as the highlighted figure, entry–senior as context
-  const matchScore = d.match_score || 0;
-  // Infer experience band from match score as proxy
-  // Low match = early career framing, high match = senior framing
-  const salMid  = sal._fromPostings || sal.m;
-  const salCtx  = sal.e && sal.s ? `${sal.e} entry · ${sal.m} mid · ${sal.s} senior` : '';
-  const salText = salMid ? salMid : '';
+  // Salary: range only — entry to senior, no mid
+  const salRange = sal.e && sal.s ? `${sal.e} – ${sal.s}` : sal.e || sal.s || '';
+  const salText  = salRange;
 
   document.getElementById('sum-row').innerHTML =
     `<div class="smet"><div class="smv">${d.match_score||0}%</div><div class="sml">Role match</div></div>`+
     `<div class="smet"><div class="smv" id="skills-count">—</div><div class="sml">Skills present</div></div>`+
     `<div class="smet"><div class="smv" id="gaps-count">—</div><div class="sml">Gaps found</div></div>`+
     `<div class="smet-wide"><div class="smet-lbl">Keyword Match (ATS)</div><div class="smet-val">${atsText}</div></div>`+
-    (salText?`<div class="smet-wide"><div class="smet-lbl">Salary Range</div><div class="smet-val" style="font-size:18px;font-weight:900">${esc(salText)}</div>${salCtx?`<div style="font-size:10px;opacity:.65;margin-top:2px">${esc(salCtx)}</div>`:''}</div>`:'');
+    (salText?`<div class="smet-wide"><div class="smet-lbl">Salary Range</div><div class="smet-val">${esc(salText)}</div></div>`:'');
 
   // ── Profile hero card ──
   const matchPct = d.match_score || 0;
@@ -2983,23 +2979,13 @@ function renderVerdict(d) {
     ? `of top keywords found. Add "${d.ats_missing_keyword || 'key terms'}" to improve.`
     : `Strong keyword coverage for this role.`;
 
-  // Salary stat card — mid as primary, entry–senior as context
+  // Salary stat card — range only
   const salVal = document.getElementById('profile-sal-val');
   if (salVal) {
-    // Use posting median if available, otherwise BLS mid
-    const primary = sal._fromPostings || sal.m || sal.e || '';
-    salVal.textContent = primary || 'Calculating…';
-    // Add entry–senior context as a small subtitle
-    if (sal.e && sal.s) {
-      let ctx = salVal.parentElement.querySelector('.sal-ctx');
-      if (!ctx) {
-        ctx = document.createElement('div');
-        ctx.className = 'sal-ctx';
-        ctx.style.cssText = 'font-size:10px;color:var(--on-surface-v);margin-top:2px;font-weight:500';
-        salVal.parentElement.insertBefore(ctx, salVal.nextSibling);
-      }
-      ctx.textContent = `${sal.e} entry · ${sal.s} senior`;
-    }
+    salVal.textContent = (sal.e && sal.s) ? `${sal.e} – ${sal.s}` : sal.e || sal.s || 'Calculating…';
+    // Remove any existing sal-ctx element from previous renders
+    const existingCtx = salVal.parentElement.querySelector('.sal-ctx');
+    if (existingCtx) existingCtx.remove();
   }
 
   // Store ATS data for summary card
@@ -3031,7 +3017,7 @@ function renderSkills(skills, levels, relevance) {
     const hi = order[lvl[b] || 'Intermediate'] ?? 1;
     if (lo !== hi) return lo - hi;
     return (rel[b] || 0) - (rel[a] || 0);
-  }).slice(0, 6);
+  }).slice(0, 5);
 
   // Bar width and label driven by skill LEVEL — not posting frequency
   // Posting frequency was confusing and contradicted LinkedIn suggestions
@@ -3417,7 +3403,9 @@ function appendBulletGroup(data) {
     const idx = bulletStoreIdx++;
     bulletStore.set(idx, { text: item.text, bh: item.brutal_honey, rw: item.rewrite, tags });
 
-    const suggestion = item.rewrite
+    const suggestion = item.rewrite && /^<\s*REMOVE/i.test(item.rewrite.trim())
+      ? `<div class="bullet-suggestion" style="color:var(--amber-text)">⚠ Consider removing — not relevant to target role</div>`
+      : item.rewrite
       ? `<div class="bullet-suggestion">Suggested: "${esc(item.rewrite.replace(/\[.*?\]/g,'…').substring(0,110))}${item.rewrite.length>110?'…':''}"</div>`
       : '';
 
@@ -3544,6 +3532,14 @@ function openDlg(idx) {
     return `<span style="font-size:10px;font-weight:800;padding:2px 9px;border-radius:99px;text-transform:uppercase;letter-spacing:.04em;background:${isGood?'rgba(0,105,71,.1)':'rgba(179,27,37,.1)'};color:${isGood?'var(--tertiary)':'var(--error)'}">${t}</span>`;
   }).join('');
 
+  // Detect if Claude output a <REMOVE: ...> meta-instruction instead of a real rewrite
+  // This happens when a bullet is so off-target it should be dropped entirely.
+  // Show it as an advisory, not a green rewrite box.
+  const isRemoveInstruction = d.rw && /^<\s*REMOVE/i.test(d.rw.trim());
+  const removeReason = isRemoveInstruction
+    ? d.rw.replace(/^<\s*REMOVE\s*:?\s*/i,'').replace(/>$/,'').trim()
+    : null;
+
   document.getElementById('dlg-body').innerHTML =
     `<div style="margin-bottom:14px">
       <div class="dlg-lbl">Your bullet</div>
@@ -3551,7 +3547,21 @@ function openDlg(idx) {
       ${tagHtml ? `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px">${tagHtml}</div>` : ''}
     </div>
     <div class="dlg-verdict">${esc(d.bh||'This bullet needs work.')}</div>
-    ${d.rw ? `
+    ${isRemoveInstruction ? `
+    <div>
+      <div class="dlg-lbl">Recommendation</div>
+      <div style="background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);border-radius:10px;padding:12px 14px;margin-bottom:12px">
+        <div style="display:flex;align-items:flex-start;gap:8px">
+          <span class="material-symbols-outlined" style="color:#d97706;font-size:18px;flex-shrink:0;font-variation-settings:'FILL' 1">info</span>
+          <div style="font-size:13px;font-weight:600;color:var(--on-surface);line-height:1.5">
+            <strong>Consider removing this bullet.</strong>${removeReason ? `<br><span style="font-weight:500;color:var(--on-surface-v)">${esc(removeReason)}</span>` : ''}
+          </div>
+        </div>
+      </div>
+      <div class="dlg-note">If this experience is relevant to your target role, rewrite it to show product or business impact instead of technical process.</div>
+      <div class="dlg-footer"><button class="copy-btn" onclick="closeDlg()">Got it</button></div>
+    </div>` :
+    d.rw ? `
     <div>
       <div class="dlg-lbl">What it should sound like</div>
       <div class="dlg-rewrite" id="dlg-rw-text">${esc(d.rw)}</div>
