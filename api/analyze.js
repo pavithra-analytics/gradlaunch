@@ -3,6 +3,12 @@ const https        = require('https');
 const { deleteFile }              = require('./upload');
 const { roleCacheKey, upstashGet, ROLES } = require('./warmcache');
 
+// ── Model strings from env vars — swap without code deploy ──
+// Set STREAM_A_MODEL and STREAM_B_MODEL in Vercel environment variables.
+// Fallbacks pin to last tested versions.
+const MODEL_A = process.env.STREAM_A_MODEL || 'claude-haiku-4-5';
+const MODEL_B = process.env.STREAM_B_MODEL || 'claude-sonnet-4-5';
+
 // ═══════════════════════════════════════════════════════
 // RATE LIMITER — 5 per IP per rolling hour
 // ═══════════════════════════════════════════════════════
@@ -503,8 +509,16 @@ NEVER start with Additionally, Furthermore, Moreover, or Overall.
 NEVER use: results-driven, passionate about, seeking opportunities, team player, synergy, leveraged, utilized, or any visa language.
 
 MARKET DATA IS LAW:
-skill_relevance: use EXACT percentages from market data. These represent how often the skill appears in real job postings, not how proficient the user is. If SQL appears in 82% of postings, output 82, not 98. If skill not in market data, estimate conservatively with max 55.
-set_gaps how_often: EXACT % from market data.
+skill_relevance: The server will override your values using the actual scraped data. Still output your best estimate using the EXACT percentages listed — it helps validation. If SQL appears at 82% in the data, output 82 for SQL. Never output a value higher than what the market data shows for that skill.
+set_gaps how_often: EXACT % from market data. Only name skills that appear in the market data list. Do NOT invent skill name variations like "Advanced SQL" if the market data shows "sql". Use the exact skill name from the market data.
+set_gaps skills: ONLY use skill names that appear verbatim in the market data list provided. If a skill is not in the market data list, do not include it as a gap.
+
+ATS SCORING — READ CAREFULLY:
+ats_pass_rate measures what % of the top market data keywords for this role appear in the resume. It is NOT about missing keywords — it is about keywords that ARE present.
+To calculate: count how many of the top 10 market data skills appear anywhere in the resume text. Divide by 10. Multiply by 100. That is ats_pass_rate.
+Example: if 6 of the top 10 keywords are in the resume, ats_pass_rate = 60. NOT 15. NOT 28.
+ats_potential: what ats_pass_rate would be if the top 3 missing keywords were added. Usually ats_pass_rate + 20 to 30.
+ats_alignment score (0-10): same logic — how many of the top 10 keywords are present, scored on a 0-10 scale.
 
 VERDICT QUALITY:
 verdict_headline must name something SPECIFIC from this resume. A company, a tool, a number, a gap. If you could apply the same sentence to a different resume without changing a word, rewrite it.
@@ -540,6 +554,9 @@ MARKET DATA IS LAW:
 linkedin_skills: pick from top 10 market data frequency for this role that are absent in the resume.
 cert_picks: prioritise certs that address skills at high frequency in market data but missing from resume.
 project market_signal: EXACT percentages from market data. Never invent numbers.
+
+PROJECT SIGNAL FLOOR — CRITICAL:
+Only suggest a project if its primary skill appears in 25% or more of postings in the market data. If you have 3 or more skills above 25%, use those. If fewer than 3 skills are above 25%, pick the top 3 by frequency — but always sort highest signal first. Never suggest a project whose primary skill appears in less than 10% of postings if better options exist.
 
 PROJECT QUALITY RULE — CRITICAL:
 All 3 projects must have identical depth and length in ai_prompt. If you find yourself writing a shorter or vaguer ai_prompt for project 2 or 3, stop and bring it up to match project 1 quality. All three students are paying equal attention. Treat all 3 projects as equally important. The ai_prompt for project 3 must be as complete and copy-pasteable as project 1.
@@ -619,7 +636,30 @@ Every LinkedIn sentence must reference something specific from this resume. Ever
 // ═══════════════════════════════════════════════════════
 // TOOL EMITTERS
 // ═══════════════════════════════════════════════════════
-function emitToolCallA(name, args, res, sal, role) {
+// ── Server-side skill relevance lookup ──
+// Fuzzy-matches a skill name against the scraped skillFreq array.
+// Returns the posting % or null if not found.
+function lookupSkillPct(skillName, skillFreq) {
+  if (!skillFreq || !skillFreq.length || !skillName) return null;
+  const needle = skillName.toLowerCase().trim();
+  // Exact match
+  let match = skillFreq.find(s => s.skill === needle);
+  if (match) return match.pct;
+  // Substring match — skill in scraped list or scraped in skill
+  match = skillFreq.find(s => needle.includes(s.skill) || s.skill.includes(needle));
+  if (match) return match.pct;
+  // Word overlap — at least one meaningful word in common
+  const words = new Set(needle.split(/\s+/).filter(w => w.length > 2));
+  let best = null, bestScore = 0;
+  for (const s of skillFreq) {
+    const overlap = s.skill.split(/\s+/).filter(w => words.has(w)).length;
+    if (overlap > bestScore) { bestScore = overlap; best = s; }
+  }
+  return bestScore > 0 ? best.pct : null;
+}
+
+function emitToolCallA(name, args, res, sal, role, marketData) {
+  const skillFreq = marketData?.skillFreq || [];
   switch (name) {
     case 'set_verdict':
       sendEvent(res, 'verdict', {
@@ -637,23 +677,59 @@ function emitToolCallA(name, args, res, sal, role) {
         }
       });
       break;
-    case 'set_skills':
+
+    case 'set_skills': {
+      const skills   = (args.skills_present || []).slice(0, 6);
+      const levels   = args.skill_levels || {};
+      // Server-side relevance injection — do NOT trust Claude's output
+      // Look up each skill in the real scraped market data
+      const relevance = {};
+      for (const s of skills) {
+        const scraped = lookupSkillPct(s, skillFreq);
+        if (scraped !== null) {
+          relevance[s] = scraped;
+        } else {
+          // Not in market data — use Claude's value if reasonable, else 0
+          const claudeVal = (args.skill_relevance || {})[s];
+          relevance[s] = (claudeVal > 0 && claudeVal <= 100) ? Math.min(claudeVal, 55) : 0;
+        }
+      }
       sendEvent(res, 'skills', {
-        skills_present:  (args.skills_present || []).slice(0, 6),
-        skill_levels:    args.skill_levels    || {},
-        skill_relevance: args.skill_relevance || {}
+        skills_present:  skills,
+        skill_levels:    levels,
+        skill_relevance: relevance
       });
       break;
-    case 'set_gaps':
-      sendEvent(res, 'gaps', {
-        gaps: (args.gaps || []).slice(0, 5).map(g => ({
-          skill:      g.skill    || '',
+    }
+
+    case 'set_gaps': {
+      // Normalise gap skill names against market data to prevent hallucinated variations
+      // e.g. "Advanced SQL" → "sql" if sql is in market data
+      const gaps = (args.gaps || []).slice(0, 5).map(g => {
+        let skillName = g.skill || '';
+        // If Claude invented a variation not in market data, try to normalise it
+        if (skillFreq.length) {
+          const scraped = lookupSkillPct(skillName, skillFreq);
+          if (scraped === null) {
+            // Not found — check if it's a variation of something in the list
+            const lower = skillName.toLowerCase();
+            const base  = skillFreq.find(s => lower.includes(s.skill) || s.skill.includes(lower.split(' ')[0]));
+            if (base) skillName = base.skill; // normalise to scraped name
+          }
+        }
+        // how_often: always use market data if available
+        const marketPct = lookupSkillPct(skillName, skillFreq);
+        return {
+          skill:      skillName,
           priority:   ['Critical','Important','Nice to have'].includes(g.priority) ? g.priority : 'Important',
-          how_often:  clamp(g.how_often || 0, 0, 100),
+          how_often:  marketPct !== null ? marketPct : clamp(g.how_often || 0, 0, 100),
           how_to_fix: g.how_to_fix || ''
-        }))
+        };
       });
+      sendEvent(res, 'gaps', { gaps });
       break;
+    }
+
     case 'set_scores':
       sendEvent(res, 'scores', {
         bullet_quality: clamp(args.bullet_quality || 5, 0, 10),
@@ -662,6 +738,7 @@ function emitToolCallA(name, args, res, sal, role) {
         headline_roast: args.headline_roast || 'Your resume has been through a lot today.'
       });
       break;
+
     case 'add_bullet_group':
       sendEvent(res, 'bullet_group', {
         company: args.company || '',
@@ -675,6 +752,7 @@ function emitToolCallA(name, args, res, sal, role) {
         }))
       });
       break;
+
     case 'set_jd_breakdown':
       sendEvent(res, 'jd_breakdown', {
         jd_breakdown: (args.jd_breakdown || []).map(r => ({
@@ -684,12 +762,14 @@ function emitToolCallA(name, args, res, sal, role) {
         }))
       });
       break;
+
     default:
       console.log('Stream A unknown tool:', name);
   }
 }
 
-function emitToolCallB(name, args, res, role) {
+function emitToolCallB(name, args, res, role, marketData) {
+  const skillFreq = marketData?.skillFreq || [];
   switch (name) {
     case 'set_linkedin':
       sendEvent(res, 'linkedin', {
@@ -704,8 +784,8 @@ function emitToolCallB(name, args, res, role) {
       });
       break;
     case 'set_projects': {
-      const projects = (args.projects || []).map(p => ({
-        market_signal: clamp(p.market_signal || 50, 0, 100),
+      let projects = (args.projects || []).map(p => ({
+        market_signal: clamp(p.market_signal || 0, 0, 100),
         title:         p.title         || '',
         justification: p.justification || '',
         description:   p.description   || '',
@@ -714,7 +794,22 @@ function emitToolCallB(name, args, res, role) {
         ai_prompt:     p.ai_prompt     || '',
         bullets:       (p.bullets || []).slice(0, 2)
       }));
+
+      // Sort by market signal descending
       projects.sort((a, b) => b.market_signal - a.market_signal);
+
+      // Floor enforcement: if we have 3+ projects above 20%, drop those below
+      // If fewer than 3 are above 20%, keep top 3 regardless (still sorted)
+      const SIGNAL_FLOOR = 20;
+      const aboveFloor = projects.filter(p => p.market_signal >= SIGNAL_FLOOR);
+      if (aboveFloor.length >= 3) {
+        projects = aboveFloor;
+        const dropped = (args.projects || []).length - aboveFloor.length;
+        if (dropped > 0) console.log(`Projects: dropped ${dropped} below ${SIGNAL_FLOOR}% signal floor`);
+      } else {
+        console.log(`Projects: fewer than 3 above ${SIGNAL_FLOOR}% floor, keeping top 3 by signal`);
+      }
+
       sendEvent(res, 'projects', { projects: projects.slice(0, 3) });
       break;
     }
@@ -970,7 +1065,7 @@ module.exports = async function handler(req, res) {
     const [anthropicResA, anthropicResB] = await Promise.all([
       makeStreamRequest({
         apiKey,
-        model:       'claude-haiku-4-5-20251001',
+        model:       MODEL_A,
         system:      systemPromptA,
         userContent: userContentA,
         tools:       TOOLS_A,
@@ -979,7 +1074,7 @@ module.exports = async function handler(req, res) {
       }),
       makeStreamRequest({
         apiKey,
-        model:       'claude-sonnet-4-5',
+        model:       MODEL_B,
         system:      systemPromptB,
         userContent: userContentB,
         tools:       TOOLS_B,
@@ -990,8 +1085,8 @@ module.exports = async function handler(req, res) {
 
     // Process both concurrently
     await Promise.all([
-      processStream(anthropicResA, (name, args) => emitToolCallA(name, args, res, sal, role)),
-      processStream(anthropicResB, (name, args) => emitToolCallB(name, args, res, role))
+      processStream(anthropicResA, (name, args) => emitToolCallA(name, args, res, sal, role, marketData)),
+      processStream(anthropicResB, (name, args) => emitToolCallB(name, args, res, role, marketData))
     ]);
 
     await cleanupFile();
