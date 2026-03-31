@@ -692,15 +692,22 @@ Every LinkedIn sentence must reference something specific from this resume. Ever
 // ── Server-side skill relevance lookup ──
 // Fuzzy-matches a skill name against the scraped skillFreq array.
 // Returns the posting % or null if not found.
+// ── Confidence threshold for overriding Claude's knowledge ──
+// The scrape is reliable for verbatim engineering keywords (SQL, Python, dbt).
+// For qualitative/product skills (Google Analytics, Product Sense), the scrape
+// often returns low % because LinkedIn JDs don't use those exact strings.
+// Below 30%, we return null and trust Claude's domain knowledge instead.
+const SCRAPE_CONFIDENCE_THRESHOLD = 30;
+
 function lookupSkillPct(skillName, skillFreq) {
   if (!skillFreq || !skillFreq.length || !skillName) return null;
   const needle = skillName.toLowerCase().trim();
   // Exact match
   let match = skillFreq.find(s => s.skill === needle);
-  if (match) return match.pct;
-  // Substring match — skill in scraped list or scraped in skill
+  if (match) return match.pct >= SCRAPE_CONFIDENCE_THRESHOLD ? match.pct : null;
+  // Substring match
   match = skillFreq.find(s => needle.includes(s.skill) || s.skill.includes(needle));
-  if (match) return match.pct;
+  if (match) return match.pct >= SCRAPE_CONFIDENCE_THRESHOLD ? match.pct : null;
   // Word overlap — at least one meaningful word in common
   const words = new Set(needle.split(/\s+/).filter(w => w.length > 2));
   let best = null, bestScore = 0;
@@ -708,7 +715,8 @@ function lookupSkillPct(skillName, skillFreq) {
     const overlap = s.skill.split(/\s+/).filter(w => words.has(w)).length;
     if (overlap > bestScore) { bestScore = overlap; best = s; }
   }
-  return bestScore > 0 ? best.pct : null;
+  if (bestScore > 0 && best.pct >= SCRAPE_CONFIDENCE_THRESHOLD) return best.pct;
+  return null; // below threshold — trust Claude
 }
 
 function emitToolCallA(name, args, res, sal, role, marketData, atsResult) {
@@ -743,17 +751,19 @@ function emitToolCallA(name, args, res, sal, role, marketData, atsResult) {
     case 'set_skills': {
       const skills   = (args.skills_present || []).slice(0, 6);
       const levels   = args.skill_levels || {};
-      // Server-side relevance injection — do NOT trust Claude's output
-      // Look up each skill in the real scraped market data
+      // Store for set_gaps to reference (exclude confirmed skills from gap list)
+      emitToolCallA._lastSkills = skills;
+      // Server-side relevance: only override when scrape confidence ≥ threshold
       const relevance = {};
       for (const s of skills) {
         const scraped = lookupSkillPct(s, skillFreq);
         if (scraped !== null) {
+          // Scrape has high confidence (≥30%) — use it
           relevance[s] = scraped;
         } else {
-          // Not in market data — use Claude's value if reasonable, else 0
+          // Below threshold or not in scrape — trust Claude's estimate
           const claudeVal = (args.skill_relevance || {})[s];
-          relevance[s] = (claudeVal > 0 && claudeVal <= 100) ? Math.min(claudeVal, 55) : 0;
+          relevance[s] = (claudeVal > 0 && claudeVal <= 100) ? Math.min(claudeVal, 85) : 0;
         }
       }
       sendEvent(res, 'skills', {
@@ -765,15 +775,24 @@ function emitToolCallA(name, args, res, sal, role, marketData, atsResult) {
     }
 
     case 'set_gaps': {
-      // Normalise gap skill names against market data
-      const claudeGaps = (args.gaps || []).slice(0, 5).map(g => {
+      // Build set of confirmed skills to exclude — if a skill is in your superpowers,
+      // it cannot also be a gap (fixes SQL appearing in both sections)
+      const confirmedSkills = new Set(
+        (args.skills_present || emitToolCallA._lastSkills || [])
+          .map(s => s.toLowerCase().trim())
+      );
+
+      const claudeGaps = (args.gaps || []).slice(0, 7).map(g => {
         let skillName = g.skill || '';
+        // Normalise name against market data if we have a high-confidence match
         if (skillFreq.length) {
           const scraped = lookupSkillPct(skillName, skillFreq);
           if (scraped === null) {
             const lower = skillName.toLowerCase();
-            const base  = skillFreq.find(s => lower.includes(s.skill) || s.skill.includes(lower.split(' ')[0]));
-            if (base) skillName = base.skill;
+            const base  = skillFreq.find(s =>
+              lower.includes(s.skill) || s.skill.includes(lower.split(' ')[0])
+            );
+            if (base && base.pct >= SCRAPE_CONFIDENCE_THRESHOLD) skillName = base.skill;
           }
         }
         const marketPct = lookupSkillPct(skillName, skillFreq);
@@ -783,7 +802,12 @@ function emitToolCallA(name, args, res, sal, role, marketData, atsResult) {
           how_often:  marketPct !== null ? marketPct : clamp(g.how_often || 0, 0, 100),
           how_to_fix: g.how_to_fix || ''
         };
-      });
+      })
+      // Exclude skills the user already has in their resume
+      .filter(g => !confirmedSkills.has(g.skill.toLowerCase().trim()))
+      // Sort by frequency descending — highest % gaps shown first
+      .sort((a, b) => b.how_often - a.how_often)
+      .slice(0, 5);
 
       sendEvent(res, 'gaps', { gaps: claudeGaps });
       break;
@@ -850,8 +874,8 @@ function emitToolCallB(name, args, res, role, marketData) {
       break;
     case 'set_projects': {
       let projects = (args.projects || []).map(p => {
-        // Override market_signal server-side — never trust Claude's number
-        // Use the first skill in the project's skills array as the primary skill
+        // Override with scrape when confidence >= threshold; trust Claude otherwise
+        // This fixes 10% everywhere for product roles where scrape lacks verbatim terms
         const primarySkill = (p.skills || [])[0] || p.title || '';
         const scrapedSignal = lookupSkillPct(primarySkill, skillFreq);
         const signal = scrapedSignal !== null
