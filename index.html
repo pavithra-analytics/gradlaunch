@@ -140,7 +140,6 @@ button{cursor:pointer;border:none;outline:none}
 ═══════════════════════════════════════════════════ */
 .page{display:none}
 .page.active{display:block}
-#pg-loading.active{display:flex;align-items:center;justify-content:center}
 
 /* ═══════════════════════════════════════════════════
    MATERIAL SYMBOLS
@@ -577,11 +576,13 @@ button{cursor:pointer;border:none;outline:none}
    LOADING PAGE — full screen, premium feel
 ═══════════════════════════════════════════════════ */
 #pg-loading{
-  min-height:100vh;
+  display:none;
   background:linear-gradient(160deg,#f0f4ff 0%,#f5f7f9 60%,#eef3ff 100%);
-  display:flex;align-items:center;justify-content:center;
 }
-#pg-loading.active{display:flex}
+#pg-loading.active{
+  display:flex;align-items:center;justify-content:center;
+  min-height:100vh;
+}
 .dark #pg-loading{
   background:linear-gradient(160deg,#0a0d18 0%,#0c0e14 60%,#0d1020 100%);
 }
@@ -1682,7 +1683,18 @@ button{cursor:pointer;border:none;outline:none}
               <div class="fname" id="fname-display">resume.pdf</div>
               <div class="fst">Ready to analyse</div>
             </div>
-            <button class="frem" onclick="resetUpload()">Remove</button>
+          </div>
+          <!-- Remove button below file row — never obscured by match badge -->
+          <div style="margin-top:8px;text-align:center">
+            <button onclick="resetUpload()"
+              style="font-size:11px;font-weight:700;color:var(--on-surface-v);background:none;border:none;cursor:pointer;
+                     display:inline-flex;align-items:center;gap:4px;padding:4px 8px;border-radius:8px;
+                     transition:color .15s,background .15s"
+              onmouseover="this.style.color='var(--red)';this.style.background='var(--red-light)'"
+              onmouseout="this.style.color='var(--on-surface-v)';this.style.background='none'">
+              <span class="material-symbols-outlined" style="font-size:13px">delete</span>
+              Remove resume and upload a different one
+            </button>
           </div>
         </div>
       </div><!-- /upload-zone-wrap -->
@@ -1711,7 +1723,7 @@ button{cursor:pointer;border:none;outline:none}
           <div>
             <div style="display:flex;align-items:center;gap:7px;margin-bottom:2px">
               <span style="font-size:11px;font-weight:800;color:var(--on-surface);text-transform:uppercase;letter-spacing:.08em">Job description</span>
-              <span style="font-size:9px;font-weight:700;color:var(--tertiary);background:rgba(0,105,71,.08);border:1px solid rgba(0,105,71,.2);border-radius:99px;padding:1px 7px">Recommended</span>
+              <span style="font-size:9px;font-weight:700;color:var(--on-surface-v);background:var(--surface-container);border-radius:99px;padding:1px 7px">Optional</span>
             </div>
             <div style="font-size:12px;color:var(--on-surface-v);font-weight:500">Better results · auto-detects your role · requirement-by-requirement match</div>
           </div>
@@ -2222,6 +2234,7 @@ if (typeof pdfjsLib !== 'undefined') {
 // ═══════════════════════════════════════════════════
 let resumeText      = '';
 let resumeFileId    = null;
+let rawFile         = null; // retains the File object so we can re-upload after Start Over
 let currentRole     = '';
 let currentLocation = '';
 let lvlTimer        = null;
@@ -2274,6 +2287,7 @@ function resetUpload() {
   }
   document.getElementById('file-input').value = '';
   resumeText = '';
+  rawFile    = null; // clear stored file
   showDZ('empty');
   setLaunchEnabled(false);
 }
@@ -2328,6 +2342,7 @@ async function handleFile(input) {
     if (!upData.fallback && upData.fileId) {
       resumeFileId = upData.fileId;
       resumeText   = '';
+      rawFile      = file; // retain for re-upload after Start Over
       showFileOk(name);
       return;
     }
@@ -2352,6 +2367,7 @@ async function handleFile(input) {
     }
     resumeText   = text.substring(0,4000);
     resumeFileId = null;
+    rawFile      = file; // retain for re-upload after Start Over
     showFileOk(name);
 
   } catch(e) {
@@ -2568,7 +2584,46 @@ async function launchAnalysis() {
   const errBox   = document.getElementById('input-error');
 
   if (!resumeText && !resumeFileId) {
-    errBox.textContent='Please upload your resume first.'; errBox.style.display='block'; return;
+    // If we have a rawFile retained from a previous upload, re-upload it now
+    if (rawFile) {
+      errBox.textContent = 'Re-uploading your resume…';
+      errBox.style.display = 'block';
+      try {
+        const name = rawFile.name;
+        const b64  = await readB64(rawFile);
+        const upRes  = await fetch('/api/upload', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ filename: name, data: b64 })
+        });
+        const upData = await upRes.json().catch(() => ({ fallback: true }));
+        if (!upData.fallback && upData.fileId) {
+          resumeFileId = upData.fileId;
+        } else {
+          // Files API unavailable — re-extract text from rawFile
+          const ab  = await readAB(rawFile);
+          const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
+          const pages = [];
+          for (let i = 1; i <= pdf.numPages; i++) {
+            const pg = await pdf.getPage(i);
+            const ct = await pg.getTextContent();
+            pages.push(ct.items.map(x => x.str).join(' '));
+          }
+          resumeText = pages.join('\n').substring(0, 4000);
+        }
+        errBox.style.display = 'none';
+      } catch {
+        errBox.textContent = 'Could not re-upload your resume. Please upload it again.';
+        errBox.style.display = 'block';
+        rawFile = null;
+        showDZ('empty');
+        setLaunchEnabled(false);
+        return;
+      }
+    } else {
+      errBox.textContent='Please upload your resume first.';
+      errBox.style.display='block';
+      return;
+    }
   }
 
   // I7: Role not mandatory when JD is provided — try to extract from JD
@@ -3574,7 +3629,7 @@ async function submitFeedback() {
       throw new Error('Send failed');
     }
   } catch {
-    btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px">error</span> Could not send — try again';
+    btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px">error</span> Could not send, try again';
     btn.style.background = 'var(--error)';
     setTimeout(() => {
       btn.innerHTML        = orig;
