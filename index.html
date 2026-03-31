@@ -2791,21 +2791,18 @@ function handleSSE(name, data) {
 
     case 'scores':
       renderScores(data);
-      // ── Fix 1: Stream A is done when scores arrive (last Stream A tool) ──
-      // Show results immediately so user can read Profile tab while
-      // Stream B (LinkedIn, certs, projects) continues loading async.
+      // Stream A is done — show results immediately with Stream B sections in loading state
       if (!resultReady) {
         resultReady = true;
-        renderSummaryCard();
         stopLoading();
         showPage('results');
         document.getElementById('back-btn').style.display = 'block';
-        // Animate skill bars now that the profile tab is visible
+        showStreamBLoading(); // show skeleton/loading states in LinkedIn, certs, projects
         setTimeout(() => {
           document.querySelectorAll('.sk-bar-fill').forEach(b => {
             b.style.width = b.dataset.w + '%';
           });
-        }, 150);
+        }, 200);
       }
       break;
 
@@ -2835,10 +2832,11 @@ function handleSSE(name, data) {
       break;
 
     case 'done':
-      // Stream B also complete — ensure results are showing (safety net)
+      // Both streams complete — render summary card now that bullets/certs/projects are all populated
+      renderSummaryCard();
       if (!resultReady) {
+        // Safety net if scores event somehow didn't fire
         resultReady = true;
-        renderSummaryCard();
         stopLoading();
         showPage('results');
         document.getElementById('back-btn').style.display = 'block';
@@ -2846,11 +2844,12 @@ function handleSSE(name, data) {
           document.querySelectorAll('.sk-bar-fill').forEach(b => {
             b.style.width = b.dataset.w + '%';
           });
-        }, 150);
+        }, 200);
       }
       break;
 
     case 'partial':
+      renderSummaryCard();
       if (!resultReady) {
         resultReady = true;
         stopLoading();
@@ -3025,34 +3024,50 @@ function renderSkills(skills, levels, relevance) {
   const rel = relevance || {};
   const lvl = levels    || {};
 
-  // Sort by relevance % descending (highest market demand first), cap at 6
-  const sorted = [...skills].sort((a, b) => (rel[b] || 0) - (rel[a] || 0)).slice(0, 6);
+  // Sort by skill level first (Strong → Intermediate → Basic), then by market freq
+  const order = { Strong: 0, Intermediate: 1, Basic: 2 };
+  const sorted = [...skills].sort((a, b) => {
+    const lo = order[lvl[a] || 'Intermediate'] ?? 1;
+    const hi = order[lvl[b] || 'Intermediate'] ?? 1;
+    if (lo !== hi) return lo - hi;
+    return (rel[b] || 0) - (rel[a] || 0);
+  }).slice(0, 6);
+
+  // Bar width and label driven by skill LEVEL — not posting frequency
+  // Posting frequency was confusing and contradicted LinkedIn suggestions
+  const levelWidth  = { Strong: 90, Intermediate: 55, Basic: 25 };
+  const levelLabel  = { Strong: 'Strong', Intermediate: 'Intermediate', Basic: 'Basic' };
+  const levelColour = {
+    Strong:       'var(--tertiary)',
+    Intermediate: 'var(--primary)',
+    Basic:        'var(--outline)'
+  };
 
   el.innerHTML = sorted.map(s => {
-    // I4: Use actual market data relevance %, not skill level mapping
-    const pct     = Math.round(rel[s] || 0);
-    const level   = lvl[s] || 'Intermediate';
-    // Colour by level (how well they know it), width by market relevance (how often it's needed)
-    const col     = level === 'Strong' ? 'var(--tertiary)' : level === 'Intermediate' ? 'var(--primary)' : 'var(--outline)';
-    const label   = pct > 0 ? `${pct}%` : level === 'Strong' ? 'Strong' : level === 'Basic' ? 'Basic' : 'Present';
+    const level = lvl[s] || 'Intermediate';
+    const w     = levelWidth[level]  || 55;
+    const col   = levelColour[level] || 'var(--primary)';
+    const lbl   = levelLabel[level]  || 'Intermediate';
     return `<div class="sk-row">
       <div class="sk-row-top">
         <span class="sk-name">${esc(s)}</span>
-        <span class="sk-pct" style="color:${col}">${label}</span>
+        <span class="sk-pct" style="color:${col};font-size:10px;font-weight:800;
+          background:${col}18;border-radius:99px;padding:2px 8px">${lbl}</span>
       </div>
       <div class="sk-bar-track">
-        <div class="sk-bar-fill" data-w="${pct || 50}" style="width:0%;background:linear-gradient(90deg,${col},${col}99)"></div>
+        <div class="sk-bar-fill" data-w="${w}" style="width:0%;background:linear-gradient(90deg,${col},${col}99)"></div>
       </div>
     </div>`;
   }).join('');
 
-  // I5: Bars animated by 'done' event handler when tab becomes visible
-  // Small fallback for when profile tab is already active
-  if (document.getElementById('tab-profile').classList.contains('on')) {
-    setTimeout(() => {
-      el.querySelectorAll('.sk-bar-fill').forEach(b => { b.style.width = b.dataset.w + '%'; });
-    }, 120);
-  }
+  // Always animate — unconditional, works whether tab is active or not
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      el.querySelectorAll('.sk-bar-fill').forEach(b => {
+        b.style.width = b.dataset.w + '%';
+      });
+    });
+  });
 
   const sc = document.getElementById('skills-count');
   if (sc) sc.textContent = skills.length;
@@ -3437,6 +3452,37 @@ function appendBulletGroup(data) {
 // ═══════════════════════════════════════════════════
 // RENDER — SUMMARY CARD / ACTION LIST (Tab 3 bottom)
 // Matching the design's Action List with icon circles
+// ═══════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════
+// PROGRESSIVE LOADING — Stream B sections
+// Called when Stream A completes. Shows friendly loading
+// states in LinkedIn, Certs, and Projects while Sonnet works.
+// ═══════════════════════════════════════════════════
+function showStreamBLoading() {
+  // LinkedIn headline + about — replace skeletons with animated message
+  const hlEl = document.getElementById('li-hl-text');
+  if (hlEl && hlEl.querySelector('.skeleton')) {
+    hlEl.innerHTML = '<span style="font-size:12px;color:var(--on-surface-v);font-style:italic;animation:pulse 1.5s ease-in-out infinite">Writing your personalised LinkedIn headline…</span>';
+  }
+  const abEl = document.getElementById('li-ab-text');
+  if (abEl && abEl.querySelector('.skeleton')) {
+    abEl.innerHTML = '<span style="font-size:12px;color:var(--on-surface-v);font-style:italic;animation:pulse 1.5s ease-in-out infinite">Crafting your About section from your experience…</span>';
+  }
+  // LinkedIn skills chips
+  const skEl = document.getElementById('li-skill-tags');
+  if (skEl && !skEl.children.length) {
+    skEl.innerHTML = '<span style="font-size:11px;color:var(--on-surface-v);font-style:italic">Loading skill recommendations…</span>';
+  }
+  // Certs — keep skeleton but update heading
+  const certHead = document.querySelector('.certs-section-head div');
+  if (certHead) certHead.textContent = 'Matching certifications to your skill gaps…';
+  // Projects tab intro
+  const projTxt = document.getElementById('proj-intro-txt');
+  if (projTxt) projTxt.textContent = 'Generating your personalised project recommendations…';
+}
+
+// ═══════════════════════════════════════════════════
+// RENDER — SUMMARY CARD (Action List)
 // ═══════════════════════════════════════════════════
 function renderSummaryCard() {
   const bullets  = document.getElementById('bullets-list');
