@@ -109,86 +109,21 @@ function extractRoleFromJD(jd) {
 }
 
 // ═══════════════════════════════════════════════════════
-// SALARY LOOKUP — BLS fallback
 // ═══════════════════════════════════════════════════════
-const SALARY = {
-  'new york':      { e: '$69k', m: '$112k', s: '$175k' },
-  'san francisco': { e: '$85k', m: '$135k', s: '$220k' },
-  'seattle':       { e: '$78k', m: '$125k', s: '$200k' },
-  'austin':        { e: '$62k', m: '$102k', s: '$165k' },
-  'chicago':       { e: '$60k', m: '$98k',  s: '$155k' },
-  'boston':        { e: '$70k', m: '$112k', s: '$175k' },
-  'los angeles':   { e: '$68k', m: '$108k', s: '$170k' },
-  'dallas':        { e: '$60k', m: '$98k',  s: '$155k' },
-  'washington':    { e: '$68k', m: '$110k', s: '$172k' },
-  'atlanta':       { e: '$58k', m: '$96k',  s: '$155k' },
-  'denver':        { e: '$62k', m: '$101k', s: '$160k' },
-  'default':       { e: '$55k', m: '$92k',  s: '$160k' }
-};
+// SALARY — sourced from warmcache scrape when available.
+// Falls back to Claude's knowledge via prompt instruction.
+// No hardcoded table — role-specific accuracy requires
+// either live data or Claude's training, not a generic map.
+// ═══════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════
-// CERTIFICATIONS DB — expanded with roles mapping
+// CERTIFICATIONS — Claude recommends freely from knowledge.
+// No hardcoded database — the 23-cert list caused wrong
+// recommendations (e.g. Databricks for SDE) because it
+// couldn't cover every role. Claude knows real certs for
+// any role including Pilot, Pharmacist, Chemist, etc.
+// Prompt constraints prevent hallucination (see buildSystemPromptB).
 // ═══════════════════════════════════════════════════════
-const CERTS_DB = {
-  'Google Data Analytics Certificate':  { provider: 'Google/Coursera', level: 'Entry',        cost: 'Free', duration: '6 months',   url: 'https://grow.google/certificates/data-analytics/',            roles: ['Data Analyst','Business Analyst','Marketing Analyst','Operations Analyst','Healthcare Data Analyst'] },
-  'Google Advanced Data Analytics':     { provider: 'Google/Coursera', level: 'Intermediate', cost: 'Free', duration: '6 months',   url: 'https://grow.google/certificates/advanced-data-analytics/',   roles: ['Data Analyst','Data Scientist','Business Analyst','Product Analyst'] },
-  'Meta Data Analyst Certificate':      { provider: 'Meta/Coursera',   level: 'Entry',        cost: 'Free', duration: '5 months',   url: 'https://www.coursera.org/professional-certificates/meta-data-analyst', roles: ['Data Analyst','Marketing Analyst','Product Analyst','Growth Analyst'] },
-  'Microsoft Power BI PL-300':          { provider: 'Microsoft',       level: 'Associate',    cost: '$165', duration: '2 months',   url: 'https://learn.microsoft.com/certifications/power-bi-data-analyst-associate/', roles: ['Business Intelligence Analyst','Data Analyst','Business Analyst','Financial Analyst'] },
-  'Tableau Desktop Specialist':         { provider: 'Tableau',         level: 'Associate',    cost: '$250', duration: '1 month',    url: 'https://www.tableau.com/learn/certification/desktop-specialist', roles: ['Data Analyst','Business Intelligence Analyst','Marketing Analyst','Operations Analyst'] },
-  'dbt Analytics Engineering':          { provider: 'dbt Labs',        level: 'Associate',    cost: '$200', duration: '1 month',    url: 'https://www.getdbt.com/certifications',                       roles: ['Analytics Engineer','Data Engineer','Data Analyst'] },
-  'Databricks Data Engineer Associate': { provider: 'Databricks',      level: 'Associate',    cost: '$200', duration: '1-2 months', url: 'https://www.databricks.com/learn/certification/data-engineer-associate', roles: ['Data Engineer','Analytics Engineer','Data Architect'] },
-  'Snowflake SnowPro Core':             { provider: 'Snowflake',       level: 'Associate',    cost: '$175', duration: '1 month',    url: 'https://learn.snowflake.com/en/certifications/snowpro-core/', roles: ['Data Engineer','Analytics Engineer','Data Architect','Data Analyst'] },
-  'Google Cloud Professional DE':       { provider: 'Google Cloud',    level: 'Professional', cost: '$200', duration: '2-3 months', url: 'https://cloud.google.com/learn/certification/data-engineer',  roles: ['Data Engineer','Data Architect','Solutions Architect'] },
-  'AWS Solutions Architect Associate':  { provider: 'AWS',             level: 'Associate',    cost: '$150', duration: '2-3 months', url: 'https://aws.amazon.com/certification/certified-solutions-architect-associate/', roles: ['Solutions Architect','Data Architect','Software Engineer','AI Engineer'] },
-  'AWS Cloud Practitioner':             { provider: 'AWS',             level: 'Entry',        cost: '$100', duration: '1 month',    url: 'https://aws.amazon.com/certification/certified-cloud-practitioner/', roles: ['Software Engineer','Data Engineer','Solutions Architect','AI Engineer'] },
-  'CompTIA Security+':                  { provider: 'CompTIA',         level: 'Associate',    cost: '$370', duration: '2 months',   url: 'https://www.comptia.org/certifications/security',             roles: ['Cybersecurity Analyst'] },
-  'Professional Scrum Product Owner I': { provider: 'Scrum.org',       level: 'Entry',        cost: '$200', duration: '2 weeks',    url: 'https://www.scrum.org/assessments/professional-scrum-product-owner-i-certification', roles: ['Product Manager','Product Analyst','Program Manager','Project Manager'] },
-  'Scrum Master PSM I':                 { provider: 'Scrum.org',       level: 'Entry',        cost: '$150', duration: '2 weeks',    url: 'https://www.scrum.org/assessments/professional-scrum-master-i-certification', roles: ['Project Manager','Program Manager','Product Manager','Operations Analyst'] },
-  'Google Project Management':          { provider: 'Google/Coursera', level: 'Entry',        cost: 'Free', duration: '6 months',   url: 'https://grow.google/certificates/project-management/',        roles: ['Project Manager','Program Manager','Operations Analyst','Business Analyst'] },
-  'PMP':                                { provider: 'PMI',             level: 'Professional', cost: '$405', duration: '3+ months',  url: 'https://www.pmi.org/certifications/project-management-pmp',  roles: ['Project Manager','Program Manager','Operations Analyst'] },
-  'CAPM':                               { provider: 'PMI',             level: 'Entry',        cost: '$225', duration: '2 months',   url: 'https://www.pmi.org/certifications/certified-associate-capm', roles: ['Project Manager','Program Manager','Business Analyst'] },
-  'Amplitude Analytics Certification':  { provider: 'Amplitude',       level: 'Entry',        cost: 'Free', duration: '2 weeks',    url: 'https://academy.amplitude.com/amplitude-analytics-for-digital-products', roles: ['Product Analyst','Growth Analyst','Product Manager','Marketing Analyst'] },
-  'Google Analytics Individual Qual':   { provider: 'Google',          level: 'Entry',        cost: 'Free', duration: '2 weeks',    url: 'https://skillshop.withgoogle.com/intl/en_ALL/lp/googleanalytics', roles: ['Marketing Analyst','Growth Analyst','Product Analyst','Strategy Analyst'] },
-  'Salesforce Admin':                   { provider: 'Salesforce',      level: 'Associate',    cost: '$200', duration: '2 months',   url: 'https://trailhead.salesforce.com/credentials/administrator',  roles: ['Revenue Operations','Sales Operations','Business Analyst'] },
-  'Google UX Design':                   { provider: 'Google/Coursera', level: 'Entry',        cost: 'Free', duration: '6 months',   url: 'https://grow.google/certificates/ux-design/',                roles: ['UX Researcher','Product Manager','Product Analyst'] },
-  'CFA Level I':                        { provider: 'CFA Institute',   level: 'Professional', cost: '$900', duration: '6+ months',  url: 'https://www.cfainstitute.org/programs/cfa',                   roles: ['Financial Analyst','Quantitative Analyst','Risk Analyst','Pricing Analyst'] },
-  'Financial Modeling and Valuation':   { provider: 'CFI',             level: 'Entry',        cost: '$497', duration: '3 months',   url: 'https://corporatefinanceinstitute.com/certifications/financial-modeling-valuation-analyst-fmva-certification/', roles: ['Financial Analyst','Strategy Analyst','Pricing Analyst'] }
-};
-
-const ROLE_CERT_PRIORITY = {
-  'Product Analyst':               ['Amplitude Analytics Certification','Professional Scrum Product Owner I','Google Analytics Individual Qual','Google Advanced Data Analytics','Meta Data Analyst Certificate'],
-  'Product Manager':               ['Professional Scrum Product Owner I','Amplitude Analytics Certification','Google Project Management','Google UX Design','Scrum Master PSM I'],
-  'Marketing Analyst':             ['Google Analytics Individual Qual','Meta Data Analyst Certificate','Google Data Analytics Certificate','Tableau Desktop Specialist','Microsoft Power BI PL-300'],
-  'Growth Analyst':                ['Google Analytics Individual Qual','Amplitude Analytics Certification','Meta Data Analyst Certificate','Google Advanced Data Analytics','Google Data Analytics Certificate'],
-  'UX Researcher':                 ['Google UX Design','Google Project Management','Professional Scrum Product Owner I','Google Analytics Individual Qual','Amplitude Analytics Certification'],
-  'Business Analyst':              ['Google Data Analytics Certificate','Google Project Management','Microsoft Power BI PL-300','CAPM','Tableau Desktop Specialist'],
-  'Strategy Analyst':              ['Google Advanced Data Analytics','Financial Modeling and Valuation','Google Data Analytics Certificate','Microsoft Power BI PL-300','CAPM'],
-  'Financial Analyst':             ['CFA Level I','Financial Modeling and Valuation','Google Advanced Data Analytics','Microsoft Power BI PL-300','Google Data Analytics Certificate'],
-  'Quantitative Analyst':          ['CFA Level I','Financial Modeling and Valuation','Google Advanced Data Analytics','Databricks Data Engineer Associate','Google Data Analytics Certificate'],
-  'Risk Analyst':                  ['CFA Level I','Financial Modeling and Valuation','Google Advanced Data Analytics','CompTIA Security+','Microsoft Power BI PL-300'],
-  'Pricing Analyst':               ['Financial Modeling and Valuation','CFA Level I','Google Advanced Data Analytics','Google Data Analytics Certificate','Microsoft Power BI PL-300'],
-  'Data Analyst':                  ['Google Advanced Data Analytics','Tableau Desktop Specialist','Microsoft Power BI PL-300','dbt Analytics Engineering','Snowflake SnowPro Core'],
-  'Business Intelligence Analyst': ['Microsoft Power BI PL-300','Tableau Desktop Specialist','Google Advanced Data Analytics','dbt Analytics Engineering','Snowflake SnowPro Core'],
-  'Analytics Engineer':            ['dbt Analytics Engineering','Snowflake SnowPro Core','Databricks Data Engineer Associate','Google Advanced Data Analytics','Google Cloud Professional DE'],
-  'Data Engineer':                 ['Databricks Data Engineer Associate','Snowflake SnowPro Core','dbt Analytics Engineering','Google Cloud Professional DE','AWS Solutions Architect Associate'],
-  'Data Scientist':                ['Google Advanced Data Analytics','Databricks Data Engineer Associate','Google Cloud Professional DE','dbt Analytics Engineering','Snowflake SnowPro Core'],
-  'Data Architect':                ['Google Cloud Professional DE','Databricks Data Engineer Associate','Snowflake SnowPro Core','AWS Solutions Architect Associate','dbt Analytics Engineering'],
-  'Machine Learning Engineer':     ['Databricks Data Engineer Associate','Google Cloud Professional DE','AWS Solutions Architect Associate','dbt Analytics Engineering','Snowflake SnowPro Core'],
-  'AI Engineer':                   ['Google Cloud Professional DE','AWS Solutions Architect Associate','Databricks Data Engineer Associate','dbt Analytics Engineering','Snowflake SnowPro Core'],
-  'Software Engineer':             ['AWS Solutions Architect Associate','AWS Cloud Practitioner','Google Cloud Professional DE','Scrum Master PSM I','CompTIA Security+'],
-  'Solutions Architect':           ['AWS Solutions Architect Associate','Google Cloud Professional DE','AWS Cloud Practitioner','Databricks Data Engineer Associate','Scrum Master PSM I'],
-  'Project Manager':               ['PMP','Google Project Management','Scrum Master PSM I','CAPM','Professional Scrum Product Owner I'],
-  'Program Manager':               ['PMP','Google Project Management','Scrum Master PSM I','CAPM','Professional Scrum Product Owner I'],
-  'Operations Analyst':            ['Google Project Management','Scrum Master PSM I','Google Data Analytics Certificate','Microsoft Power BI PL-300','CAPM'],
-  'Revenue Operations':            ['Salesforce Admin','Google Analytics Individual Qual','Google Data Analytics Certificate','Microsoft Power BI PL-300','Amplitude Analytics Certification'],
-  'Sales Operations':              ['Salesforce Admin','Google Analytics Individual Qual','Google Data Analytics Certificate','Microsoft Power BI PL-300','Amplitude Analytics Certification'],
-  'Supply Chain Analyst':          ['Google Project Management','Google Data Analytics Certificate','Microsoft Power BI PL-300','PMP','Tableau Desktop Specialist'],
-  'Research Scientist':            ['Google Advanced Data Analytics','Databricks Data Engineer Associate','Google Cloud Professional DE','Google Data Analytics Certificate','Financial Modeling and Valuation'],
-  'Healthcare Data Analyst':       ['Google Data Analytics Certificate','Google Advanced Data Analytics','Microsoft Power BI PL-300','Tableau Desktop Specialist','Databricks Data Engineer Associate'],
-  'Cybersecurity Analyst':         ['CompTIA Security+','AWS Cloud Practitioner','Google Cloud Professional DE','AWS Solutions Architect Associate','Scrum Master PSM I']
-};
-
-const CERT_NAMES = Object.keys(CERTS_DB).join(', ');
 
 // ═══════════════════════════════════════════════════════
 // SERVER-SIDE ATS + MATCH SCORE CALCULATION
@@ -254,38 +189,22 @@ function httpsPost(hostname, path, headers, body) {
 // ═══════════════════════════════════════════════════════
 // NORMALIZE HELPERS
 // ═══════════════════════════════════════════════════════
-function normalizeCerts(certPicks, certReasons, role) {
-  const validPicks = (certPicks || []).filter(n => CERTS_DB[n]);
-  const certs = validPicks.slice(0, 3)
-    .map(n => ({ name: n, ...CERTS_DB[n], why: certReasons?.[n] || 'Closes your top gap.' }));
-
-  if (certs.length < 3) {
-    const used        = new Set(certs.map(c => c.name));
-    const matchedRole = fuzzyMatchRole(role) || role;
-    const priority    = ROLE_CERT_PRIORITY[matchedRole] || [];
-
-    for (const name of priority) {
-      if (certs.length >= 3) break;
-      if (!used.has(name) && CERTS_DB[name]) {
-        certs.push({ name, ...CERTS_DB[name], why: `Commonly required for ${matchedRole} roles.` });
-        used.add(name);
-      }
-    }
-
-    if (certs.length < 3) {
-      for (const [name, d] of Object.entries(CERTS_DB)) {
-        if (certs.length >= 3) break;
-        const firstWord = (matchedRole || '').toLowerCase().split(' ')[0];
-        if (!used.has(name) && (d.roles || []).some(r => r.toLowerCase().includes(firstWord))) {
-          certs.push({ name, ...d, why: `Relevant for ${matchedRole} roles.` });
-          used.add(name);
-        }
-      }
-    }
-  }
-
-  return certs;
+// ── Cert normaliser — Claude now recommends freely ──
+// Passes Claude's cert output through directly.
+// No hardcoded database — works for any role.
+function normalizeCerts(certPicks, certReasons, certDetails) {
+  if (!certPicks || !certPicks.length) return [];
+  return certPicks.slice(0, 3).map(name => ({
+    name:     name || '',
+    provider: certDetails?.[name]?.provider || '',
+    level:    certDetails?.[name]?.level    || '',
+    cost:     certDetails?.[name]?.cost     || '',
+    duration: certDetails?.[name]?.duration || '',
+    url:      certDetails?.[name]?.url      || '',
+    why:      certReasons?.[name]           || 'Closes your top gap for this role.'
+  })).filter(c => c.name.length > 2);
 }
+
 
 function sanitizeLinkedIn(headline) {
   return (headline || '')
@@ -324,7 +243,8 @@ const TOOLS_A = [
         verdict_sub:         { type: 'string',  description: 'ONE sentence: the single most important thing this person needs to change or know right now.' },
         ats_pass_rate:       { type: 'number',  description: 'Current ATS pass rate 0-100 based on keyword match vs market data' },
         ats_potential:       { type: 'number',  description: 'ATS pass rate after adding the missing keywords 0-100' },
-        ats_missing_keyword: { type: 'string',  description: 'Single most impactful missing keyword for this role from market data' }
+        ats_missing_keyword: { type: 'string',  description: 'Single most impactful missing keyword for this role from market data' },
+        salary_range:        { type: 'string',  description: 'Salary range for this role e.g. "$75k – $145k". Only output when no salary data was provided from postings. Use your training knowledge for the specific role and location.' }
       },
       required: ['match_score','verdict_headline','verdict_sub','ats_pass_rate','ats_potential','ats_missing_keyword']
     }
@@ -376,8 +296,8 @@ const TOOLS_A = [
     input_schema: {
       type: 'object',
       properties: {
-        bullet_quality: { type: 'number', description: '0-10: strength and specificity of resume bullets overall' },
-        impact_metrics: { type: 'number', description: '0-10: presence of quantified outcomes and measurable results' },
+        bullet_quality: { type: 'number', description: '0-10: how well the bullets demonstrate skills and outcomes that a recruiter for THIS specific target role would value. Strong backend system bullet on an SDE resume = high. Analytics dashboard bullet on an SDE resume = low even if well-written.' },
+        impact_metrics: { type: 'number', description: '0-10: how well the quantified outcomes in the resume map to the metrics and outcomes this target role actually cares about. Revenue, uptime, scale, performance for engineering. DAU, retention, experiment velocity for product. Role-specific impact, not general writing quality.' },
         ats_alignment:  { type: 'number', description: '0-10: keyword alignment with target role from market data' },
         headline_roast: { type: 'string', description: 'ONE punchy sentence naming something specific from their actual resume. No dashes. Sounds like a person said it out loud, not a system.' }
       },
@@ -466,7 +386,7 @@ const TOOLS_B = [
   },
   {
     name: 'set_certifications',
-    description: 'Pick exactly 3 certs from the provided list. Must be role-relevant and gap-closing based on market data.',
+    description: 'Recommend exactly 3 certifications that close the most critical gaps for this specific role. Use your knowledge of real, verifiable credentials.',
     input_schema: {
       type: 'object',
       properties: {
@@ -475,15 +395,29 @@ const TOOLS_B = [
           items: { type: 'string' },
           minItems: 3,
           maxItems: 3,
-          description: 'Pick 3 from the AVAILABLE CERTIFICATIONS list only. Priority: certs addressing skills at high frequency in market data that are missing from the resume. Never pick a cert for a skill the user already demonstrates well.'
+          description: 'Exactly 3 certification names. Must be real, verifiable credentials from official vendors. Prioritise certs that close skills at high frequency in market data that are missing from the resume.'
         },
         cert_reasons: {
           type: 'object',
           additionalProperties: { type: 'string' },
-          description: 'Map cert name to one specific sentence explaining which gap it closes and why that matters. Reference the market data percentage. Example: SQL appears in 78% of Product Analyst postings and your resume shows no SQL projects — this cert gives you a structured 6-week path to close that.'
+          description: 'Map cert name to one specific sentence explaining which gap it closes and why. Reference the market data percentage.'
+        },
+        cert_details: {
+          type: 'object',
+          additionalProperties: {
+            type: 'object',
+            properties: {
+              provider: { type: 'string' },
+              level:    { type: 'string' },
+              cost:     { type: 'string' },
+              duration: { type: 'string' },
+              url:      { type: 'string' }
+            }
+          },
+          description: 'Map cert name to its details: provider (e.g. AWS, Google, CompTIA), level (Entry/Associate/Professional), approximate cost in USD, duration to complete, and official URL.'
         }
       },
-      required: ['cert_picks','cert_reasons']
+      required: ['cert_picks','cert_reasons','cert_details']
     }
   },
   {
@@ -558,6 +492,12 @@ ats_pass_rate and ats_potential are pre-computed and injected above as PRE-COMPU
 ats_missing_keyword: use the top missing keyword from the pre-computed data above.
 CONSISTENCY RULE: The ats_alignment score in set_scores (0-10 scale) MUST equal ats_pass_rate ÷ 10, rounded. If ats_pass_rate is 40%, ats_alignment must be 4. Never let these two numbers contradict each other.
 
+ROLE-SPECIFIC SCORING — CRITICAL:
+bullet_quality and impact_metrics must reflect how well this resume serves the TARGET ROLE, not general writing quality.
+bullet_quality: score low if bullets describe work irrelevant to the target role, even if they are well-written.
+impact_metrics: score based on whether the quantified results are the type this role cares about. An SDE role cares about scale, latency, uptime, shipped features. A Product Analyst role cares about DAU, retention, experiment results, revenue impact. Dashboard metrics mean nothing on an SDE resume.
+Example: a beautifully written analytics bullet on an SDE resume scores 2-3/10 on both metrics, not 8/10.
+
 VERDICT QUALITY:
 verdict_headline must name something SPECIFIC from this resume. A company, a tool, a number, a gap. If you could apply the same sentence to a different resume without changing a word, rewrite it.
 brutal_honey: MAXIMUM 3 SENTENCES. No dashes. Sentence 1: why a recruiter skips this exact bullet. Sentence 2: what is salvageable. Sentence 3: direction for the rewrite. Nothing more.
@@ -571,7 +511,7 @@ Call EVERY tool. Never stop after set_verdict.`,
   ];
 }
 
-function buildSystemPromptB(certNames) {
+function buildSystemPromptB() {
   return [
     {
       type: 'text',
@@ -593,25 +533,29 @@ You may ONLY reference facts that appear explicitly in the resume text or job de
 - If you find yourself writing something specific that you cannot point to in the resume text, replace it with a general statement about skills or direction
 
 LINKEDIN ABOUT RULE: Every sentence in linkedin_about must be directly traceable to content in the RESUME TEXT provided. If you cannot cite the source in the resume, do not write it.
+
+FORBIDDEN OUTPUTS — if you produce any of these, stop and rewrite before outputting:
 LinkedIn About openers: I am a, As a, With X years of experience, Passionate about, Dedicated professional, Results-driven, Dynamic, Innovative, Looking for
 Any sentence that could apply to a different person's resume without changing a word
-Cert picks not directly linked to a verified gap in the market data for this specific role
 Project ai_prompt fields that are vague, short, or do not name specific tools and free datasets
 linkedin_skills that include skills already prominent in the resume
 
 MARKET DATA IS LAW:
 linkedin_skills: pick from top 10 market data frequency for this role that are absent in the resume.
 cert_picks: prioritise certs that address skills at high frequency in market data but missing from resume.
-project market_signal: EXACT percentages from market data. Never invent numbers.
+
+CERTIFICATIONS RULE — CRITICAL:
+Recommend REAL, VERIFIABLE certifications from official vendors only (AWS, Google, Microsoft, CompTIA, PMI, Salesforce, dbt Labs, Snowflake, Databricks, Tableau, Scrum.org, CFA Institute, etc.).
+Pick certs specific to the target role and the gaps identified — NOT generic tech certs for non-tech roles.
+For each cert provide: provider name, approximate cost in USD, time to complete, and the official URL.
+If you are not certain a certification exists exactly as named, add "(verify before enrolling)" to the reason.
+NEVER recommend a cert that is for a completely different field than the target role.
 
 PROJECT SIGNAL FLOOR — CRITICAL:
 Only suggest a project if its primary skill appears in 25% or more of postings in the market data. If you have 3 or more skills above 25%, use those. If fewer than 3 skills are above 25%, pick the top 3 by frequency — but always sort highest signal first. Never suggest a project whose primary skill appears in less than 10% of postings if better options exist.
 
 PROJECT QUALITY RULE — CRITICAL:
 All 3 projects must have identical depth and length in ai_prompt. If you find yourself writing a shorter or vaguer ai_prompt for project 2 or 3, stop and bring it up to match project 1 quality. All three students are paying equal attention. Treat all 3 projects as equally important. The ai_prompt for project 3 must be as complete and copy-pasteable as project 1.
-
-AVAILABLE CERTIFICATIONS — cert_picks must use EXACT names from this list:
-${certNames}
 
 TOOL ORDER: set_linkedin, set_certifications, set_projects. Call all three.`,
       cache_control: { type: 'ephemeral' }
@@ -658,11 +602,15 @@ cert_picks must address skills high on this list that are missing from the resum
 // ANALYSIS PROMPTS
 // ═══════════════════════════════════════════════════════
 function buildAnalysisPromptA(role, locationStr, jd, hasJD, sal, marketDataBlock, atsFactLine) {
+  const salaryCtx = sal._fromPostings
+    ? `Salary from real postings: ${sal._fromPostings}${sal._postingNote ? ` (${sal._postingNote})` : ''}. Use this as the basis for the salary range in set_verdict.`
+    : `No salary data available from postings. In set_verdict, provide your best salary range estimate for a ${role} in ${locationStr} based on your training knowledge. Format as entry–senior range (e.g. $65k – $140k). Be role-specific and realistic.`;
+
   return `Analyze this resume for a ${role} role${locationStr !== 'Nationwide USA' ? ` in ${locationStr}` : ''}.
 
 ${marketDataBlock}
 
-${atsFactLine ? atsFactLine + '\n' : ''}Salary context (do not output these numbers directly): Entry ${sal.e} | Senior ${sal.s}.
+${atsFactLine ? atsFactLine + '\n' : ''}${salaryCtx}
 
 ${hasJD ? `JOB DESCRIPTION:\n${jd}\n\nSince a JD was provided, also call set_jd_breakdown.` : ''}
 
@@ -739,10 +687,8 @@ function emitToolCallA(name, args, res, sal, role, marketData, atsResult) {
         ats_potential:       atsPot,
         ats_missing_keyword: atsMissing,
         salary: {
-          e: sal.e, m: sal.m, s: sal.s,
-          low:  sal.e,
-          high: sal.s,
-          fromPostings: sal._fromPostings || null
+          range:        args.salary_range       || sal._fromPostings || null,
+          fromPostings: sal._fromPostings        || null
         }
       });
       break;
@@ -809,6 +755,7 @@ function emitToolCallA(name, args, res, sal, role, marketData, atsResult) {
       .sort((a, b) => b.how_often - a.how_often)
       .slice(0, 5);
 
+      emitToolCallA._lastGaps = claudeGaps;
       sendEvent(res, 'gaps', { gaps: claudeGaps });
       break;
     }
@@ -869,7 +816,7 @@ function emitToolCallB(name, args, res, role, marketData) {
       break;
     case 'set_certifications':
       sendEvent(res, 'certifications', {
-        certifications: normalizeCerts(args.cert_picks, args.cert_reasons, role)
+        certifications: normalizeCerts(args.cert_picks, args.cert_reasons, args.cert_details)
       });
       break;
     case 'set_projects': {
@@ -907,6 +854,33 @@ function emitToolCallB(name, args, res, role, marketData) {
       } else {
         console.log(`Projects: fewer than 3 above ${SIGNAL_FLOOR}%, keeping top 3 by signal`);
       }
+
+      // Career Impact Score: composite of market frequency + gap priority
+      // Designed so high-gap, high-frequency projects score near 90-100
+      // regardless of raw scrape percentage (fixes 45-55% display problem)
+      const gapPriorityWeights = { Critical: 1.0, Important: 0.75, 'Nice to have': 0.5 };
+      const topGaps = emitToolCallA._lastGaps || [];
+
+      projects = projects.map(p => {
+        // Find if this project's primary skill matches a known gap
+        const primarySkill = (p.skills || [])[0] || '';
+        const matchedGap   = topGaps.find(g =>
+          g.skill.toLowerCase().includes(primarySkill.toLowerCase()) ||
+          primarySkill.toLowerCase().includes(g.skill.toLowerCase())
+        );
+        const priorityWeight = matchedGap
+          ? (gapPriorityWeights[matchedGap.priority] || 0.75)
+          : 0.65; // no matched gap — still valuable, moderate weight
+
+        // Career Impact Score: market signal boosted by gap priority
+        // A CRIT gap at 60% signal → 60 × 1.0 = 60, then scaled to 75-95 range
+        // A HIGH gap at 50% signal → 50 × 0.75 = 37.5, scaled to 65-80 range
+        const rawScore = p.market_signal * priorityWeight;
+        // Scale into user-friendly range: min 65 if project has any signal, max 98
+        const careerImpact = Math.min(98, Math.max(65, Math.round(rawScore * 1.4 + 25)));
+
+        return { ...p, career_impact: careerImpact };
+      });
 
       sendEvent(res, 'projects', { projects: projects.slice(0, 3) });
       break;
@@ -1090,8 +1064,6 @@ module.exports = async function handler(req, res) {
   recordHit(ip);
   const rateAfter   = getRateStatus(ip);
   const locationStr = location.trim() || 'Nationwide USA';
-  const locKey      = Object.keys(SALARY).find(k => k !== 'default' && locationStr.toLowerCase().includes(k)) || 'default';
-  const sal         = { ...SALARY[locKey] }; // clone to avoid mutating the constant
 
   // Market data lookup
   const matchedRole = detectedRole || fuzzyMatchRole(role);
@@ -1110,6 +1082,8 @@ module.exports = async function handler(req, res) {
     }
   }
 
+  // Salary — scraped posting data when available, otherwise Claude estimates from training
+  const sal = {};
   if (marketData?.salaryData) {
     sal._fromPostings = marketData.salaryData.median;
     sal._postingNote  = marketData.salaryData.note;
@@ -1117,7 +1091,7 @@ module.exports = async function handler(req, res) {
 
   const marketDataBlock = buildMarketDataBlock(marketData, matchedRole || role);
   const systemPromptA   = buildSystemPromptA();
-  const systemPromptB   = buildSystemPromptB(CERT_NAMES);
+  const systemPromptB   = buildSystemPromptB();
 
   // ── Server-side ATS + match score ──
   // Computed once from resume text + scraped data.
