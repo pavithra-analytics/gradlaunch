@@ -191,8 +191,47 @@ const ROLE_CERT_PRIORITY = {
 const CERT_NAMES = Object.keys(CERTS_DB).join(', ');
 
 // ═══════════════════════════════════════════════════════
-// HTTP HELPERS
+// SERVER-SIDE ATS + MATCH SCORE CALCULATION
+//
+// Computes deterministic ATS keyword match from resume text
+// vs scraped skillFreq data. Same resume + same role = same
+// number every run. Claude is told this number — not asked
+// to calculate it — eliminating run-to-run inconsistency.
 // ═══════════════════════════════════════════════════════
+function computeATS(resumeText, skillFreq) {
+  if (!skillFreq || !skillFreq.length || !resumeText) {
+    return { atsScore: null, atsPotential: null, missingTop: [], presentTop: [] };
+  }
+
+  const text = resumeText.toLowerCase();
+  // Use top 15 skills from scrape for richer signal
+  const top15 = skillFreq.slice(0, 15);
+
+  const present = top15.filter(s => text.includes(s.skill.toLowerCase()));
+  const missing = top15.filter(s => !text.includes(s.skill.toLowerCase()));
+
+  const atsScore    = Math.round((present.length / top15.length) * 100);
+  // Potential: add top 3 missing and recalculate
+  const atsPotential = Math.min(100, Math.round(((present.length + Math.min(3, missing.length)) / top15.length) * 100));
+
+  return {
+    atsScore,
+    atsPotential,
+    missingTop: missing.slice(0, 5).map(s => s.skill),
+    presentTop: present.slice(0, 8).map(s => s.skill)
+  };
+}
+
+// Match score: weighted blend of ATS coverage + skills breadth
+// 70% ATS keyword coverage + 30% skills count signal
+// Bounded to realistic range — never above 95 or below 5
+function computeMatchScore(atsScore, skillsFound, topSkillsRequired) {
+  const skillsCoverage = topSkillsRequired > 0
+    ? Math.round((skillsFound / topSkillsRequired) * 100)
+    : atsScore;
+  const raw = Math.round(atsScore * 0.7 + skillsCoverage * 0.3);
+  return Math.min(95, Math.max(5, raw));
+}
 function httpsPost(hostname, path, headers, body) {
   return new Promise((resolve, reject) => {
     const data = JSON.stringify(body);
@@ -514,17 +553,15 @@ set_gaps how_often: EXACT % from market data. Only name skills that appear in th
 set_gaps skills: ONLY use skill names that appear verbatim in the market data list provided. If a skill is not in the market data list, do not include it as a gap.
 set_gaps count: ALWAYS output exactly 5 gaps. If fewer than 5 critical gaps exist, add Important or Nice to have items to reach exactly 5. Never output fewer than 5.
 
-ATS SCORING — READ CAREFULLY:
-ats_pass_rate measures what % of the top market data keywords for this role appear in the resume. It is NOT about missing keywords — it is about keywords that ARE present.
-To calculate: count how many of the top 10 market data skills appear anywhere in the resume text. Divide by 10. Multiply by 100. That is ats_pass_rate.
-Example: if 6 of the top 10 keywords are in the resume, ats_pass_rate = 60. NOT 15. NOT 28.
-ats_potential: what ats_pass_rate would be if the top 3 missing keywords were added. Usually ats_pass_rate + 20 to 30.
-ats_alignment score (0-10): same logic — how many of the top 10 keywords are present, scored on a 0-10 scale.
+ATS SCORING:
+ats_pass_rate and ats_potential are pre-computed and injected above as PRE-COMPUTED ATS KEYWORD MATCH. Use those EXACT numbers. Do not recalculate.
+ats_missing_keyword: use the top missing keyword from the pre-computed data above.
 
 VERDICT QUALITY:
 verdict_headline must name something SPECIFIC from this resume. A company, a tool, a number, a gap. If you could apply the same sentence to a different resume without changing a word, rewrite it.
 brutal_honey: MAXIMUM 3 SENTENCES. No dashes. Sentence 1: why a recruiter skips this exact bullet. Sentence 2: what is salvageable. Sentence 3: direction for the rewrite. Nothing more.
 rewrite: ONE sentence under 25 words. Strong verb first. Most relevant ATS keyword from market data. [X][Y][Z] only where numbers are genuinely missing. Self-check before outputting: strong verb? keyword? under 25 words? Revise once if any check fails.
+NEVER output <REMOVE>, <DELETE>, or any meta-instruction as the rewrite value. If a bullet is completely irrelevant to the target role and cannot be salvaged, set rewrite to null and explain in brutal_honey why the bullet should be removed or replaced with a role-relevant one.
 
 TOOL ORDER: set_verdict, set_skills, set_gaps, set_scores, add_bullet_group once per company, set_jd_breakdown only if JD provided.
 Call EVERY tool. Never stop after set_verdict.`,
@@ -609,12 +646,12 @@ cert_picks must address skills high on this list that are missing from the resum
 // ═══════════════════════════════════════════════════════
 // ANALYSIS PROMPTS
 // ═══════════════════════════════════════════════════════
-function buildAnalysisPromptA(role, locationStr, jd, hasJD, sal, marketDataBlock) {
+function buildAnalysisPromptA(role, locationStr, jd, hasJD, sal, marketDataBlock, atsFactLine) {
   return `Analyze this resume for a ${role} role${locationStr !== 'Nationwide USA' ? ` in ${locationStr}` : ''}.
 
 ${marketDataBlock}
 
-Salary context (do not output these numbers directly): Entry ${sal.e} | Mid ${sal.m} | Senior ${sal.s}.
+${atsFactLine ? atsFactLine + '\n' : ''}Salary context (do not output these numbers directly): Entry ${sal.e} | Senior ${sal.s}.
 
 ${hasJD ? `JOB DESCRIPTION:\n${jd}\n\nSince a JD was provided, also call set_jd_breakdown.` : ''}
 
@@ -663,17 +700,25 @@ function lookupSkillPct(skillName, skillFreq) {
   return bestScore > 0 ? best.pct : null;
 }
 
-function emitToolCallA(name, args, res, sal, role, marketData) {
+function emitToolCallA(name, args, res, sal, role, marketData, atsResult) {
   const skillFreq = marketData?.skillFreq || [];
   switch (name) {
-    case 'set_verdict':
+    case 'set_verdict': {
+      // Use server-computed ATS if available — overrides Claude's calculation
+      const atsPass    = atsResult?.atsScore    !== null ? atsResult.atsScore    : clamp(args.ats_pass_rate, 0, 100);
+      const atsPot     = atsResult?.atsPotential !== null ? atsResult.atsPotential : clamp(args.ats_potential, 0, 100);
+      const atsMissing = atsResult?.missingTop?.[0] || args.ats_missing_keyword || '';
+      // Match score: use server formula if ATS is available, else trust Claude
+      const matchScore = atsResult?.atsScore !== null
+        ? computeMatchScore(atsResult.atsScore, (args.skills_present || []).length || 3, 10)
+        : clamp(args.match_score, 0, 100);
       sendEvent(res, 'verdict', {
-        match_score:         clamp(args.match_score, 0, 100),
+        match_score:         matchScore,
         verdict_headline:    args.verdict_headline || `${role} resume analyzed.`,
         verdict_sub:         args.verdict_sub || '',
-        ats_pass_rate:       clamp(args.ats_pass_rate, 0, 100),
-        ats_potential:       clamp(args.ats_potential, 0, 100),
-        ats_missing_keyword: args.ats_missing_keyword || '',
+        ats_pass_rate:       atsPass,
+        ats_potential:       atsPot,
+        ats_missing_keyword: atsMissing,
         salary: {
           e: sal.e, m: sal.m, s: sal.s,
           low:  sal.e,
@@ -682,6 +727,7 @@ function emitToolCallA(name, args, res, sal, role, marketData) {
         }
       });
       break;
+    }
 
     case 'set_skills': {
       const skills   = (args.skills_present || []).slice(0, 6);
@@ -708,21 +754,17 @@ function emitToolCallA(name, args, res, sal, role, marketData) {
     }
 
     case 'set_gaps': {
-      // Normalise gap skill names against market data to prevent hallucinated variations
-      // e.g. "Advanced SQL" → "sql" if sql is in market data
-      const gaps = (args.gaps || []).slice(0, 5).map(g => {
+      // Normalise gap skill names against market data
+      const claudeGaps = (args.gaps || []).slice(0, 5).map(g => {
         let skillName = g.skill || '';
-        // If Claude invented a variation not in market data, try to normalise it
         if (skillFreq.length) {
           const scraped = lookupSkillPct(skillName, skillFreq);
           if (scraped === null) {
-            // Not found — check if it's a variation of something in the list
             const lower = skillName.toLowerCase();
             const base  = skillFreq.find(s => lower.includes(s.skill) || s.skill.includes(lower.split(' ')[0]));
-            if (base) skillName = base.skill; // normalise to scraped name
+            if (base) skillName = base.skill;
           }
         }
-        // how_often: always use market data if available
         const marketPct = lookupSkillPct(skillName, skillFreq);
         return {
           skill:      skillName,
@@ -731,18 +773,46 @@ function emitToolCallA(name, args, res, sal, role, marketData) {
           how_to_fix: g.how_to_fix || ''
         };
       });
+
+      // Safety net: if Claude returned too few gaps or server ATS found verified missing skills,
+      // fill up to 5 using the server-computed missing list (guaranteed real from scrape data)
+      let gaps = claudeGaps;
+      const serverMissing = atsResult?.missingTop || [];
+      if (gaps.length < 5 && serverMissing.length) {
+        const existing = new Set(gaps.map(g => g.skill.toLowerCase()));
+        for (const skill of serverMissing) {
+          if (gaps.length >= 5) break;
+          if (!existing.has(skill.toLowerCase())) {
+            const pct = lookupSkillPct(skill, skillFreq);
+            gaps.push({
+              skill,
+              priority:   gaps.length < 2 ? 'Critical' : 'Important',
+              how_often:  pct || 0,
+              how_to_fix: `Add ${skill} to your resume with a specific project or example.`
+            });
+            existing.add(skill.toLowerCase());
+          }
+        }
+      }
+
       sendEvent(res, 'gaps', { gaps });
       break;
     }
 
-    case 'set_scores':
+    case 'set_scores': {
+      // Use server-computed ATS to derive ats_alignment — keeps Score tab consistent
+      // with Profile tab (both sourced from same server calculation)
+      const atsAlignServer = atsResult?.atsScore !== null
+        ? Math.round(atsResult.atsScore / 10)  // e.g. 40% ATS → 4/10 alignment
+        : clamp(args.ats_alignment || 5, 0, 10);
       sendEvent(res, 'scores', {
         bullet_quality: clamp(args.bullet_quality || 5, 0, 10),
         impact_metrics: clamp(args.impact_metrics || 5, 0, 10),
-        ats_alignment:  clamp(args.ats_alignment  || 5, 0, 10),
+        ats_alignment:  atsAlignServer,
         headline_roast: args.headline_roast || 'Your resume has been through a lot today.'
       });
       break;
+    }
 
     case 'add_bullet_group':
       sendEvent(res, 'bullet_group', {
@@ -1035,8 +1105,26 @@ module.exports = async function handler(req, res) {
   const systemPromptA   = buildSystemPromptA();
   const systemPromptB   = buildSystemPromptB(CERT_NAMES);
 
+  // ── Server-side ATS + match score ──
+  // Computed once from resume text + scraped data.
+  // Injected into both prompts so Claude uses this number,
+  // not its own calculation — eliminates run-to-run variance.
+  const resumeForATS = resume || ''; // text-based resumes only; file-based get null
+  const atsResult = computeATS(resumeForATS, marketData?.skillFreq || []);
+  const serverATS  = atsResult.atsScore;
+  const serverPotential = atsResult.atsPotential;
+  const topMissing = atsResult.missingTop;
+  const topPresent = atsResult.presentTop;
+
+  // For file-based uploads we don't have resume text server-side —
+  // fall back to letting Claude calculate (acceptable, only affects file uploads)
+  const hasServerATS = serverATS !== null;
+  const atsFactLine  = hasServerATS
+    ? `PRE-COMPUTED ATS KEYWORD MATCH: ${serverATS}% (${topPresent.length} of 15 top keywords found: ${topPresent.join(', ')}). Top missing: ${topMissing.slice(0,3).join(', ')}. Potential after adding top 3 missing: ${serverPotential}%. USE THESE EXACT NUMBERS in set_verdict (ats_pass_rate=${serverATS}, ats_potential=${serverPotential}, ats_missing_keyword="${topMissing[0]||''}"). DO NOT recalculate.`
+    : '';
+
   // Stream A user content — includes file or resume text
-  const promptA    = buildAnalysisPromptA(role, locationStr, jd, hasJD, sal, marketDataBlock);
+  const promptA    = buildAnalysisPromptA(role, locationStr, jd, hasJD, sal, marketDataBlock, atsFactLine);
   const userContentA = fileId
     ? [
         { type: 'document', source: { type: 'file', file_id: fileId } },
@@ -1087,7 +1175,7 @@ module.exports = async function handler(req, res) {
 
   // Wrap emitToolCallA to intercept set_skills and trigger Stream B launch
   const emitA = (name, args) => {
-    emitToolCallA(name, args, res, sal, role, marketData);
+    emitToolCallA(name, args, res, sal, role, marketData, atsResult);
     if (name === 'set_skills') {
       streamASkills = (args.skills_present || []).slice(0, 6);
       resolveSkillsReady(streamASkills);
