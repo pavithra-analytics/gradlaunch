@@ -145,13 +145,20 @@ function computeATS(resumeText, skillFreq) {
   const present = top15.filter(s => text.includes(s.skill.toLowerCase()));
   const missing = top15.filter(s => !text.includes(s.skill.toLowerCase()));
 
-  const atsScore    = Math.round((present.length / top15.length) * 100);
-  // Potential: add top 3 missing and recalculate
-  const atsPotential = Math.min(100, Math.round(((present.length + Math.min(3, missing.length)) / top15.length) * 100));
+  const atsScore     = Math.round((present.length / top15.length) * 100);
+  // Target 75% (industry ATS pass threshold) — show how many keywords needed
+  const TARGET       = 75;
+  const targetCount  = Math.ceil(top15.length * TARGET / 100); // = 12 for top15
+  const needed       = Math.max(0, targetCount - present.length);
+  // atsPotential: what score would be after adding the needed keywords
+  const atsPotential = atsScore >= TARGET
+    ? Math.min(100, Math.round(((present.length + Math.min(3, missing.length)) / top15.length) * 100))
+    : TARGET; // always show 75 as the achievable target when below threshold
 
   return {
     atsScore,
     atsPotential,
+    needed,
     missingTop: missing.slice(0, 5).map(s => s.skill),
     presentTop: present.slice(0, 8).map(s => s.skill)
   };
@@ -551,6 +558,15 @@ For each cert provide: provider name, approximate cost in USD, time to complete,
 If you are not certain a certification exists exactly as named, add "(verify before enrolling)" to the reason.
 NEVER recommend a cert that is for a completely different field than the target role.
 
+PROJECT SELECTION RULE — CRITICAL:
+Each project must be built around a skill that is BOTH:
+1. Missing from the resume (not in confirmed skills list)
+2. In the top 10 most frequent skills in the market data
+
+Sort projects by the skill's market data frequency descending — highest frequency gap first.
+If a skill doesn't appear in the market data top 10, do NOT build a project around it.
+This ensures every project directly addresses a skill that appears in a significant portion of real job postings.
+
 PROJECT SIGNAL FLOOR — CRITICAL:
 Only suggest a project if its primary skill appears in 25% or more of postings in the market data. If you have 3 or more skills above 25%, use those. If fewer than 3 skills are above 25%, pick the top 3 by frequency — but always sort highest signal first. Never suggest a project whose primary skill appears in less than 10% of postings if better options exist.
 
@@ -686,6 +702,8 @@ function emitToolCallA(name, args, res, sal, role, marketData, atsResult) {
         ats_pass_rate:       atsPass,
         ats_potential:       atsPot,
         ats_missing_keyword: atsMissing,
+        ats_missing_list:    atsResult?.missingTop?.slice(0, 3) || [],
+        ats_needed:          atsResult?.needed ?? null,
         salary: {
           range:        args.salary_range       || sal._fromPostings || null,
           fromPostings: sal._fromPostings        || null
@@ -855,32 +873,10 @@ function emitToolCallB(name, args, res, role, marketData) {
         console.log(`Projects: fewer than 3 above ${SIGNAL_FLOOR}%, keeping top 3 by signal`);
       }
 
-      // Career Impact Score: composite of market frequency + gap priority
-      // Designed so high-gap, high-frequency projects score near 90-100
-      // regardless of raw scrape percentage (fixes 45-55% display problem)
-      const gapPriorityWeights = { Critical: 1.0, Important: 0.75, 'Nice to have': 0.5 };
-      const topGaps = emitToolCallA._lastGaps || [];
-
-      projects = projects.map(p => {
-        // Find if this project's primary skill matches a known gap
-        const primarySkill = (p.skills || [])[0] || '';
-        const matchedGap   = topGaps.find(g =>
-          g.skill.toLowerCase().includes(primarySkill.toLowerCase()) ||
-          primarySkill.toLowerCase().includes(g.skill.toLowerCase())
-        );
-        const priorityWeight = matchedGap
-          ? (gapPriorityWeights[matchedGap.priority] || 0.75)
-          : 0.65; // no matched gap — still valuable, moderate weight
-
-        // Career Impact Score: market signal boosted by gap priority
-        // A CRIT gap at 60% signal → 60 × 1.0 = 60, then scaled to 75-95 range
-        // A HIGH gap at 50% signal → 50 × 0.75 = 37.5, scaled to 65-80 range
-        const rawScore = p.market_signal * priorityWeight;
-        // Scale into user-friendly range: min 65 if project has any signal, max 98
-        const careerImpact = Math.min(98, Math.max(65, Math.round(rawScore * 1.4 + 25)));
-
-        return { ...p, career_impact: careerImpact };
-      });
+      // Projects are now constrained by prompt to top missing high-freq skills.
+      // Use market_signal directly — it reflects real posting frequency.
+      // No artificial inflation needed since the prompt guarantees relevance.
+      projects = projects.map(p => ({ ...p, career_impact: p.market_signal }));
 
       sendEvent(res, 'projects', { projects: projects.slice(0, 3) });
       break;
@@ -1055,11 +1051,15 @@ module.exports = async function handler(req, res) {
   if ((!resume || resume.length < 100) && !fileId) {
     return res.status(400).json({ error: 'Resume content or file ID is required.' });
   }
-  if (!role) {
+  // Allow JD-only analysis — Claude infers the role from the full JD text
+  // Only block if both role AND JD are missing/too short
+  if (!role && !hasJD) {
     return res.status(400).json({
       error: 'Please enter a target role or paste a job description — we need at least one to run your analysis.'
     });
   }
+  // If no role was detected, use a placeholder — Claude will infer from JD
+  if (!role) role = 'the role in the job description';
 
   recordHit(ip);
   const rateAfter   = getRateStatus(ip);
