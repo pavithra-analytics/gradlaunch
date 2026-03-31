@@ -196,20 +196,21 @@ function httpsPost(hostname, path, headers, body) {
 // ═══════════════════════════════════════════════════════
 // NORMALIZE HELPERS
 // ═══════════════════════════════════════════════════════
-// ── Cert normaliser — Claude now recommends freely ──
-// Passes Claude's cert output through directly.
-// No hardcoded database — works for any role.
-function normalizeCerts(certPicks, certReasons, certDetails) {
+// ── Cert normaliser — parses combined "Provider · Cost · Duration · URL · Why" string ──
+function normalizeCerts(certPicks, certReasons) {
   if (!certPicks || !certPicks.length) return [];
-  return certPicks.slice(0, 3).map(name => ({
-    name:     name || '',
-    provider: certDetails?.[name]?.provider || '',
-    level:    certDetails?.[name]?.level    || '',
-    cost:     certDetails?.[name]?.cost     || '',
-    duration: certDetails?.[name]?.duration || '',
-    url:      certDetails?.[name]?.url      || '',
-    why:      certReasons?.[name]           || 'Closes your top gap for this role.'
-  })).filter(c => c.name.length > 2);
+  return certPicks.slice(0, 3).map(name => {
+    const raw      = certReasons?.[name] || '';
+    const parts    = raw.split('·').map(p => p.trim());
+    // Format: "Provider · Cost · Duration · URL · Why: ..."
+    const provider = parts[0] || '';
+    const cost     = parts[1] || '';
+    const duration = parts[2] || '';
+    const url      = (parts[3] || '').startsWith('http') ? parts[3] : '';
+    const why      = parts.slice(url ? 4 : 3).join('·').replace(/^Why:\s*/i,'').trim()
+                  || raw || 'Closes your top gap for this role.';
+    return { name, provider, cost, duration, url, why };
+  }).filter(c => c.name.length > 2);
 }
 
 
@@ -393,7 +394,7 @@ const TOOLS_B = [
   },
   {
     name: 'set_certifications',
-    description: 'Recommend exactly 3 certifications that close the most critical gaps for this specific role. Use your knowledge of real, verifiable credentials.',
+    description: 'Recommend exactly 3 certifications that close the most critical gaps for this specific role.',
     input_schema: {
       type: 'object',
       properties: {
@@ -402,29 +403,15 @@ const TOOLS_B = [
           items: { type: 'string' },
           minItems: 3,
           maxItems: 3,
-          description: 'Exactly 3 certification names. Must be real, verifiable credentials from official vendors. Prioritise certs that close skills at high frequency in market data that are missing from the resume.'
+          description: 'Exactly 3 certification names. Must be real, verifiable credentials from official vendors.'
         },
         cert_reasons: {
           type: 'object',
           additionalProperties: { type: 'string' },
-          description: 'Map cert name to one specific sentence explaining which gap it closes and why. Reference the market data percentage.'
-        },
-        cert_details: {
-          type: 'object',
-          additionalProperties: {
-            type: 'object',
-            properties: {
-              provider: { type: 'string' },
-              level:    { type: 'string' },
-              cost:     { type: 'string' },
-              duration: { type: 'string' },
-              url:      { type: 'string' }
-            }
-          },
-          description: 'Map cert name to its details: provider (e.g. AWS, Google, CompTIA), level (Entry/Associate/Professional), approximate cost in USD, duration to complete, and official URL.'
+          description: 'Map cert name to a single string: "Provider · Cost · Duration · URL · Why: one sentence on which gap it closes." Example: "AWS · $150 · 2-3 months · aws.amazon.com/certification · Java appears in 95% of SDE postings and this cert demonstrates backend system knowledge."'
         }
       },
-      required: ['cert_picks','cert_reasons','cert_details']
+      required: ['cert_picks','cert_reasons']
     }
   },
   {
@@ -572,6 +559,11 @@ Only suggest a project if its primary skill appears in 25% or more of postings i
 
 PROJECT QUALITY RULE — CRITICAL:
 All 3 projects must have identical depth and length in ai_prompt. If you find yourself writing a shorter or vaguer ai_prompt for project 2 or 3, stop and bring it up to match project 1 quality. All three students are paying equal attention. Treat all 3 projects as equally important. The ai_prompt for project 3 must be as complete and copy-pasteable as project 1.
+
+OUTPUT CONCISENESS — CRITICAL FOR SPEED:
+linkedin_about: MAXIMUM 80 WORDS. Three focused sentences only. No padding. Every word must earn its place.
+cert_reasons: ONE sentence per cert maximum. Format: "Provider · Cost · Duration · URL · Why: one sentence."
+All outputs must be tight and specific. Verbosity wastes the user's time and yours.
 
 TOOL ORDER: set_linkedin, set_certifications, set_projects. Call all three.`,
       cache_control: { type: 'ephemeral' }
@@ -834,7 +826,7 @@ function emitToolCallB(name, args, res, role, marketData) {
       break;
     case 'set_certifications':
       sendEvent(res, 'certifications', {
-        certifications: normalizeCerts(args.cert_picks, args.cert_reasons, args.cert_details)
+        certifications: normalizeCerts(args.cert_picks, args.cert_reasons)
       });
       break;
     case 'set_projects': {
@@ -1152,21 +1144,19 @@ module.exports = async function handler(req, res) {
   // ── Stream A launches immediately ──
   // Stream B waits until Stream A emits set_skills (~4-6s).
   // This gives Stream B the actual skills_present list so it never
-  // recommends adding a skill the user already has in their resume.
-  // Cost: ~5s before Stream B starts. Benefit: zero contradictions.
+  // ── Dual-stream launch ──
+  // Stream A launches immediately.
+  // Stream B launches after a fixed 4-second delay — enough for Stream A
+  // to emit set_verdict + set_skills (arrives ~T+4-6s), so we can inject
+  // confirmed skills into Stream B prompt to prevent contradictions.
+  // Fixed delay avoids worst-case wait when set_skills is slow.
 
-  let streamASkills = []; // populated by set_skills before B launches
+  let streamASkills = []; // populated when set_skills fires
 
-  // Promise that resolves when Stream A emits set_skills
-  let resolveSkillsReady;
-  const skillsReady = new Promise(r => { resolveSkillsReady = r; });
-
-  // Wrap emitToolCallA to intercept set_skills and trigger Stream B launch
   const emitA = (name, args) => {
     emitToolCallA(name, args, res, sal, role, marketData, atsResult);
     if (name === 'set_skills') {
       streamASkills = (args.skills_present || []).slice(0, 6);
-      resolveSkillsReady(streamASkills);
     }
   };
 
@@ -1182,18 +1172,18 @@ module.exports = async function handler(req, res) {
       maxTokens:   8000
     });
 
-    // Start processing Stream A — it will trigger skillsReady when set_skills arrives
     const streamAPromise = processStream(anthropicResA, emitA);
 
-    // Wait for Stream A to emit set_skills (typically 4-6 seconds in)
-    // then launch Stream B with the real skills list injected
+    // Launch Stream B after 4s — Stream A typically emits set_skills by T+5s
+    // so we use whatever skills are available at launch time
     const launchStreamB = async () => {
-      const confirmedSkills = await skillsReady;
+      await new Promise(r => setTimeout(r, 4000));
 
-      // Build Stream B prompt now — injecting confirmed skills_present
+      // Use skills captured so far (may be empty if set_skills hasn't fired yet —
+      // in that case Stream B gets no confirmed skills, acceptable tradeoff for speed)
       const userContentB = buildAnalysisPromptB(
         role, locationStr, jd, hasJD, sal, marketDataBlock,
-        resumeForB, confirmedSkills
+        resumeForB, streamASkills
       );
 
       const anthropicResB = await makeStreamRequest({
@@ -1203,13 +1193,12 @@ module.exports = async function handler(req, res) {
         userContent: userContentB,
         tools:       TOOLS_B,
         fileId:      null,
-        maxTokens:   3500  // capped for speed — Sonnet is verbose, 3500 is enough
+        maxTokens:   2200  // tightened — concise prompts + smaller cert schema = sufficient
       });
 
       return processStream(anthropicResB, (name, args) => emitToolCallB(name, args, res, role, marketData));
     };
 
-    // Both streams run concurrently — A is already going, B launches mid-A
     await Promise.all([streamAPromise, launchStreamB()]);
 
     await cleanupFile();
