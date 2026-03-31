@@ -1848,17 +1848,6 @@ button{cursor:pointer;border:none;outline:none}
 <div id="pg-loading" class="page">
   <div class="loading-wrap">
 
-    <!-- Brand mark -->
-    <div class="loading-brand">
-      <div class="loading-brand-mark">
-        <svg width="16" height="16" viewBox="0 0 15 15" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="1,11 4.5,6.5 7.5,8.5 12,3"/>
-          <circle cx="12" cy="3" r="1.8" fill="#fff" stroke="none"/>
-        </svg>
-      </div>
-      <span class="loading-brand-name">GradLaunch</span>
-    </div>
-
     <div class="loading-icon">
       <span class="material-symbols-outlined" style="color:#fff;font-size:34px;font-variation-settings:'FILL' 1,'wght' 600">trending_up</span>
     </div>
@@ -1914,11 +1903,11 @@ button{cursor:pointer;border:none;outline:none}
         <div class="smet"><div class="smv" id="skills-count">—</div><div class="sml">Skills present</div></div>
         <div class="smet"><div class="smv" id="gaps-count">—</div><div class="sml">Gaps found</div></div>
         <div class="smet-wide">
-          <div class="smet-lbl">ATS Reality</div>
+          <div class="smet-lbl">Keyword Match (ATS)</div>
           <div class="smet-val">Analyzing your resume…</div>
         </div>
         <div class="smet-wide">
-          <div class="smet-lbl">Salary Reality</div>
+          <div class="smet-lbl">Salary Range</div>
           <div class="smet-val" id="salary-reality-val">Loading…</div>
         </div>
       </div>
@@ -1954,9 +1943,9 @@ button{cursor:pointer;border:none;outline:none}
       <div class="stats-col">
         <div class="stat-card ats-card">
           <div>
-            <div class="stat-lbl">ATS Reality</div>
+            <div class="stat-lbl">Keyword Match (ATS)</div>
             <div class="stat-val ats" id="profile-ats-val">—</div>
-            <div class="stat-note" id="profile-ats-note">Analysing your resume…</div>
+            <div class="stat-note" id="profile-ats-note">How many top required keywords are in your resume</div>
           </div>
           <div class="stat-icon-wrap">
             <span class="material-symbols-outlined" style="color:var(--secondary);font-size:28px;font-variation-settings:'FILL' 1">warning</span>
@@ -2949,18 +2938,23 @@ function renderVerdict(d) {
   document.getElementById('sum-desc').textContent  = d.verdict_sub || '';
 
   const atsText = (d.ats_pass_rate || 0) < 60
-    ? `${100-(d.ats_pass_rate||50)}% of ATS systems bin you before a human blinks. Fixable.`
-    : `ATS-friendly at ${d.ats_pass_rate}%. The human is your next problem.`;
-  const salText = sal.e
-    ? `Entry ${sal.e} · Mid ${sal.m} · Senior ${sal.s}`
-    : '';
+    ? `${d.ats_pass_rate||0}% of top keywords found. ${100-(d.ats_pass_rate||50)}% missing — fixable.`
+    : `${d.ats_pass_rate}% keyword coverage — ATS-friendly.`;
+
+  // Salary: show mid as the highlighted figure, entry–senior as context
+  const matchScore = d.match_score || 0;
+  // Infer experience band from match score as proxy
+  // Low match = early career framing, high match = senior framing
+  const salMid  = sal._fromPostings || sal.m;
+  const salCtx  = sal.e && sal.s ? `${sal.e} entry · ${sal.m} mid · ${sal.s} senior` : '';
+  const salText = salMid ? salMid : '';
 
   document.getElementById('sum-row').innerHTML =
     `<div class="smet"><div class="smv">${d.match_score||0}%</div><div class="sml">Role match</div></div>`+
     `<div class="smet"><div class="smv" id="skills-count">—</div><div class="sml">Skills present</div></div>`+
     `<div class="smet"><div class="smv" id="gaps-count">—</div><div class="sml">Gaps found</div></div>`+
-    `<div class="smet-wide"><div class="smet-lbl">ATS Reality</div><div class="smet-val">${atsText}</div></div>`+
-    (salText?`<div class="smet-wide"><div class="smet-lbl">Salary Reality</div><div class="smet-val">${salText}${sal.e?'<br><span style="font-size:10px;opacity:.7">If they offer below entry range, that\'s a test.</span>':''}</div></div>`:'');
+    `<div class="smet-wide"><div class="smet-lbl">Keyword Match (ATS)</div><div class="smet-val">${atsText}</div></div>`+
+    (salText?`<div class="smet-wide"><div class="smet-lbl">Salary Range</div><div class="smet-val" style="font-size:18px;font-weight:900">${esc(salText)}</div>${salCtx?`<div style="font-size:10px;opacity:.65;margin-top:2px">${esc(salCtx)}</div>`:''}</div>`:'');
 
   // ── Profile hero card ──
   const matchPct = d.match_score || 0;
@@ -2982,22 +2976,31 @@ function renderVerdict(d) {
   if (roleTitle) roleTitle.textContent = currentRole || 'Your Role';
   if (verdictSub) verdictSub.textContent = d.verdict_sub || d.verdict_headline || '';
 
-  // ATS stat card
+  // Keyword Match (ATS) stat card
   const atsVal  = document.getElementById('profile-ats-val');
   const atsNote = document.getElementById('profile-ats-note');
   if (atsVal)  atsVal.textContent  = (d.ats_pass_rate || '—') + (d.ats_pass_rate ? '%' : '');
   if (atsNote) atsNote.textContent = (d.ats_pass_rate || 0) < 60
-    ? `of ATS systems pass you. Fixable.`
-    : `ATS pass rate — solid.`;
+    ? `of top keywords found. Add "${d.ats_missing_keyword || 'key terms'}" to improve.`
+    : `Strong keyword coverage for this role.`;
 
-  // Salary stat card — show only lowest–highest (I1)
+  // Salary stat card — mid as primary, entry–senior as context
   const salVal = document.getElementById('profile-sal-val');
   if (salVal) {
-    // Backend now sends sal.low and sal.high (single values, not ranges)
-    // Fallback: parse the first number from sal.e and last from sal.s
-    const low  = sal.low  || (sal.e || '').split('–')[0].trim() || sal.e || '';
-    const high = sal.high || (() => { const p = (sal.s||'').split('–'); return (p[1]||p[0]||'').trim(); })() || sal.s || '';
-    salVal.textContent = (low && high) ? `${low} – ${high}` : low || 'Calculating…';
+    // Use posting median if available, otherwise BLS mid
+    const primary = sal._fromPostings || sal.m || sal.e || '';
+    salVal.textContent = primary || 'Calculating…';
+    // Add entry–senior context as a small subtitle
+    if (sal.e && sal.s) {
+      let ctx = salVal.parentElement.querySelector('.sal-ctx');
+      if (!ctx) {
+        ctx = document.createElement('div');
+        ctx.className = 'sal-ctx';
+        ctx.style.cssText = 'font-size:10px;color:var(--on-surface-v);margin-top:2px;font-weight:500';
+        salVal.parentElement.insertBefore(ctx, salVal.nextSibling);
+      }
+      ctx.textContent = `${sal.e} entry · ${sal.s} senior`;
+    }
   }
 
   // Store ATS data for summary card
@@ -3361,7 +3364,7 @@ function renderScores(d) {
   if (analysisData.ats_missing_keyword) {
     const an = document.getElementById('ats-notice');
     an.style.display = 'block';
-    an.textContent = `Right now ${100-(analysisData.ats_pass_rate||50)}% of ATS systems bin your resume before a human reads it. Biggest missing keyword: "${analysisData.ats_missing_keyword}". Adding it could push you from ${analysisData.ats_pass_rate||50}% to ${analysisData.ats_potential||75}%.`;
+    an.textContent = `Your resume matches ${analysisData.ats_pass_rate||50}% of the top keywords for this role. The biggest missing keyword is "${analysisData.ats_missing_keyword}". Adding it could push your keyword match to ${analysisData.ats_potential||75}%.`;
   }
 
   // Clear bullet skeleton
@@ -3629,7 +3632,7 @@ async function submitFeedback() {
       throw new Error('Send failed');
     }
   } catch {
-    btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px">error</span> Could not send, try again';
+    btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px">error</span> Could not send — try again';
     btn.style.background = 'var(--error)';
     setTimeout(() => {
       btn.innerHTML        = orig;
