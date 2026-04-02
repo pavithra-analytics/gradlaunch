@@ -1018,11 +1018,12 @@ module.exports = async function handler(req, res) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return res.status(500).json({ error: 'API key not configured.' });
 
-  const body     = req.body || {};
-  const fileId   = body.fileId   || null;
-  const resume   = (body.resume  || '').substring(0, 4000);
-  const location = (body.location|| '').substring(0, 50);
-  const jd       = (body.jd      || '').substring(0, 1200);
+  const body       = req.body || {};
+  const fileId     = body.fileId   || null;
+  const resume     = (body.resume  || '').substring(0, 4000);     // capped for Claude input
+  const resumeFull = body.resumeFull || body.resume || '';         // full text for ATS scoring
+  const location   = (body.location|| '').substring(0, 50);
+  const jd         = (body.jd      || '').substring(0, 1200);
   const hasJD    = jd.trim().length > 50;
 
   // Role: explicit or extracted from JD
@@ -1091,7 +1092,9 @@ module.exports = async function handler(req, res) {
   // not its own calculation — eliminates run-to-run variance.
   // NOTE: resume text is now ALWAYS available (extracted server-side in upload.js
   // for both PDF and DOCX). The client always sends it alongside fileId.
-  const resumeForATS = resume || '';
+  // ATS uses the FULL resume text (no 4000 char cap) to avoid missing skills
+  // listed near the end of longer resumes.
+  const resumeForATS = resumeFull || resume || '';
   const atsResult = computeATS(resumeForATS, marketData?.skillFreq || []);
   const serverATS  = atsResult.atsScore;
   const serverPotential = atsResult.atsPotential;

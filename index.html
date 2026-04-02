@@ -2232,6 +2232,27 @@ let analysisData    = {};
 let _currentEvent   = '';
 
 // ═══════════════════════════════════════════════════
+// CLIENT-SIDE NORMALIZE — mirrors server normalizeResumeText()
+// Applied to ALL browser fallback paths so text is identical
+// to what the server would produce.
+// ═══════════════════════════════════════════════════
+function normalizeResumeText(raw) {
+  if (!raw) return '';
+  return raw
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/\u00A0/g, ' ')
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2013\u2014]/g, '-')
+    .replace(/[\u2022\u2023\u25E6\u2043\u2219]/g, '- ')
+    .replace(/\t/g, ' ')
+    .replace(/[ ]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+// ═══════════════════════════════════════════════════
 // DARK MODE
 // ═══════════════════════════════════════════════════
 function toggleDark() {
@@ -2329,8 +2350,9 @@ async function handleFile(input) {
     const upData = await upRes.json().catch(()=>({fallback:true}));
 
     // Server extracted text (canonical pipeline) — always prefer this
+    // Store full text; truncation only applied when sending to Claude (not for ATS)
     if (upData.resumeText && upData.resumeText.length > 0) {
-      resumeText = upData.resumeText.substring(0, 4000);
+      resumeText = upData.resumeText;
     }
 
     if (!upData.fallback) {
@@ -2362,13 +2384,13 @@ async function handleFile(input) {
         const ct = await pg.getTextContent();
         pages.push(ct.items.map(x=>x.str).join(' '));
       }
-      text = pages.join('\n');
+      text = normalizeResumeText(pages.join('\n'));
 
       const m = text.replace(/[^a-zA-Z0-9\s]/g,'').replace(/\s+/g,' ').trim();
       if (m.length < 200) {
         return showFileErr(name,'This PDF appears to be a scanned image. Save as a text-based PDF and try again.');
       }
-      resumeText   = text.substring(0,4000);
+      resumeText   = text;
       resumeFileId = null;
       rawFile      = file;
       showFileOk(name);
@@ -2376,12 +2398,12 @@ async function handleFile(input) {
       // Browser-side DOCX fallback — extract text from the XML inside the ZIP
       try {
         const arrayBuf = await readAB(file);
-        const text = await extractDOCXBrowser(arrayBuf);
+        const text = normalizeResumeText(await extractDOCXBrowser(arrayBuf));
         const m = text.replace(/[^a-zA-Z0-9\s]/g,'').replace(/\s+/g,' ').trim();
         if (m.length < 200) {
           return showFileErr(name, 'Could not extract enough text from this DOCX. Try saving as PDF and uploading again.');
         }
-        resumeText   = text.substring(0, 4000);
+        resumeText   = text;
         resumeFileId = null;
         rawFile      = file;
         showFileOk(name);
@@ -2688,15 +2710,15 @@ async function launchAnalysis() {
         });
         const upData = await upRes.json().catch(() => ({ fallback: true }));
 
-        // Server-extracted text always preferred
+        // Server-extracted text always preferred (full text, no truncation)
         if (upData.resumeText) {
-          resumeText = upData.resumeText.substring(0, 4000);
+          resumeText = upData.resumeText;
         }
 
         if (!upData.fallback && upData.fileId) {
           resumeFileId = upData.fileId;
         } else if (!resumeText) {
-          // Fallback: browser-side extraction
+          // Fallback: browser-side extraction with normalization
           if (ext === 'pdf') {
             const ab  = await readAB(rawFile);
             const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
@@ -2706,10 +2728,10 @@ async function launchAnalysis() {
               const ct = await pg.getTextContent();
               pages.push(ct.items.map(x => x.str).join(' '));
             }
-            resumeText = pages.join('\n').substring(0, 4000);
+            resumeText = normalizeResumeText(pages.join('\n'));
           } else if (ext === 'docx') {
             const ab = await readAB(rawFile);
-            resumeText = (await extractDOCXBrowser(ab)).substring(0, 4000);
+            resumeText = normalizeResumeText(await extractDOCXBrowser(ab));
           }
         }
         errBox.style.display = 'none';
@@ -2815,7 +2837,10 @@ async function runStream({ role, location, jd, signal }) {
   // Always send resume text for deterministic ATS scoring
   // Also send fileId when available (PDF) for rich Claude analysis
   if (resumeFileId) payload.fileId = resumeFileId;
-  if (resumeText) payload.resume = resumeText.substring(0,4000);
+  if (resumeText) {
+    payload.resume    = resumeText.substring(0,4000); // capped for Claude input
+    payload.resumeFull = resumeText;                   // full text for ATS scoring
+  }
 
   const res = await fetch('/api/analyze',{
     method:'POST', headers:{'Content-Type':'application/json'},

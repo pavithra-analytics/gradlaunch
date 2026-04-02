@@ -250,8 +250,9 @@ function normalizeResumeText(rawText) {
     .replace(/\t/g, ' ')                         // tabs → space
     .replace(/[ ]{2,}/g, ' ')                    // collapse spaces
     .replace(/\n{3,}/g, '\n\n')                  // collapse blank lines
-    .trim()
-    .substring(0, 4000);                         // cap at 4000 chars
+    .trim();
+    // No truncation here — ATS needs the full text.
+    // Claude input is capped at 4000 chars in analyze.js.
 }
 
 // ── ANTHROPIC FILES API BETA HEADER ──
