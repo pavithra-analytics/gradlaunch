@@ -164,6 +164,69 @@ function computeATS(resumeText, skillFreq) {
   };
 }
 
+// ═══════════════════════════════════════════════════════
+// DETERMINISTIC SKILL & GAP DETECTION
+//
+// Scans resume text against market data to produce stable
+// present/missing skill lists. Same resume + same market data
+// = identical output every run. Claude receives these as
+// ground truth and must not override them.
+// ═══════════════════════════════════════════════════════
+function computeSkillsAndGaps(resumeText, skillFreq) {
+  if (!skillFreq || !skillFreq.length || !resumeText) {
+    return { present: [], missing: [], presentSet: new Set() };
+  }
+
+  const text = resumeText.toLowerCase();
+  // Use top 20 skills from market data for comprehensive coverage
+  const topSkills = skillFreq.slice(0, 20);
+
+  const present = [];
+  const missing = [];
+  const presentSet = new Set();
+
+  for (const s of topSkills) {
+    const skillLower = s.skill.toLowerCase();
+    if (text.includes(skillLower)) {
+      present.push({ skill: s.skill, pct: s.pct });
+      presentSet.add(skillLower);
+    } else {
+      missing.push({ skill: s.skill, pct: s.pct });
+    }
+  }
+
+  // Sort present by market frequency descending
+  present.sort((a, b) => b.pct - a.pct);
+  // Sort missing by market frequency descending (highest-impact gaps first)
+  missing.sort((a, b) => b.pct - a.pct);
+
+  return { present, missing, presentSet };
+}
+
+// Deterministic skill level assignment based on frequency of mentions in resume
+// Strong: 3+ mentions, Intermediate: 2, Basic: 1
+function computeSkillLevel(skillName, resumeText) {
+  const text = resumeText.toLowerCase();
+  const needle = skillName.toLowerCase();
+  let count = 0;
+  let idx = text.indexOf(needle);
+  while (idx !== -1) {
+    count++;
+    idx = text.indexOf(needle, idx + needle.length);
+  }
+  if (count >= 3) return 'Strong';
+  if (count >= 2) return 'Intermediate';
+  return 'Basic';
+}
+
+// Deterministic gap priority based on market frequency
+// >=60% of postings = Critical, >=35% = Important, else Nice to have
+function computeGapPriority(pct) {
+  if (pct >= 60) return 'Critical';
+  if (pct >= 35) return 'Important';
+  return 'Nice to have';
+}
+
 // Match score: weighted blend of ATS coverage + skills breadth
 // 70% ATS keyword coverage + 30% skills count signal
 // Bounded to realistic range — never above 95 or below 5
@@ -609,16 +672,26 @@ cert_picks must address skills high on this list that are missing from the resum
 // ═══════════════════════════════════════════════════════
 // ANALYSIS PROMPTS
 // ═══════════════════════════════════════════════════════
-function buildAnalysisPromptA(role, locationStr, jd, hasJD, sal, marketDataBlock, atsFactLine) {
+function buildAnalysisPromptA(role, locationStr, jd, hasJD, sal, marketDataBlock, atsFactLine, serverSkills) {
   const salaryCtx = sal._fromPostings
     ? `Salary from real postings: ${sal._fromPostings}${sal._postingNote ? ` (${sal._postingNote})` : ''}. Use this as the basis for the salary range in set_verdict.`
     : `No salary data available from postings. In set_verdict, provide your best salary range estimate for a ${role} in ${locationStr} based on your training knowledge. Format as entry–senior range (e.g. $65k – $140k). Be role-specific and realistic.`;
+
+  // Inject server-detected skills and gaps so Claude uses them for writing context
+  let skillFactLine = '';
+  if (serverSkills && serverSkills.present.length > 0) {
+    const presentList = serverSkills.present.slice(0, 6).map(s => `${s.skill} (${s.pct}%)`).join(', ');
+    const missingList = serverSkills.missing.slice(0, 5).map(s => `${s.skill} (${s.pct}%)`).join(', ');
+    skillFactLine = `PRE-COMPUTED SKILLS DETECTED IN RESUME: ${presentList}
+PRE-COMPUTED SKILL GAPS (missing from resume, sorted by market frequency): ${missingList}
+USE THESE EXACT SKILLS in set_skills (skills_present) and set_gaps. The server controls skill selection, relevance %, and gap priority. Your role is to provide skill_levels assessment and how_to_fix suggestions for each gap. Include how_to_fix for ALL 5 gaps listed above.`;
+  }
 
   return `Analyze this resume for a ${role} role${locationStr !== 'Nationwide USA' ? ` in ${locationStr}` : ''}.
 
 ${marketDataBlock}
 
-${atsFactLine ? atsFactLine + '\n' : ''}${salaryCtx}
+${atsFactLine ? atsFactLine + '\n' : ''}${skillFactLine ? skillFactLine + '\n' : ''}${salaryCtx}
 
 ${hasJD ? `JOB DESCRIPTION:\n${jd}\n\nSince a JD was provided, also call set_jd_breakdown.` : ''}
 
@@ -675,7 +748,7 @@ function lookupSkillPct(skillName, skillFreq) {
   return null; // below threshold — trust Claude
 }
 
-function emitToolCallA(name, args, res, sal, role, marketData, atsResult) {
+function emitToolCallA(name, args, res, sal, role, marketData, atsResult, serverSkills) {
   const skillFreq = marketData?.skillFreq || [];
   switch (name) {
     case 'set_verdict': {
@@ -683,9 +756,10 @@ function emitToolCallA(name, args, res, sal, role, marketData, atsResult) {
       const atsPass    = atsResult?.atsScore    !== null ? atsResult.atsScore    : clamp(args.ats_pass_rate, 0, 100);
       const atsPot     = atsResult?.atsPotential !== null ? atsResult.atsPotential : clamp(args.ats_potential, 0, 100);
       const atsMissing = atsResult?.missingTop?.[0] || args.ats_missing_keyword || '';
-      // Match score: use server formula if ATS is available, else trust Claude
+      // Match score: use server formula — deterministic
+      const presentCount = serverSkills ? serverSkills.present.length : ((args.skills_present || []).length || 3);
       const matchScore = atsResult?.atsScore !== null
-        ? computeMatchScore(atsResult.atsScore, (args.skills_present || []).length || 3, 10)
+        ? computeMatchScore(atsResult.atsScore, presentCount, 15)
         : clamp(args.match_score, 0, 100);
       sendEvent(res, 'verdict', {
         match_score:         matchScore,
@@ -705,68 +779,108 @@ function emitToolCallA(name, args, res, sal, role, marketData, atsResult) {
     }
 
     case 'set_skills': {
-      const skills   = (args.skills_present || []).slice(0, 6);
-      const levels   = args.skill_levels || {};
-      // Store for set_gaps to reference (exclude confirmed skills from gap list)
-      emitToolCallA._lastSkills = skills;
-      // Server-side relevance: only override when scrape confidence ≥ threshold
-      const relevance = {};
-      for (const s of skills) {
-        const scraped = lookupSkillPct(s, skillFreq);
-        if (scraped !== null) {
-          // Scrape has high confidence (≥30%) — use it
-          relevance[s] = scraped;
-        } else {
-          // Below threshold or not in scrape — trust Claude's estimate
-          const claudeVal = (args.skill_relevance || {})[s];
-          relevance[s] = (claudeVal > 0 && claudeVal <= 100) ? Math.min(claudeVal, 85) : 0;
+      // DETERMINISTIC SKILL LIST:
+      // When server-side skill detection is available, use it as ground truth
+      // for skill names and relevance %. Claude's skill_levels are replaced
+      // with deterministic mention-count levels. Claude only identifies skills
+      // — the server decides relevance and level.
+      if (serverSkills && serverSkills.present.length > 0) {
+        const topPresent = serverSkills.present.slice(0, 6);
+        const skills     = topPresent.map(s => s.skill);
+        const levels     = {};
+        const relevance  = {};
+        for (const s of topPresent) {
+          levels[s.skill]    = computeSkillLevel(s.skill, serverSkills._resumeText || '');
+          relevance[s.skill] = s.pct; // exact market data %
         }
+        emitToolCallA._lastSkills = skills;
+        sendEvent(res, 'skills', {
+          skills_present:  skills,
+          skill_levels:    levels,
+          skill_relevance: relevance
+        });
+      } else {
+        // Fallback: no market data — use Claude's output with server overrides
+        const skills   = (args.skills_present || []).slice(0, 6);
+        const levels   = args.skill_levels || {};
+        emitToolCallA._lastSkills = skills;
+        const relevance = {};
+        for (const s of skills) {
+          const scraped = lookupSkillPct(s, skillFreq);
+          if (scraped !== null) {
+            relevance[s] = scraped;
+          } else {
+            const claudeVal = (args.skill_relevance || {})[s];
+            relevance[s] = (claudeVal > 0 && claudeVal <= 100) ? Math.min(claudeVal, 85) : 0;
+          }
+        }
+        sendEvent(res, 'skills', {
+          skills_present:  skills,
+          skill_levels:    levels,
+          skill_relevance: relevance
+        });
       }
-      sendEvent(res, 'skills', {
-        skills_present:  skills,
-        skill_levels:    levels,
-        skill_relevance: relevance
-      });
       break;
     }
 
     case 'set_gaps': {
-      // Build set of confirmed skills to exclude — if a skill is in your superpowers,
-      // it cannot also be a gap (fixes SQL appearing in both sections)
-      const confirmedSkills = new Set(
-        (args.skills_present || emitToolCallA._lastSkills || [])
-          .map(s => s.toLowerCase().trim())
-      );
-
-      const claudeGaps = (args.gaps || []).slice(0, 7).map(g => {
-        let skillName = g.skill || '';
-        // Normalise name against market data if we have a high-confidence match
-        if (skillFreq.length) {
-          const scraped = lookupSkillPct(skillName, skillFreq);
-          if (scraped === null) {
-            const lower = skillName.toLowerCase();
-            const base  = skillFreq.find(s =>
-              lower.includes(s.skill) || s.skill.includes(lower.split(' ')[0])
-            );
-            if (base && base.pct >= SCRAPE_CONFIDENCE_THRESHOLD) skillName = base.skill;
+      // DETERMINISTIC GAP LIST:
+      // When server-side detection is available, use missing skills from market data
+      // as the authoritative gap list. Priority is computed from market frequency.
+      // Claude provides how_to_fix text (writing), but the gap selection and ranking
+      // are deterministic.
+      if (serverSkills && serverSkills.missing.length > 0) {
+        const serverGaps = serverSkills.missing.slice(0, 5);
+        // Build a lookup of Claude's how_to_fix suggestions keyed by lowercase skill
+        const claudeFixes = {};
+        for (const g of (args.gaps || [])) {
+          if (g.skill && g.how_to_fix) {
+            claudeFixes[g.skill.toLowerCase().trim()] = g.how_to_fix;
           }
         }
-        const marketPct = lookupSkillPct(skillName, skillFreq);
-        return {
-          skill:      skillName,
-          priority:   ['Critical','Important','Nice to have'].includes(g.priority) ? g.priority : 'Important',
-          how_often:  marketPct !== null ? marketPct : clamp(g.how_often || 0, 0, 100),
-          how_to_fix: g.how_to_fix || ''
-        };
-      })
-      // Exclude skills the user already has in their resume
-      .filter(g => !confirmedSkills.has(g.skill.toLowerCase().trim()))
-      // Sort by frequency descending — highest % gaps shown first
-      .sort((a, b) => b.how_often - a.how_often)
-      .slice(0, 5);
 
-      emitToolCallA._lastGaps = claudeGaps;
-      sendEvent(res, 'gaps', { gaps: claudeGaps });
+        const gaps = serverGaps.map(g => ({
+          skill:      g.skill,
+          priority:   computeGapPriority(g.pct),
+          how_often:  g.pct,
+          how_to_fix: claudeFixes[g.skill.toLowerCase()] || claudeFixes[g.skill] || ''
+        }));
+
+        emitToolCallA._lastGaps = gaps;
+        sendEvent(res, 'gaps', { gaps });
+      } else {
+        // Fallback: no market data — use Claude's gaps with server overrides
+        const confirmedSkills = new Set(
+          (args.skills_present || emitToolCallA._lastSkills || [])
+            .map(s => s.toLowerCase().trim())
+        );
+        const claudeGaps = (args.gaps || []).slice(0, 7).map(g => {
+          let skillName = g.skill || '';
+          if (skillFreq.length) {
+            const scraped = lookupSkillPct(skillName, skillFreq);
+            if (scraped === null) {
+              const lower = skillName.toLowerCase();
+              const base  = skillFreq.find(s =>
+                lower.includes(s.skill) || s.skill.includes(lower.split(' ')[0])
+              );
+              if (base && base.pct >= SCRAPE_CONFIDENCE_THRESHOLD) skillName = base.skill;
+            }
+          }
+          const marketPct = lookupSkillPct(skillName, skillFreq);
+          return {
+            skill:      skillName,
+            priority:   ['Critical','Important','Nice to have'].includes(g.priority) ? g.priority : 'Important',
+            how_often:  marketPct !== null ? marketPct : clamp(g.how_often || 0, 0, 100),
+            how_to_fix: g.how_to_fix || ''
+          };
+        })
+        .filter(g => !confirmedSkills.has(g.skill.toLowerCase().trim()))
+        .sort((a, b) => b.how_often - a.how_often)
+        .slice(0, 5);
+
+        emitToolCallA._lastGaps = claudeGaps;
+        sendEvent(res, 'gaps', { gaps: claudeGaps });
+      }
       break;
     }
 
@@ -1106,8 +1220,14 @@ module.exports = async function handler(req, res) {
     ? `PRE-COMPUTED ATS KEYWORD MATCH: ${serverATS}% (${topPresent.length} of 15 top keywords found: ${topPresent.join(', ')}). Top missing: ${topMissing.slice(0,3).join(', ')}. Potential after adding top 3 missing: ${serverPotential}%. USE THESE EXACT NUMBERS in set_verdict (ats_pass_rate=${serverATS}, ats_potential=${serverPotential}, ats_missing_keyword="${topMissing[0]||''}"). DO NOT recalculate.`
     : '';
 
+  // ── Deterministic skill & gap detection ──
+  // Computed once from resume text + market data. Fed to emitters so
+  // skills_present, skill_relevance, gaps, and gap priorities are stable.
+  const serverSkills = computeSkillsAndGaps(resumeForATS, marketData?.skillFreq || []);
+  serverSkills._resumeText = resumeForATS; // attached for skill level computation
+
   // Stream A user content — includes file or resume text
-  const promptA    = buildAnalysisPromptA(role, locationStr, jd, hasJD, sal, marketDataBlock, atsFactLine);
+  const promptA    = buildAnalysisPromptA(role, locationStr, jd, hasJD, sal, marketDataBlock, atsFactLine, serverSkills);
   const userContentA = fileId
     ? [
         { type: 'document', source: { type: 'file', file_id: fileId } },
@@ -1157,9 +1277,12 @@ module.exports = async function handler(req, res) {
   let streamASkills = []; // populated when set_skills fires
 
   const emitA = (name, args) => {
-    emitToolCallA(name, args, res, sal, role, marketData, atsResult);
+    emitToolCallA(name, args, res, sal, role, marketData, atsResult, serverSkills);
     if (name === 'set_skills') {
-      streamASkills = (args.skills_present || []).slice(0, 6);
+      // Use server-detected skills when available for Stream B context
+      streamASkills = serverSkills.present.length > 0
+        ? serverSkills.present.slice(0, 6).map(s => s.skill)
+        : (args.skills_present || []).slice(0, 6);
     }
   };
 
