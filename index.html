@@ -1652,9 +1652,9 @@ button{cursor:pointer;border:none;outline:none}
             <span class="material-symbols-outlined" style="color:#fff;font-size:36px;font-variation-settings:'FILL' 1">cloud_upload</span>
           </div>
           <div class="dz-title" style="font-size:18px">Drop your resume here</div>
-          <div class="dz-sub">PDF only · Max 3MB</div>
+          <div class="dz-sub">PDF or DOCX · Max 3MB</div>
           <div class="dz-tip" style="margin-top:4px">LinkedIn: Profile → More → Save to PDF</div>
-          <input type="file" id="file-input" accept=".pdf" style="display:none" onchange="handleFile(this)"/>
+          <input type="file" id="file-input" accept=".pdf,.docx" style="display:none" onchange="handleFile(this)"/>
         </div>
 
         <div id="dz-processing" style="display:none">
@@ -2303,11 +2303,11 @@ async function handleFile(input) {
   const name = file.name;
   const ext  = name.split('.').pop().toLowerCase();
 
-  if (ext !== 'pdf') {
-    return showFileErr(name, 'Please upload a PDF file. In LinkedIn: Profile → More → Save to PDF.');
+  if (ext !== 'pdf' && ext !== 'docx') {
+    return showFileErr(name, 'Please upload a PDF or DOCX file.');
   }
   if (file.size > 3 * 1024 * 1024)
-    return showFileErr(name, 'File too large. Please compress your PDF to under 3MB.');
+    return showFileErr(name, 'File too large. Please keep your resume under 3MB.');
 
   // Delete previous orphaned file
   if (resumeFileId) {
@@ -2320,7 +2320,7 @@ async function handleFile(input) {
   showDZ('processing');
 
   try {
-    // Try Files API first
+    // Upload to server — server handles text extraction for both PDF and DOCX
     const b64 = await readB64(file);
     const upRes = await fetch('/api/upload',{
       method:'POST', headers:{'Content-Type':'application/json'},
@@ -2328,40 +2328,141 @@ async function handleFile(input) {
     });
     const upData = await upRes.json().catch(()=>({fallback:true}));
 
-    if (!upData.fallback && upData.fileId) {
-      resumeFileId = upData.fileId;
-      resumeText   = '';
-      rawFile      = file; // retain for re-upload after Start Over
+    // Server extracted text (canonical pipeline) — always prefer this
+    if (upData.resumeText && upData.resumeText.length > 0) {
+      resumeText = upData.resumeText.substring(0, 4000);
+    }
+
+    if (!upData.fallback) {
+      // Server succeeded
+      resumeFileId = upData.fileId || null; // null for DOCX (no Files API)
+      rawFile      = file;
+
+      // Validate we have usable text
+      const m = (resumeText || '').replace(/[^a-zA-Z0-9\s]/g,'').replace(/\s+/g,' ').trim();
+      if (m.length < 200 && !resumeFileId) {
+        // No fileId and no good text — can't proceed
+        if (ext === 'docx') return showFileErr(name, 'Could not extract enough text from this DOCX. Try saving as PDF and uploading again.');
+        return showFileErr(name, 'Resume appears too short. Please check the file.');
+      }
+
       showFileOk(name);
       return;
     }
 
-    // Fallback: browser PDF parsing
-    let text = '';
-    if (typeof pdfjsLib === 'undefined')
-      return showFileErr(name, 'PDF reader failed. Refresh and try again.');
-    const pdf = await pdfjsLib.getDocument({data: await readAB(file)}).promise;
-    const pages = [];
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const pg = await pdf.getPage(i);
-      const ct = await pg.getTextContent();
-      pages.push(ct.items.map(x=>x.str).join(' '));
-    }
-    text = pages.join('\n');
+    // Server fallback — try browser-side parsing
+    if (ext === 'pdf') {
+      let text = '';
+      if (typeof pdfjsLib === 'undefined')
+        return showFileErr(name, 'PDF reader failed. Refresh and try again.');
+      const pdf = await pdfjsLib.getDocument({data: await readAB(file)}).promise;
+      const pages = [];
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const pg = await pdf.getPage(i);
+        const ct = await pg.getTextContent();
+        pages.push(ct.items.map(x=>x.str).join(' '));
+      }
+      text = pages.join('\n');
 
-    const m = text.replace(/[^a-zA-Z0-9\s]/g,'').replace(/\s+/g,' ').trim();
-    if (m.length < 200) {
-      if (ext==='pdf') return showFileErr(name,'This PDF appears to be a scanned image. Save as a text-based PDF and try again.');
-      return showFileErr(name,'Resume appears too short. Please check the file.');
+      const m = text.replace(/[^a-zA-Z0-9\s]/g,'').replace(/\s+/g,' ').trim();
+      if (m.length < 200) {
+        return showFileErr(name,'This PDF appears to be a scanned image. Save as a text-based PDF and try again.');
+      }
+      resumeText   = text.substring(0,4000);
+      resumeFileId = null;
+      rawFile      = file;
+      showFileOk(name);
+    } else if (ext === 'docx') {
+      // Browser-side DOCX fallback — extract text from the XML inside the ZIP
+      try {
+        const arrayBuf = await readAB(file);
+        const text = await extractDOCXBrowser(arrayBuf);
+        const m = text.replace(/[^a-zA-Z0-9\s]/g,'').replace(/\s+/g,' ').trim();
+        if (m.length < 200) {
+          return showFileErr(name, 'Could not extract enough text from this DOCX. Try saving as PDF and uploading again.');
+        }
+        resumeText   = text.substring(0, 4000);
+        resumeFileId = null;
+        rawFile      = file;
+        showFileOk(name);
+      } catch (docxErr) {
+        return showFileErr(name, 'Could not read this DOCX file. Try saving as PDF and uploading again.');
+      }
     }
-    resumeText   = text.substring(0,4000);
-    resumeFileId = null;
-    rawFile      = file; // retain for re-upload after Start Over
-    showFileOk(name);
 
   } catch(e) {
     showFileErr(name,'Could not read this file. Try saving as PDF and uploading again.');
   }
+}
+
+// ── Browser-side DOCX text extraction (fallback only) ──
+// Uses the browser's native DecompressionStream API to inflate ZIP entries
+async function extractDOCXBrowser(arrayBuffer) {
+  const bytes = new Uint8Array(arrayBuffer);
+
+  // Find word/document.xml in the ZIP
+  let offset = 0;
+  while (offset < bytes.length - 4) {
+    if (bytes[offset] === 0x50 && bytes[offset+1] === 0x4B &&
+        bytes[offset+2] === 0x03 && bytes[offset+3] === 0x04) {
+      const compression = bytes[offset+8] | (bytes[offset+9] << 8);
+      const compSize    = bytes[offset+18] | (bytes[offset+19]<<8) | (bytes[offset+20]<<16) | (bytes[offset+21]<<24);
+      const nameLen     = bytes[offset+26] | (bytes[offset+27] << 8);
+      const extraLen    = bytes[offset+28] | (bytes[offset+29] << 8);
+      const nameBytes   = bytes.slice(offset+30, offset+30+nameLen);
+      const name        = new TextDecoder().decode(nameBytes);
+      const dataStart   = offset + 30 + nameLen + extraLen;
+      const dataEnd     = dataStart + compSize;
+
+      if (name === 'word/document.xml' && dataEnd <= bytes.length) {
+        const rawData = bytes.slice(dataStart, dataEnd);
+        let xml;
+        if (compression === 8) {
+          // Deflate — use DecompressionStream if available, else fallback
+          if (typeof DecompressionStream !== 'undefined') {
+            const ds = new DecompressionStream('deflate-raw');
+            const writer = ds.writable.getWriter();
+            writer.write(rawData);
+            writer.close();
+            const reader = ds.readable.getReader();
+            const chunks = [];
+            while (true) {
+              const {done, value} = await reader.read();
+              if (done) break;
+              chunks.push(value);
+            }
+            const total = chunks.reduce((s, c) => s + c.length, 0);
+            const merged = new Uint8Array(total);
+            let pos = 0;
+            for (const c of chunks) { merged.set(c, pos); pos += c.length; }
+            xml = new TextDecoder().decode(merged);
+          } else {
+            throw new Error('DecompressionStream not supported');
+          }
+        } else {
+          xml = new TextDecoder().decode(rawData);
+        }
+
+        // Parse XML same as server
+        return xml
+          .replace(/<\/w:p[^>]*>/gi, '\n')
+          .replace(/<w:tab\/>/gi, '\t')
+          .replace(/<w:br[^>]*\/>/gi, '\n')
+          .replace(/<[^>]+>/g, '')
+          .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+          .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+          .replace(/&#\d+;/g, '')
+          .replace(/[ \t]+/g, ' ')
+          .replace(/\n{3,}/g, '\n\n')
+          .trim();
+      }
+
+      offset = dataEnd;
+    } else {
+      offset++;
+    }
+  }
+  throw new Error('word/document.xml not found in DOCX');
 }
 
 // Drag and drop
@@ -2579,25 +2680,37 @@ async function launchAnalysis() {
       errBox.style.display = 'block';
       try {
         const name = rawFile.name;
+        const ext  = name.split('.').pop().toLowerCase();
         const b64  = await readB64(rawFile);
         const upRes  = await fetch('/api/upload', {
           method: 'POST', headers: {'Content-Type':'application/json'},
           body: JSON.stringify({ filename: name, data: b64 })
         });
         const upData = await upRes.json().catch(() => ({ fallback: true }));
+
+        // Server-extracted text always preferred
+        if (upData.resumeText) {
+          resumeText = upData.resumeText.substring(0, 4000);
+        }
+
         if (!upData.fallback && upData.fileId) {
           resumeFileId = upData.fileId;
-        } else {
-          // Files API unavailable — re-extract text from rawFile
-          const ab  = await readAB(rawFile);
-          const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
-          const pages = [];
-          for (let i = 1; i <= pdf.numPages; i++) {
-            const pg = await pdf.getPage(i);
-            const ct = await pg.getTextContent();
-            pages.push(ct.items.map(x => x.str).join(' '));
+        } else if (!resumeText) {
+          // Fallback: browser-side extraction
+          if (ext === 'pdf') {
+            const ab  = await readAB(rawFile);
+            const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
+            const pages = [];
+            for (let i = 1; i <= pdf.numPages; i++) {
+              const pg = await pdf.getPage(i);
+              const ct = await pg.getTextContent();
+              pages.push(ct.items.map(x => x.str).join(' '));
+            }
+            resumeText = pages.join('\n').substring(0, 4000);
+          } else if (ext === 'docx') {
+            const ab = await readAB(rawFile);
+            resumeText = (await extractDOCXBrowser(ab)).substring(0, 4000);
           }
-          resumeText = pages.join('\n').substring(0, 4000);
         }
         errBox.style.display = 'none';
       } catch {
@@ -2699,8 +2812,10 @@ async function runStream({ role, location, jd, signal }) {
     location: location.substring(0,50),
     jd:       jd.substring(0,1200)
   };
+  // Always send resume text for deterministic ATS scoring
+  // Also send fileId when available (PDF) for rich Claude analysis
   if (resumeFileId) payload.fileId = resumeFileId;
-  else payload.resume = resumeText.substring(0,4000);
+  if (resumeText) payload.resume = resumeText.substring(0,4000);
 
   const res = await fetch('/api/analyze',{
     method:'POST', headers:{'Content-Type':'application/json'},

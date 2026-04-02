@@ -1089,15 +1089,15 @@ module.exports = async function handler(req, res) {
   // Computed once from resume text + scraped data.
   // Injected into both prompts so Claude uses this number,
   // not its own calculation — eliminates run-to-run variance.
-  const resumeForATS = resume || ''; // text-based resumes only; file-based get null
+  // NOTE: resume text is now ALWAYS available (extracted server-side in upload.js
+  // for both PDF and DOCX). The client always sends it alongside fileId.
+  const resumeForATS = resume || '';
   const atsResult = computeATS(resumeForATS, marketData?.skillFreq || []);
   const serverATS  = atsResult.atsScore;
   const serverPotential = atsResult.atsPotential;
   const topMissing = atsResult.missingTop;
   const topPresent = atsResult.presentTop;
 
-  // For file-based uploads we don't have resume text server-side —
-  // fall back to letting Claude calculate (acceptable, only affects file uploads)
   const hasServerATS = serverATS !== null;
   const atsFactLine  = hasServerATS
     ? `PRE-COMPUTED ATS KEYWORD MATCH: ${serverATS}% (${topPresent.length} of 15 top keywords found: ${topPresent.join(', ')}). Top missing: ${topMissing.slice(0,3).join(', ')}. Potential after adding top 3 missing: ${serverPotential}%. USE THESE EXACT NUMBERS in set_verdict (ats_pass_rate=${serverATS}, ats_potential=${serverPotential}, ats_missing_keyword="${topMissing[0]||''}"). DO NOT recalculate.`
