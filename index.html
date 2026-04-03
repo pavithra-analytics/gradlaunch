@@ -1262,7 +1262,45 @@ button{cursor:pointer;border:none;outline:none}
   font-size:18px;font-weight:800;color:var(--on-surface);
   display:flex;align-items:center;gap:8px;margin-bottom:16px;
 }
-.score-bullets-scroll{display:flex;flex-direction:column;gap:12px}
+/* Scrollable, height-constrained bullet list — long resumes stay navigable */
+.score-bullets-scroll{
+  display:flex;flex-direction:column;gap:12px;
+  max-height:60vh;overflow-y:auto;scroll-behavior:smooth;scroll-padding-top:8px;
+  padding-right:4px;
+}
+.score-bullets-scroll::-webkit-scrollbar{width:4px}
+.score-bullets-scroll::-webkit-scrollbar-track{background:transparent}
+.score-bullets-scroll::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+
+/* Company jump-nav */
+.co-nav{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.co-nav-btn{
+  font-size:10px;font-weight:800;padding:4px 11px;border-radius:99px;
+  border:1.5px solid var(--border);background:var(--surface-low);
+  color:var(--on-surface-v);cursor:pointer;transition:all .15s;
+  text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;
+}
+.co-nav-btn:hover{border-color:var(--secondary);color:var(--secondary);background:rgba(70,71,211,.06)}
+
+/* Before label on flagged cards */
+.bullet-before-lbl{
+  font-size:9px;font-weight:800;color:var(--error);
+  text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px;opacity:.8;
+}
+
+/* After preview on flagged cards */
+.bullet-after-preview{
+  margin-top:8px;padding:8px 10px;
+  background:var(--green-light);border-left:2px solid var(--green);
+  border-radius:0 8px 8px 0;
+}
+.bullet-after-lbl{
+  font-size:9px;font-weight:800;color:var(--tertiary);
+  text-transform:uppercase;letter-spacing:.1em;margin-bottom:3px;
+}
+.bullet-after-text{font-size:12px;font-weight:600;color:#14532d;line-height:1.5}
+.dark .bullet-after-preview{background:rgba(0,105,71,.1)}
+.dark .bullet-after-text{color:#6ee7b7}
 
 /* Bullet item */
 .bullet-item{
@@ -2365,6 +2403,7 @@ button{cursor:pointer;border:none;outline:none}
           Resume Analysis
           <span id="bullets-flagged-count" class="flagged-badge" style="display:none"></span>
         </h3>
+        <div class="co-nav" id="co-nav" style="display:none"></div>
         <div class="score-bullets-scroll" id="bullets-list">
           <div class="skeleton sk-box" style="height:100px;border-radius:14px"></div>
           <div class="skeleton sk-box" style="height:80px;border-radius:14px"></div>
@@ -3872,11 +3911,15 @@ function appendBulletGroup(data) {
     const suggestion = item.rewrite && /^<\s*REMOVE/i.test(item.rewrite.trim())
       ? `<div class="bullet-suggestion" style="color:var(--amber-text)">⚠ Consider removing — not relevant to target role</div>`
       : item.rewrite
-      ? `<div class="bullet-suggestion">Suggested: "${esc(item.rewrite.replace(/\[.*?\]/g,'…').substring(0,110))}${item.rewrite.length>110?'…':''}"</div>`
+      ? `<div class="bullet-after-preview">
+          <div class="bullet-after-lbl">After →</div>
+          <div class="bullet-after-text">${esc(item.rewrite.replace(/\[.*?\]/g,'…').substring(0,120))}${item.rewrite.length>120?'…':''}</div>
+        </div>`
       : '';
 
     return `<div class="bullet-item red" data-bullet-idx="${idx}" onclick="openDlg(${idx})">
       ${tagHtml ? `<div class="bullet-tags">${tagHtml}</div>` : ''}
+      <div class="bullet-before-lbl">Before</div>
       <p class="bullet-text">${esc(item.text)}</p>
       ${suggestion}
       <div class="bullet-see-more">
@@ -3886,14 +3929,30 @@ function appendBulletGroup(data) {
     </div>`;
   }).join('');
 
+  const coSlug = 'cog-' + (data.company||'').replace(/[^a-z0-9]/gi,'').toLowerCase().substring(0,20);
   const group = document.createElement('div');
   group.className = 'co-group';
+  group.id = coSlug;
   group.innerHTML = `<div class="co-lbl">
     <span class="material-symbols-outlined" style="font-size:14px;font-variation-settings:'FILL' 1">business</span>
     ${esc(data.company)}
     <span style="font-weight:500;font-size:10px;color:var(--outline)">${esc(data.role||'')}</span>
   </div>${items}`;
   list.appendChild(group);
+
+  // Build jump-nav button for this company
+  const nav = document.getElementById('co-nav');
+  if (nav && data.company) {
+    const btn = document.createElement('button');
+    btn.className = 'co-nav-btn';
+    btn.textContent = data.company;
+    btn.onclick = () => {
+      const el = document.getElementById(coSlug);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+    nav.appendChild(btn);
+    if (nav.children.length > 1) nav.style.display = 'flex';
+  }
 
   const redCount = list.querySelectorAll('.bullet-item.red').length;
   const badge = document.getElementById('bullets-flagged-count');
