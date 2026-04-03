@@ -1,7 +1,7 @@
 'use strict';
 const https        = require('https');
 const { deleteFile }              = require('./upload');
-const { roleCacheKey, upstashGet, ROLES } = require('./warmcache');
+const { roleCacheKey, upstashGet, ROLES, SKILL_KEYWORDS } = require('./warmcache');
 
 // ── Model strings from env vars — swap without code deploy ──
 // Set STREAM_A_MODEL and STREAM_B_MODEL in Vercel environment variables.
@@ -80,26 +80,31 @@ function extractRoleFromJD(jd) {
   const lines = jd.split('\n')
     .map(l => l.trim())
     .filter(Boolean)
-    .slice(0, 5);
+    .slice(0, 10); // scan more lines for better coverage
 
+  // Labelled patterns — high confidence
   const patterns = [
     /^(?:job\s+title|position|role|title)\s*[:]\s*(.+)$/i,
-    /^we(?:'re| are) hiring\s+(?:a\s+)?(.+)$/i,
-    /^(?:about the role|the role)\s*[:]\s*(.+)$/i,
+    /^we(?:'re| are) (?:hiring|looking for|seeking)\s+(?:a\s+|an\s+)?(.+)$/i,
+    /^(?:about the role|the role|the position)\s*[:]\s*(.+)$/i,
+    /^(?:open(?:ing)?|opportunity)\s*[:]\s*(.+)$/i,
+    /^(?:join .+ as)\s+(?:a\s+|an\s+)?(.+)$/i,
   ];
 
   for (const line of lines) {
     for (const pat of patterns) {
       const m = line.match(pat);
       if (m && m[1]) {
-        const matched = fuzzyMatchRole(m[1].trim());
-        if (matched) return { role: m[1].trim(), matched };
+        const cleaned = m[1].replace(/[–—\-]\s*Remote.*$/i, '').replace(/\s*\(.*$/, '').trim();
+        const matched = fuzzyMatchRole(cleaned);
+        if (matched) return { role: cleaned, matched };
       }
     }
   }
 
+  // Fallback: try each short line as a potential role title
   for (const line of lines) {
-    if (line.length > 4 && line.length < 80 && !/http|www|@/.test(line)) {
+    if (line.length > 4 && line.length < 80 && !/http|www|@|apply|deadline|posted/i.test(line)) {
       const matched = fuzzyMatchRole(line);
       if (matched) return { role: line, matched };
     }
@@ -109,6 +114,104 @@ function extractRoleFromJD(jd) {
 }
 
 // ═══════════════════════════════════════════════════════
+// JD REQUIREMENT EXTRACTION (deterministic, rule-based)
+//
+// Scans pasted JD text against the same SKILL_KEYWORDS used
+// by the warmcache scraper. Produces a stable list of
+// requirements regardless of Claude. When merged with market
+// data, this ensures JD mode feeds the same deterministic
+// pipeline as target-role mode.
+// ═══════════════════════════════════════════════════════
+function extractJDRequirements(jd) {
+  if (!jd || jd.trim().length < 50) return [];
+  const text = jd.toLowerCase();
+  const found = [];
+  const seen  = new Set();
+
+  for (const kw of SKILL_KEYWORDS) {
+    const needle = kw.trim().toLowerCase();
+    if (needle.length < 2) continue;
+    // Word-boundary-aware match for short keywords to avoid false positives
+    // e.g. "r " should not match inside "researcher"
+    if (needle.length <= 3) {
+      // Use word boundary regex for very short keywords
+      const re = new RegExp(`\\b${needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+      if (!re.test(jd)) continue;
+    } else {
+      if (!text.includes(needle)) continue;
+    }
+    if (seen.has(needle)) continue;
+    seen.add(needle);
+    found.push(needle);
+  }
+
+  return found;
+}
+
+// ═══════════════════════════════════════════════════════
+// JD CACHE — in-memory, keyed by normalized JD hash.
+// Avoids re-parsing the same JD on repeated runs within
+// the same serverless container lifetime. No external infra.
+// ═══════════════════════════════════════════════════════
+const jdCache = new Map();
+const JD_CACHE_MAX = 50; // cap to prevent memory growth
+
+function hashJD(jd) {
+  // Simple but deterministic hash — same JD text = same key
+  let h = 0;
+  for (let i = 0; i < jd.length; i++) {
+    h = ((h << 5) - h + jd.charCodeAt(i)) | 0;
+  }
+  return 'jd_' + h.toString(36);
+}
+
+function getCachedJDParse(jd) {
+  const key = hashJD(jd.trim().toLowerCase());
+  return jdCache.get(key) || null;
+}
+
+function setCachedJDParse(jd, result) {
+  const key = hashJD(jd.trim().toLowerCase());
+  if (jdCache.size >= JD_CACHE_MAX) {
+    // Evict oldest entry
+    const firstKey = jdCache.keys().next().value;
+    jdCache.delete(firstKey);
+  }
+  jdCache.set(key, result);
+}
+
+// Build a merged skill frequency list from market data + JD requirements.
+// JD skills not in market data get a synthetic frequency based on position
+// in the JD (earlier mention = higher implied importance).
+function mergeMarketAndJDSkills(marketSkillFreq, jdRequirements) {
+  if (!jdRequirements || !jdRequirements.length) return marketSkillFreq || [];
+
+  const merged = [];
+  const seen   = new Set();
+
+  // Start with market data (authoritative frequencies)
+  if (marketSkillFreq && marketSkillFreq.length) {
+    for (const s of marketSkillFreq) {
+      merged.push({ ...s });
+      seen.add(s.skill.toLowerCase());
+    }
+  }
+
+  // Add JD-only requirements not already in market data
+  // Assign synthetic pct: start at 70 (strong JD signal) and decrease
+  let syntheticPct = 70;
+  for (const req of jdRequirements) {
+    if (seen.has(req)) continue;
+    seen.add(req);
+    merged.push({ skill: req, pct: syntheticPct, _fromJD: true });
+    syntheticPct = Math.max(20, syntheticPct - 5);
+  }
+
+  // Re-sort by pct descending
+  merged.sort((a, b) => b.pct - a.pct);
+  return merged;
+}
+
 // ═══════════════════════════════════════════════════════
 // SALARY — sourced from warmcache scrape when available.
 // Falls back to Claude's knowledge via prompt instruction.
@@ -749,7 +852,7 @@ function lookupSkillPct(skillName, skillFreq) {
 }
 
 function emitToolCallA(name, args, res, sal, role, marketData, atsResult, serverSkills) {
-  const skillFreq = marketData?.skillFreq || [];
+  const skillFreq = marketData?._mergedSkillFreq || marketData?.skillFreq || [];
   switch (name) {
     case 'set_verdict': {
       // Use server-computed ATS if available — overrides Claude's calculation
@@ -929,7 +1032,7 @@ function emitToolCallA(name, args, res, sal, role, marketData, atsResult, server
 }
 
 function emitToolCallB(name, args, res, role, marketData) {
-  const skillFreq = marketData?.skillFreq || [];
+  const skillFreq = marketData?._mergedSkillFreq || marketData?.skillFreq || [];
   switch (name) {
     case 'set_linkedin':
       sendEvent(res, 'linkedin', {
@@ -1144,14 +1247,40 @@ module.exports = async function handler(req, res) {
   let role         = (body.role || '').substring(0, 80).trim();
   let roleFromJD   = false;
   let detectedRole = null;
+  let jdRequirements = [];
 
-  if (!role && hasJD) {
-    const extracted = extractRoleFromJD(jd);
-    if (extracted) {
-      role         = extracted.role;
-      roleFromJD   = true;
-      detectedRole = extracted.matched;
-      console.log(`Role extracted from JD: "${role}" matched to "${detectedRole}"`);
+  // ── JD parsing: check cache first, then extract ──
+  if (hasJD) {
+    const cached = getCachedJDParse(jd);
+    if (cached) {
+      if (!role && cached.role) {
+        role         = cached.role;
+        roleFromJD   = true;
+        detectedRole = cached.matched;
+      }
+      jdRequirements = cached.requirements || [];
+      console.log(`JD cache hit: role="${cached.role}", ${jdRequirements.length} requirements`);
+    } else {
+      // Extract role deterministically (rule-based, no LLM)
+      if (!role) {
+        const extracted = extractRoleFromJD(jd);
+        if (extracted) {
+          role         = extracted.role;
+          roleFromJD   = true;
+          detectedRole = extracted.matched;
+          console.log(`Role extracted from JD: "${role}" matched to "${detectedRole}"`);
+        }
+      }
+      // Extract skill requirements deterministically
+      jdRequirements = extractJDRequirements(jd);
+      console.log(`JD requirements extracted: ${jdRequirements.length} skills`);
+
+      // Cache the parse result
+      setCachedJDParse(jd, {
+        role:         roleFromJD ? role : null,
+        matched:      detectedRole,
+        requirements: jdRequirements
+      });
     }
   }
 
@@ -1200,16 +1329,31 @@ module.exports = async function handler(req, res) {
   const systemPromptA   = buildSystemPromptA();
   const systemPromptB   = buildSystemPromptB();
 
+  // ── Merge market data with JD requirements ──
+  // When a JD is pasted, its extracted requirements are merged with market
+  // data skills. This ensures JD-specific skills (not in the top 20 market
+  // data) still feed into deterministic ATS and skill detection.
+  const baseSkillFreq   = marketData?.skillFreq || [];
+  const mergedSkillFreq = hasJD && jdRequirements.length > 0
+    ? mergeMarketAndJDSkills(baseSkillFreq, jdRequirements)
+    : baseSkillFreq;
+
+  // Attach merged list to marketData so emitters use JD-enriched skills
+  // for lookups without changing every function signature
+  if (marketData) {
+    marketData._mergedSkillFreq = mergedSkillFreq;
+  } else if (mergedSkillFreq.length > 0) {
+    // JD-only mode with no market data: create a minimal marketData object
+    marketData  = { skillFreq: mergedSkillFreq, _mergedSkillFreq: mergedSkillFreq };
+    hasLiveData = false; // still no live scraped data, but we have JD signals
+  }
+
   // ── Server-side ATS + match score ──
-  // Computed once from resume text + scraped data.
+  // Computed once from resume text + merged skill list.
   // Injected into both prompts so Claude uses this number,
   // not its own calculation — eliminates run-to-run variance.
-  // NOTE: resume text is now ALWAYS available (extracted server-side in upload.js
-  // for both PDF and DOCX). The client always sends it alongside fileId.
-  // ATS uses the FULL resume text (no 4000 char cap) to avoid missing skills
-  // listed near the end of longer resumes.
   const resumeForATS = resumeFull || resume || '';
-  const atsResult = computeATS(resumeForATS, marketData?.skillFreq || []);
+  const atsResult = computeATS(resumeForATS, mergedSkillFreq);
   const serverATS  = atsResult.atsScore;
   const serverPotential = atsResult.atsPotential;
   const topMissing = atsResult.missingTop;
@@ -1221,9 +1365,11 @@ module.exports = async function handler(req, res) {
     : '';
 
   // ── Deterministic skill & gap detection ──
-  // Computed once from resume text + market data. Fed to emitters so
+  // Computed once from resume text + merged skills. Fed to emitters so
   // skills_present, skill_relevance, gaps, and gap priorities are stable.
-  const serverSkills = computeSkillsAndGaps(resumeForATS, marketData?.skillFreq || []);
+  // In JD mode, JD-extracted requirements are included so gaps reflect
+  // the specific job, not just general market data.
+  const serverSkills = computeSkillsAndGaps(resumeForATS, mergedSkillFreq);
   serverSkills._resumeText = resumeForATS; // attached for skill level computation
 
   // Stream A user content — includes file or resume text

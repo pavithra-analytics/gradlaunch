@@ -493,7 +493,8 @@ module.exports = async function handler(req, res) {
 // ═══════════════════════════════════════════════════════
 // EXPORTS — used by analyze.js for cache lookup
 // ═══════════════════════════════════════════════════════
-module.exports.roleCacheKey = roleCacheKey;
-module.exports.upstashGet   = upstashGet;
-module.exports.upstashSet   = upstashSet;
-module.exports.ROLES        = ROLES;
+module.exports.roleCacheKey   = roleCacheKey;
+module.exports.upstashGet     = upstashGet;
+module.exports.upstashSet     = upstashSet;
+module.exports.ROLES          = ROLES;
+module.exports.SKILL_KEYWORDS = SKILL_KEYWORDS;
