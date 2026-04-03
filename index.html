@@ -1822,6 +1822,170 @@ button{cursor:pointer;border:none;outline:none}
   font-size:11px;color:var(--outline);font-weight:500;
   margin-top:8px;display:flex;align-items:center;gap:5px;
 }
+
+/* ═══════════════════════════════════════════════════
+   PROMPT 10 — GLOBAL POLISH
+   4/8pt spacing · 3-weight typography · card tokens
+   CTA hierarchy · tab fade-in · readability
+═══════════════════════════════════════════════════ */
+
+/* ── Spacing + radius + elevation design tokens ── */
+:root{
+  --sp-1:4px;  --sp-2:8px;  --sp-3:12px; --sp-4:16px;
+  --sp-5:20px; --sp-6:24px; --sp-8:32px; --sp-10:40px;
+  --r-sm:10px; --r-md:14px; --r-lg:20px;
+  --el-1:0 1px 3px rgba(44,47,49,.06),0 4px 12px rgba(44,47,49,.03);
+  --el-2:0 2px 10px rgba(44,47,49,.08),0 8px 24px rgba(44,47,49,.04);
+  --el-3:0 8px 32px rgba(44,47,49,.12),0 2px 8px rgba(44,47,49,.05);
+}
+
+/* ── Typography: normalize to 3 weights (400/500/700) ── */
+
+/* 600 → 500  (medium emphasis body) */
+.detail-desc,.proj-just,.about-text,.li-box-body,.fhint,
+.stat-note,.cert-why-txt,.blocker-hint,.action-value,
+.dlg-verdict,.dlg-note,.quote-text,.score-gauge-sub,
+.cl-sub,.finalize-hero-sub,.feedback-sub,.rate-note,
+.cta-foot,.dz-sub,.hero-sub{font-weight:500}
+
+/* 800/900 → 700  (labels, eyebrows, headings) */
+.cl,.rcl,.detail-lbl,.ic-title,.ic-gen-lbl,.dz-title,
+.proj-title,.sg-title,.cert-name-txt,.stat-lbl,
+.li-box-lbl,.score-gauge-title,.score-diagnosis-badge,
+.finalize-metric-label,.cl-title,.blockers-title,
+.sidebar-section-label,.sk-name,.gap-sub-txt,
+.li-skills-label,.smet-lbl,.match-badge-label,
+.btag,.pill,.co-nav-btn,.action-chip,.flagged-badge,
+.bullet-before-lbl,.bullet-after-lbl,.dlg-section-label,
+.bullet-suggestion,.score-bullets-col h3,.score-action-col h3,
+.certs-section-head h3,.li-left h3,.feedback-h,.insights-title,
+.sg-badge,.proj-signal span{font-weight:700}
+
+/* Hero numbers keep visual weight via size; round down to 700 */
+.smv,.stat-val,.finalize-metric-value,.score-ring-pct,
+.score-gauge-label,.logo-name,.loading-brand-name{font-weight:700}
+
+/* Main headings: size gives hierarchy — weight 700 is enough */
+.hero h1{font-weight:700}
+
+/* ── Line-height normalization (~1.5) ── */
+body{line-height:1.5}
+.hero-sub,.li-box-body,.detail-desc,.about-text,.cl-textarea,
+.paste-box,.feedback-ta,.dlg-verdict,.dlg-orig,.dlg-rewrite,
+.bullet-text,.cert-why-txt,.blocker-hint,.prompt-box,
+.fhint,.stat-note{line-height:1.5}
+
+/* ── Card hierarchy: consistent border + radius + elevation ── */
+
+/* Base card token */
+.rcard,.card{
+  border:1px solid var(--border);
+  border-radius:var(--r-md);
+  box-shadow:var(--el-1);
+}
+.stat-card,.finalize-metric-card,.cert-card,.detail-card{
+  border:1px solid var(--border);
+  border-radius:var(--r-md);
+  box-shadow:var(--el-1);
+}
+.score-gauge-card{
+  border:1px solid var(--border);
+  border-radius:var(--r-lg);
+  box-shadow:var(--el-1);
+}
+.proj-card{
+  border-radius:var(--r-md);
+  box-shadow:var(--el-1);
+}
+.bullet-item{
+  border-radius:var(--r-md);
+  box-shadow:var(--el-1);
+}
+/* Section containers */
+.sg-card,.score-action-col,.blockers-section,.cl-section{
+  border:1px solid var(--border-soft);
+  border-radius:var(--r-lg);
+}
+.input-hero-right{
+  border:1px solid var(--border);
+  border-radius:var(--r-lg);
+}
+
+/* ── CTA hierarchy ── */
+/* Primary: full-width launch button */
+.cta-btn{
+  padding:14px 20px;
+  font-size:15px;
+  font-weight:700;
+  border-radius:var(--r-lg);
+  letter-spacing:0;
+}
+/* Primary in-section actions */
+.copy-btn,.cl-generate-btn,.feedback-btn,.cl-btn-download{
+  font-weight:700;
+  border-radius:var(--r-md);
+}
+/* Secondary actions */
+.copy-btn-sm,.proj-sel-btn,.cl-btn-copy,.dlg-close-btn{
+  font-weight:700;
+  border-radius:var(--r-sm);
+}
+/* Tertiary / inline */
+.cert-enroll,.li-copy-btn{font-weight:700}
+
+/* ── Section spacing (4/8pt grid) ── */
+.profile-hero    {margin-bottom:var(--sp-6)}
+.skills-gaps-grid{margin-bottom:var(--sp-6)}
+.li-new-card     {margin-bottom:var(--sp-6)}
+.certs-section   {margin-bottom:var(--sp-6)}
+.score-diagnosis {margin-bottom:var(--sp-6)}
+.score-gauges    {margin-bottom:var(--sp-8);gap:var(--sp-5)}
+.score-body      {gap:var(--sp-6)}
+.finalize-metrics{margin-bottom:var(--sp-5);gap:var(--sp-3)}
+.blockers-section{margin-bottom:var(--sp-5)}
+.cl-section      {margin-bottom:var(--sp-5)}
+.proj-cards      {margin-bottom:var(--sp-5);gap:var(--sp-3)}
+
+/* Tab panel padding on 4/8pt grid */
+.tab-panel{padding:var(--sp-6) var(--sp-10) var(--sp-10)}
+@media(max-width:1200px){.tab-panel{padding:var(--sp-5) var(--sp-6) var(--sp-10)}}
+@media(max-width:768px) {.tab-panel{padding:var(--sp-4) var(--sp-4) 6rem}}
+@media(max-width:480px) {.tab-panel{padding:var(--sp-3) var(--sp-3) 6rem}}
+
+/* ── Tab fade-in (prevent blank flash on switch) ── */
+.tab-panel.on{
+  animation:tab-appear .15s ease-out;
+}
+@keyframes tab-appear{
+  from{opacity:0;transform:translateY(4px)}
+  to  {opacity:1;transform:none}
+}
+
+/* ── Readability: bullets, rows, gaps ── */
+.score-bullets-scroll{gap:var(--sp-3);padding-right:var(--sp-2)}
+.bullet-item{padding:var(--sp-3) var(--sp-4)}
+.bullet-text{font-size:13px;line-height:1.6}
+.bullet-suggestion{margin-top:var(--sp-3)}
+.bullet-tags{margin-bottom:var(--sp-2)}
+.action-row{padding:var(--sp-3) 0}
+.blocker-row{padding:var(--sp-3) 0}
+.gap-item{padding:var(--sp-2) var(--sp-3);margin-bottom:var(--sp-2)}
+.sk-row{margin-bottom:var(--sp-4)}
+.cert-card{padding:var(--sp-3)}
+.rcard,.card{padding:var(--sp-3) var(--sp-4);margin-bottom:var(--sp-3)}
+.sg-card{padding:var(--sp-4)}
+
+/* ── Skeleton polish ── */
+.sk-line{height:12px;border-radius:6px}
+.sk-line-sm{height:10px;border-radius:6px}
+.sk-box{border-radius:var(--r-md)}
+
+/* ── Dark mode token corrections ── */
+.dark{
+  --el-1:0 1px 3px rgba(0,0,0,.25),0 4px 12px rgba(0,0,0,.15);
+  --el-2:0 2px 10px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.2);
+  --el-3:0 8px 32px rgba(0,0,0,.4),0 2px 8px rgba(0,0,0,.25);
+}
 </style>
 </head>
 <body>
