@@ -4,5 +4,9 @@
   "description": "GradLaunch — The job market is not rooting for you. We are.",
   "engines": {
     "node": "20.x"
+  },
+  "devDependencies": {
+    "jsdom": "^29.0.1",
+    "puppeteer": "^24.40.0"
   }
 }
