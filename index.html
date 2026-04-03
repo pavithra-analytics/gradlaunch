@@ -3084,9 +3084,11 @@ function renderVerdict(d) {
     ? `${d.ats_pass_rate||0}% of top keywords found. ${100-(d.ats_pass_rate||50)}% missing — fixable.`
     : `${d.ats_pass_rate}% keyword coverage — ATS-friendly.`;
 
-  // Salary: use scraped posting median or Claude's range estimate
+  // Salary: confidence-gated display — suppress fake precision
   const salDisplay = sal.fromPostings || sal.range || '';
-  const salText    = salDisplay;
+  const salConf    = sal.confidence || 'estimate';
+  const salSuffix  = salConf === 'high' ? '' : salConf === 'medium' ? ' (limited data)' : salDisplay ? ' (estimate)' : '';
+  const salText    = salDisplay ? salDisplay + salSuffix : '';
 
   document.getElementById('sum-row').innerHTML =
     `<div class="smet"><div class="smv">${d.match_score||0}%</div><div class="sml">Role match</div></div>`+
@@ -3123,13 +3125,25 @@ function renderVerdict(d) {
     ? `of top keywords found. Add "${d.ats_missing_keyword || 'key terms'}" to improve.`
     : `Strong keyword coverage for this role.`;
 
-  // Salary stat card — posting median or Claude's range estimate
+  // Salary stat card — confidence-gated display
   const salVal = document.getElementById('profile-sal-val');
   if (salVal) {
-    const display = sal.fromPostings || sal.range || 'Calculating…';
-    salVal.textContent = display;
+    const display = sal.fromPostings || sal.range || '';
+    if (!display) {
+      salVal.textContent = '—';
+    } else {
+      salVal.textContent = display;
+    }
+    // Add confidence qualifier below salary value
     const existingCtx = salVal.parentElement.querySelector('.sal-ctx');
     if (existingCtx) existingCtx.remove();
+    if (display && salConf !== 'high') {
+      const ctx = document.createElement('div');
+      ctx.className = 'sal-ctx';
+      ctx.style.cssText = 'font-size:10px;color:var(--text-3);margin-top:2px';
+      ctx.textContent = salConf === 'medium' ? 'Based on limited posting data' : 'Estimate — actual range may vary';
+      salVal.parentElement.appendChild(ctx);
+    }
   }
 
   // Store ATS data for summary card
@@ -3285,6 +3299,7 @@ function renderCerts(certs) {
         </div>
         <div class="cert-name-txt">${esc(c.name)}</div>
         <div class="cert-provider">${esc(c.provider)}</div>
+        ${c.addressesGap ? `<div style="font-size:10px;color:var(--blue);font-weight:600;margin:4px 0 2px">Closes gap: ${esc(c.addressesGap)}</div>` : ''}
         <div class="cert-why-txt">${esc(c.why)}</div>
         <div class="cert-meta-chips">
           <span class="cert-meta-chip">${esc(c.cost)}</span>

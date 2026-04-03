@@ -177,10 +177,18 @@ function extractSalaryRanges(items) {
   const medHi = ranges[mid].hi;
 
   const fmt = n => `$${Math.round(n / 1000)}k`;
+
+  // Confidence: high (5+), medium (3-4), low (1-2)
+  // Low-confidence salary should not be displayed as precise truth
+  const confidence = ranges.length >= 5 ? 'high' : ranges.length >= 3 ? 'medium' : 'low';
+
   return {
     median: `${fmt(medLo)}–${fmt(medHi)}`,
     count:  ranges.length,
-    note:   `From ${ranges.length} postings with listed salary`
+    confidence,
+    note:   confidence === 'low'
+      ? `Estimate based on ${ranges.length} posting${ranges.length === 1 ? '' : 's'} — treat as approximate`
+      : `From ${ranges.length} postings with listed salary`
   };
 }
 
@@ -372,9 +380,32 @@ async function scrapeRole(role, token) {
     console.log(`  ✓ ${role}: received full ${actualCount} jobs from Apify`);
   }
 
-  const skillFreq  = extractSkillFrequencies(items);
-  const salaryData = extractSalaryRanges(items);
-  const totalJobs  = actualCount;
+  // ── Deduplicate jobs before extracting data ──
+  // Apify can return duplicate postings (same title+company or same URL).
+  // Duplicates skew skill frequencies and salary ranges.
+  const seen = new Set();
+  const unique = items.filter(item => {
+    // Primary key: URL (most reliable dedup)
+    const url = (item.url || item.link || '').trim().toLowerCase();
+    if (url && seen.has(url)) return false;
+    if (url) seen.add(url);
+    // Secondary key: normalized title+company
+    const key = [
+      (item.title || '').trim().toLowerCase(),
+      (item.company || item.companyName || '').trim().toLowerCase()
+    ].join('|');
+    if (key.length > 1 && seen.has(key)) return false;
+    if (key.length > 1) seen.add(key);
+    return true;
+  });
+  const dupsRemoved = actualCount - unique.length;
+  if (dupsRemoved > 0) {
+    console.log(`  ⚠ ${role}: removed ${dupsRemoved} duplicate postings (${actualCount} → ${unique.length})`);
+  }
+
+  const skillFreq  = extractSkillFrequencies(unique);
+  const salaryData = extractSalaryRanges(unique);
+  const totalJobs  = unique.length;
 
   // Log the top 5 skills found so you can verify quality in Vercel logs
   const topSkills = skillFreq.slice(0, 5).map(s => `${s.skill}:${s.pct}%`).join(', ');

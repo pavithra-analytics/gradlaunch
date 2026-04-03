@@ -764,15 +764,16 @@ function buildMarketDataBlock(marketData, matchedRole) {
     .map(s => `  ${s.skill}: ${s.pct}%`)
     .join('\n');
 
+  const salaryConf = marketData.salaryData?.confidence || 'low';
   const salaryLine = marketData.salaryData
-    ? `Salary from postings: ${marketData.salaryData.median} (${marketData.salaryData.note})`
+    ? `Salary from postings (NATIONAL, not location-specific): ${marketData.salaryData.median} (${marketData.salaryData.note}, confidence: ${salaryConf})`
     : null;
 
   const age = marketData.scrapedAt
     ? Math.round((Date.now() - new Date(marketData.scrapedAt).getTime()) / (1000 * 60 * 60 * 24))
     : null;
 
-  return `MARKET DATA: Based on ${marketData.totalJobs || 40} real LinkedIn postings for ${matchedRole}${age !== null ? ` scraped ${age} days ago` : ''}:
+  return `MARKET DATA: Based on ${marketData.totalJobs || 40} real LinkedIn postings for ${matchedRole} (United States, national)${age !== null ? ` scraped ${age} days ago` : ''}:
 Skill frequencies (% of real postings containing this skill):
 ${skillLines}
 
@@ -791,8 +792,10 @@ cert_picks must address skills high on this list that are missing from the resum
 // ═══════════════════════════════════════════════════════
 function buildAnalysisPromptA(role, locationStr, jd, hasJD, sal, marketDataBlock, atsFactLine, serverSkills) {
   const salaryCtx = sal._fromPostings
-    ? `Salary from real postings: ${sal._fromPostings}${sal._postingNote ? ` (${sal._postingNote})` : ''}. Use this as the basis for the salary range in set_verdict.`
-    : `No salary data available from postings. In set_verdict, provide your best salary range estimate for a ${role} in ${locationStr} based on your training knowledge. Format as entry–senior range (e.g. $65k – $140k). Be role-specific and realistic.`;
+    ? `Salary from real postings: ${sal._fromPostings} (${sal._confidence === 'high' ? 'high confidence' : 'moderate confidence'}, ${sal._postingNote || ''}). Use this as the basis for the salary range in set_verdict.`
+    : sal._weakPostingData
+      ? `Limited salary data from postings (only 1-2 listings): ${sal._weakPostingData}. This is too few data points to trust. Provide a broader salary range estimate for a ${role} based on your training knowledge. Format as a wide range (e.g. $65k – $140k). Do NOT present the weak posting data as precise truth.`
+      : `No salary data available from postings. In set_verdict, provide your best salary range estimate for a ${role} based on your training knowledge. Format as entry–senior range (e.g. $65k – $140k). Mark it as an estimate. Be role-specific and realistic.`;
 
   // Inject server-detected skills and gaps so Claude uses them for writing context
   let skillFactLine = '';
@@ -815,21 +818,26 @@ ${hasJD ? `JOB DESCRIPTION:\n${jd}\n\nSince a JD was provided, also call set_jd_
 Call ALL tools in order. Never stop after set_verdict. Every output must reference actual content from this specific resume.`;
 }
 
-function buildAnalysisPromptB(role, locationStr, jd, hasJD, sal, marketDataBlock, resumeText, confirmedSkills) {
+function buildAnalysisPromptB(role, locationStr, jd, hasJD, sal, marketDataBlock, resumeText, confirmedSkills, detectedGaps) {
   // confirmedSkills comes from Stream A's set_skills output — use these as ground truth
   // for what's already in the resume so Sonnet never recommends adding a skill they have
   const skillsNote = confirmedSkills && confirmedSkills.length
     ? `\nCONFIRMED SKILLS ALREADY IN RESUME (from resume analysis — do NOT recommend adding these to LinkedIn):\n${confirmedSkills.join(', ')}\n`
     : '';
 
+  // Inject detected gaps so certification and project recommendations must address them
+  const gapsNote = detectedGaps && detectedGaps.length
+    ? `\nDETECTED SKILL GAPS (missing from resume, sorted by market frequency):\n${detectedGaps.map(g => `- ${g.skill} (${g.pct}% of postings)`).join('\n')}\nCertification recommendations MUST address skills from this gap list. Do NOT recommend certs for skills already confirmed in the resume.\n`
+    : '';
+
   return `Write LinkedIn optimization, certifications, and project suggestions for a ${role} candidate.
 
 ${marketDataBlock}
-${skillsNote}
+${skillsNote}${gapsNote}
 ${resumeText ? `RESUME TEXT:\n${resumeText}\n` : ''}
 ${hasJD ? `JOB DESCRIPTION:\n${jd}\n` : ''}
 Call ALL tools: set_linkedin, set_certifications, set_projects.
-Every LinkedIn sentence must reference something specific from this resume. Every cert must close a real gap from market data. Every project ai_prompt must be complete and copy-pasteable. All 3 project ai_prompts must have identical depth.`;
+Every LinkedIn sentence must reference something specific from this resume. Every cert must close a real gap from the DETECTED SKILL GAPS list above. Every project ai_prompt must be complete and copy-pasteable. All 3 project ai_prompts must have identical depth.`;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -878,6 +886,9 @@ function emitToolCallA(name, args, res, sal, role, marketData, atsResult, server
       const matchScore = atsResult?.atsScore !== null
         ? computeMatchScore(atsResult.atsScore, presentCount, 15)
         : clamp(args.match_score, 0, 100);
+      // Salary confidence-gated: only show precise range when confidence is medium+
+      const salaryConfidence = sal._confidence || (sal._fromPostings ? 'medium' : 'estimate');
+      const salaryRange = sal._fromPostings || args.salary_range || null;
       sendEvent(res, 'verdict', {
         match_score:         matchScore,
         verdict_headline:    args.verdict_headline || `${role} resume analyzed.`,
@@ -888,8 +899,9 @@ function emitToolCallA(name, args, res, sal, role, marketData, atsResult, server
         ats_missing_list:    atsResult?.missingTop?.slice(0, 3) || [],
         ats_needed:          atsResult?.needed ?? null,
         salary: {
-          range:        args.salary_range       || sal._fromPostings || null,
-          fromPostings: sal._fromPostings        || null
+          range:        salaryRange,
+          fromPostings: sal._fromPostings || null,
+          confidence:   salaryConfidence
         }
       });
       break;
@@ -1059,11 +1071,19 @@ function emitToolCallB(name, args, res, role, marketData) {
         linkedin_skills:   (args.linkedin_skills || []).slice(0, 5)
       });
       break;
-    case 'set_certifications':
-      sendEvent(res, 'certifications', {
-        certifications: normalizeCerts(args.cert_picks, args.cert_reasons)
-      });
+    case 'set_certifications': {
+      const certs = normalizeCerts(args.cert_picks, args.cert_reasons);
+      // Tag each cert with the gap skill it addresses (if detectable from reason text)
+      const gapSkills = (marketData?._mergedSkillFreq || marketData?.skillFreq || [])
+        .slice(0, 20).map(s => s.skill.toLowerCase());
+      for (const cert of certs) {
+        const whyLower = (cert.why || '').toLowerCase();
+        const matched = gapSkills.find(s => whyLower.includes(s));
+        if (matched) cert.addressesGap = matched;
+      }
+      sendEvent(res, 'certifications', { certifications: certs });
       break;
+    }
     case 'set_projects': {
       let projects = (args.projects || []).map(p => {
         // Override with scrape when confidence >= threshold; trust Claude otherwise
@@ -1337,10 +1357,21 @@ module.exports = async function handler(req, res) {
   }
 
   // Salary — scraped posting data when available, otherwise Claude estimates from training
+  // Confidence-gated: low-confidence scraped data is suppressed to avoid fake precision
   const sal = {};
   if (marketData?.salaryData) {
-    sal._fromPostings = marketData.salaryData.median;
-    sal._postingNote  = marketData.salaryData.note;
+    const salConf = marketData.salaryData.confidence || 'low';
+    if (salConf !== 'low') {
+      // Medium or high confidence — show scraped data
+      sal._fromPostings = marketData.salaryData.median;
+      sal._postingNote  = marketData.salaryData.note;
+      sal._confidence   = salConf;
+    } else {
+      // Low confidence (1-2 postings) — don't present as precise truth
+      // Let Claude estimate instead, which is labeled as an estimate
+      sal._weakPostingData = marketData.salaryData.median;
+      sal._confidence      = 'low';
+    }
   }
 
   const marketDataBlock = buildMarketDataBlock(marketData, matchedRole || role);
@@ -1471,9 +1502,11 @@ module.exports = async function handler(req, res) {
 
       // Use skills captured so far (may be empty if set_skills hasn't fired yet —
       // in that case Stream B gets no confirmed skills, acceptable tradeoff for speed)
+      // Pass server-detected gaps so certs and projects target real skill gaps
+      const detectedGaps = serverSkills?.missing?.slice(0, 5) || [];
       const userContentB = buildAnalysisPromptB(
         role, locationStr, jd, hasJD, sal, marketDataBlock,
-        resumeForB, streamASkills
+        resumeForB, streamASkills, detectedGaps
       );
 
       const anthropicResB = await makeStreamRequest({
