@@ -742,14 +742,76 @@ button{cursor:pointer;border:none;outline:none}
 }
 .tab-btn.hidden{display:none}
 
-/* Results content needs bottom padding for fixed tab bar */
+/* ═══════════════════════════════════════════════════
+   LEFT SIDEBAR NAVIGATION
+═══════════════════════════════════════════════════ */
+.results-layout{
+  display:flex;min-height:calc(100vh - 56px);
+  align-items:flex-start;
+}
+.sidebar{
+  width:200px;flex-shrink:0;
+  background:var(--card-bg);
+  border-right:1px solid var(--border);
+  display:flex;flex-direction:column;
+  padding:1.5rem 0.75rem 2rem;
+  position:sticky;top:56px;height:calc(100vh - 56px);
+  overflow-y:auto;
+}
+.dark .sidebar{
+  background:var(--card-bg);
+  border-right-color:rgba(255,255,255,.06);
+}
+.sidebar-section-label{
+  font-size:9px;font-weight:800;color:var(--text-4);
+  letter-spacing:.12em;text-transform:uppercase;
+  padding:0 0.5rem;margin:0 0 8px;
+}
+.sidebar-btn{
+  display:flex;align-items:center;gap:10px;
+  width:100%;padding:9px 12px;border:none;
+  background:transparent;color:var(--text-2);
+  font-size:13px;font-weight:600;
+  border-radius:10px;cursor:pointer;
+  transition:background .15s,color .15s;
+  text-align:left;margin-bottom:2px;
+}
+.sidebar-btn:hover{background:var(--surface-low);color:var(--primary)}
+.sidebar-btn.on{
+  background:rgba(0,87,189,.08);color:var(--primary);font-weight:700;
+}
+.dark .sidebar-btn.on{background:rgba(110,159,255,.1);color:var(--primary-container)}
+.sidebar-btn .material-symbols-outlined{font-size:18px;flex-shrink:0}
+.sidebar-divider{height:1px;background:var(--border);margin:10px 4px;opacity:.5}
+.sidebar-finalize-btn{
+  margin-top:auto;
+}
+.sidebar-finalize-btn .sidebar-btn{
+  background:linear-gradient(135deg,rgba(0,87,189,.1),rgba(70,71,211,.08));
+  color:var(--primary);border:1px solid rgba(0,87,189,.15);
+}
+.sidebar-finalize-btn .sidebar-btn.on{
+  background:linear-gradient(135deg,rgba(0,87,189,.15),rgba(70,71,211,.12));
+  border-color:rgba(0,87,189,.3);
+}
+.results-main{
+  flex:1;min-width:0;overflow-x:hidden;
+}
+
+/* Results content — no bottom padding needed when sidebar visible */
 .tab-panel{
-  display:none;padding:2rem 3rem 6rem;
+  display:none;padding:2rem 3rem 4rem;
   max-width:1400px;margin:0 auto;width:100%;
 }
 .tab-panel.on{display:block}
-@media(max-width:1200px){.tab-panel{padding:1.75rem 2rem 6rem}}
-@media(max-width:768px){.tab-panel{padding:1.25rem 1.25rem 6rem}}
+@media(max-width:1200px){.tab-panel{padding:1.75rem 2rem 4rem}}
+
+/* On mobile: hide sidebar, show tab bar, restore bottom padding */
+@media(max-width:768px){
+  .results-layout{display:block}
+  .sidebar{display:none}
+  .tab-panel{padding:1.25rem 1.25rem 6rem}
+}
 
 /* ═══════════════════════════════════════════════════
    SHARED RESULT COMPONENTS
@@ -1585,6 +1647,114 @@ button{cursor:pointer;border:none;outline:none}
   background:rgba(110,159,255,.12);
   border-color:rgba(110,159,255,.25);
 }
+
+/* ═══════════════════════════════════════════════════
+   FINALIZE TAB
+═══════════════════════════════════════════════════ */
+.finalize-hero{
+  background:linear-gradient(135deg,var(--primary),var(--secondary));
+  border-radius:20px;padding:2rem 2.5rem;color:#fff;
+  margin-bottom:1.5rem;position:relative;overflow:hidden;
+}
+.finalize-hero::before{
+  content:'';position:absolute;right:-40px;top:-40px;
+  width:220px;height:220px;border-radius:50%;
+  background:rgba(255,255,255,.06);
+}
+.finalize-hero-title{font-size:22px;font-weight:900;line-height:1.2;margin-bottom:6px}
+.finalize-hero-sub{font-size:13px;opacity:.85;font-weight:500}
+.finalize-metrics{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:12px;
+  margin-bottom:1.5rem;
+}
+@media(max-width:600px){.finalize-metrics{grid-template-columns:1fr 1fr}}
+.finalize-metric-card{
+  background:var(--card-bg);border-radius:16px;padding:1.25rem 1.25rem;
+  box-shadow:0 1px 4px rgba(44,47,49,.05);
+}
+.dark .finalize-metric-card{box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.finalize-metric-label{
+  font-size:10px;font-weight:800;color:var(--text-3);
+  text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;
+}
+.finalize-metric-value{
+  font-size:26px;font-weight:900;color:var(--on-surface);line-height:1;
+}
+.finalize-metric-delta{
+  font-size:11px;font-weight:700;margin-top:4px;
+}
+.delta-up{color:var(--tertiary)}
+.delta-same{color:var(--outline)}
+.blockers-section{
+  background:var(--surface-low);border-radius:20px;padding:1.5rem 1.75rem;
+  margin-bottom:1.5rem;
+}
+.blockers-title{
+  font-size:16px;font-weight:800;color:var(--on-surface);
+  display:flex;align-items:center;gap:8px;margin-bottom:14px;
+}
+.blocker-row{
+  display:flex;align-items:flex-start;gap:10px;
+  padding:10px 0;border-bottom:1px solid var(--border-soft);
+}
+.blocker-row:last-child{border-bottom:none}
+.blocker-icon{
+  width:32px;height:32px;border-radius:50%;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+}
+.blocker-label{font-size:13px;font-weight:700;color:var(--on-surface);margin-bottom:2px}
+.blocker-hint{font-size:12px;color:var(--on-surface-v);font-weight:500;line-height:1.4}
+
+/* Cover letter section */
+.cl-section{
+  background:var(--card-bg);border-radius:20px;padding:1.75rem 2rem;
+  box-shadow:0 1px 4px rgba(44,47,49,.05);margin-bottom:1.5rem;
+}
+.dark .cl-section{box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.cl-header{
+  display:flex;align-items:center;gap:10px;margin-bottom:6px;
+}
+.cl-title{font-size:17px;font-weight:800;color:var(--on-surface)}
+.cl-sub{font-size:12px;color:var(--on-surface-v);margin-bottom:1.25rem;font-weight:500}
+.cl-generate-btn{
+  display:inline-flex;align-items:center;gap:8px;
+  background:linear-gradient(135deg,var(--primary),var(--secondary));
+  color:#fff;font-size:13px;font-weight:800;
+  padding:10px 20px;border-radius:10px;border:none;cursor:pointer;
+  transition:opacity .15s;
+}
+.cl-generate-btn:hover{opacity:.9}
+.cl-generate-btn:disabled{opacity:.6;cursor:not-allowed}
+.cl-textarea{
+  width:100%;min-height:280px;margin-top:1.25rem;
+  border:1.5px solid var(--border);border-radius:12px;
+  padding:1rem 1.25rem;font-size:13px;font-weight:500;
+  color:var(--on-surface);background:var(--surface-low);
+  line-height:1.7;resize:vertical;outline:none;
+  transition:border-color .15s,background .15s;
+  font-family:inherit;
+}
+.cl-textarea:focus{border-color:var(--primary);background:var(--card-bg)}
+.dark .cl-textarea{background:var(--input-bg);border-color:var(--border);color:var(--on-surface)}
+.dark .cl-textarea:focus{background:var(--card-bg);border-color:var(--primary)}
+.cl-actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.cl-btn{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:8px 16px;border-radius:9px;font-size:12px;font-weight:700;
+  border:1.5px solid;cursor:pointer;transition:all .15s;
+}
+.cl-btn-copy{
+  background:transparent;border-color:var(--border);color:var(--on-surface-v);
+}
+.cl-btn-copy:hover{background:var(--surface-low);border-color:var(--outline)}
+.cl-btn-download{
+  background:var(--primary);border-color:var(--primary);color:#fff;
+}
+.cl-btn-download:hover{background:var(--primary-dim)}
+.cl-notice{
+  font-size:11px;color:var(--outline);font-weight:500;
+  margin-top:8px;display:flex;align-items:center;gap:5px;
+}
 </style>
 </head>
 <body>
@@ -1890,6 +2060,34 @@ button{cursor:pointer;border:none;outline:none}
 ═══════════════════════════════════════════════════ -->
 <div id="pg-results" class="page">
 
+<div class="results-layout">
+
+<!-- LEFT SIDEBAR NAV -->
+<nav class="sidebar" id="sidebar">
+  <div class="sidebar-section-label">Analysis</div>
+  <button class="sidebar-btn on" id="s-profile" onclick="showTab('profile')">
+    <span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1">person</span>
+    Diagnosis
+  </button>
+  <button class="sidebar-btn" id="s-score" onclick="showTab('score')">
+    <span class="material-symbols-outlined">query_stats</span>
+    Resume Fix
+  </button>
+  <button class="sidebar-btn" id="s-project" onclick="showTab('project')">
+    <span class="material-symbols-outlined">rocket_launch</span>
+    Projects
+  </button>
+  <div class="sidebar-divider"></div>
+  <div class="sidebar-finalize-btn">
+    <button class="sidebar-btn" id="s-finalize" onclick="showTab('finalize')">
+      <span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1">check_circle</span>
+      Finalize
+    </button>
+  </div>
+</nav>
+
+<div class="results-main">
+
   <!-- TOP APP BAR — blue gradient, sticky -->
   <div class="sum-card">
     <div class="sum-inner">
@@ -2128,7 +2326,7 @@ button{cursor:pointer;border:none;outline:none}
 
     <div class="ats-notice" id="ats-notice" style="display:none"></div>
 
-    <!-- 2-col: bullets left, action list right -->
+    <!-- Bullet analysis — full width -->
     <div class="score-body">
 
       <!-- Bullet list -->
@@ -2145,47 +2343,112 @@ button{cursor:pointer;border:none;outline:none}
         </div>
       </section>
 
-      <!-- Action list -->
-      <aside class="score-action-col" id="summary-card">
-        <h3>
-          <span class="material-symbols-outlined" style="color:var(--primary);font-variation-settings:'FILL' 1">checklist</span>
-          Your Action List
-        </h3>
-        <div class="action-list">
-          <div class="action-row">
-            <div class="skeleton" style="width:36px;height:36px;border-radius:50%;flex-shrink:0"></div>
-            <div style="flex:1"><div class="skeleton sk-line"></div><div class="skeleton sk-line-sm"></div></div>
-          </div>
-          <div class="action-row">
-            <div class="skeleton" style="width:36px;height:36px;border-radius:50%;flex-shrink:0"></div>
-            <div style="flex:1"><div class="skeleton sk-line"></div><div class="skeleton sk-line-sm"></div></div>
-          </div>
-        </div>
-      </aside>
-
     </div>
   </div>
 
-  <!-- BOTTOM TAB BAR — fixed, glassmorphism -->
+  <!-- TAB 4 — FINALIZE -->
+  <div class="tab-panel" id="tab-finalize">
+
+    <!-- Hero -->
+    <div class="finalize-hero">
+      <div class="finalize-hero-title">Ready to Apply?</div>
+      <div class="finalize-hero-sub">Review your readiness, address blockers, then generate and download your cover letter.</div>
+    </div>
+
+    <!-- Before / After Metrics -->
+    <div class="finalize-metrics" id="finalize-metrics">
+      <div class="finalize-metric-card">
+        <div class="finalize-metric-label">ATS Keyword Match</div>
+        <div class="finalize-metric-value" id="fin-ats-val">—</div>
+        <div class="finalize-metric-delta" id="fin-ats-delta"></div>
+      </div>
+      <div class="finalize-metric-card">
+        <div class="finalize-metric-label">Bullet Quality</div>
+        <div class="finalize-metric-value" id="fin-bq-val">—</div>
+        <div class="finalize-metric-delta" id="fin-bq-delta"></div>
+      </div>
+      <div class="finalize-metric-card">
+        <div class="finalize-metric-label">Readiness Score</div>
+        <div class="finalize-metric-value" id="fin-ready-val">—</div>
+        <div class="finalize-metric-delta" id="fin-ready-delta"></div>
+      </div>
+    </div>
+
+    <!-- Remaining Blockers (Action List) -->
+    <aside class="score-action-col" id="summary-card">
+      <h3 style="font-size:18px;font-weight:800;color:var(--on-surface);display:flex;align-items:center;gap:8px;margin-bottom:20px">
+        <span class="material-symbols-outlined" style="color:var(--primary);font-variation-settings:'FILL' 1">checklist</span>
+        Remaining Blockers
+      </h3>
+      <div class="action-list">
+        <div class="action-row">
+          <div class="skeleton" style="width:36px;height:36px;border-radius:50%;flex-shrink:0"></div>
+          <div style="flex:1"><div class="skeleton sk-line"></div><div class="skeleton sk-line-sm"></div></div>
+        </div>
+        <div class="action-row">
+          <div class="skeleton" style="width:36px;height:36px;border-radius:50%;flex-shrink:0"></div>
+          <div style="flex:1"><div class="skeleton sk-line"></div><div class="skeleton sk-line-sm"></div></div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Cover Letter -->
+    <div class="cl-section">
+      <div class="cl-header">
+        <span class="material-symbols-outlined" style="color:var(--primary);font-variation-settings:'FILL' 1;font-size:22px">mail</span>
+        <div class="cl-title">Cover Letter</div>
+      </div>
+      <div class="cl-sub">Generated from your resume and target role. Edit freely, then download.</div>
+      <button class="cl-generate-btn" id="cl-generate-btn" onclick="generateCoverLetter()">
+        <span class="material-symbols-outlined" style="font-size:17px">auto_awesome</span>
+        Generate Cover Letter
+      </button>
+      <div id="cl-output" style="display:none">
+        <textarea class="cl-textarea" id="cl-textarea" placeholder="Your cover letter will appear here…" spellcheck="true"></textarea>
+        <div class="cl-actions">
+          <button class="cl-btn cl-btn-copy" onclick="copyCoverLetter(this)">
+            <span class="material-symbols-outlined" style="font-size:14px">content_copy</span>
+            Copy
+          </button>
+          <button class="cl-btn cl-btn-download" onclick="downloadCoverLetter()">
+            <span class="material-symbols-outlined" style="font-size:14px">download</span>
+            Download .txt
+          </button>
+        </div>
+        <div class="cl-notice">
+          <span class="material-symbols-outlined" style="font-size:13px">info</span>
+          Personalise with specific company details before sending.
+        </div>
+      </div>
+      <div id="cl-error" style="display:none;margin-top:12px;font-size:13px;color:var(--error);font-weight:600"></div>
+    </div>
+
+  </div>
+
+</div><!-- end results-main -->
+</div><!-- end results-layout -->
+
+  <!-- BOTTOM TAB BAR — mobile only, fixed, glassmorphism -->
   <div class="tab-bar">
     <div class="tab-bar-inner">
       <button class="tab-btn on" id="t-profile" onclick="showTab('profile')">
         <span class="material-symbols-outlined ticon" style="font-variation-settings:'FILL' 1">person</span>
-        <span class="tab-pill">Profile</span>
+        <span class="tab-pill">Diagnosis</span>
+      </button>
+      <button class="tab-btn" id="t-score" onclick="showTab('score')">
+        <span class="material-symbols-outlined ticon">query_stats</span>
+        <span class="tab-pill">Resume Fix</span>
       </button>
       <button class="tab-btn" id="t-project" onclick="showTab('project')">
         <span class="material-symbols-outlined ticon">rocket_launch</span>
         <span class="tab-pill">Projects</span>
       </button>
-      <button class="tab-btn" id="t-score" onclick="showTab('score')">
-        <span class="material-symbols-outlined ticon">query_stats</span>
-        <span class="tab-pill">Resume Audit</span>
+      <button class="tab-btn" id="t-finalize" onclick="showTab('finalize')">
+        <span class="material-symbols-outlined ticon" style="font-variation-settings:'FILL' 1">check_circle</span>
+        <span class="tab-pill">Finalize</span>
       </button>
     </div>
   </div>
-
-</div>
-
 
 </div>
 
@@ -2226,6 +2489,7 @@ let resumeFileId    = null;
 let rawFile         = null; // retains the File object so we can re-upload after Start Over
 let currentRole     = '';
 let currentLocation = '';
+let currentJD       = '';
 let lvlTimer        = null;
 let abortCtrl       = null;
 let analysisData    = {};
@@ -2779,7 +3043,7 @@ async function launchAnalysis() {
     errBox.style.display='block'; return;
   }
 
-  currentRole=role; currentLocation=location;
+  currentRole=role; currentLocation=location; currentJD=jd;
   analysisData={}; _currentEvent='';
   bulletStore.clear(); bulletStoreIdx=0;
   resultReady = false; // I10: reset gate
@@ -2975,6 +3239,7 @@ function handleSSE(name, data) {
     case 'done':
       // Both streams complete — render summary card now that bullets/certs/projects are all populated
       renderSummaryCard();
+      renderFinalizeMetrics();
       if (!resultReady) {
         // Safety net if scores event somehow didn't fire
         resultReady = true;
@@ -3040,12 +3305,14 @@ function goBack() {
 }
 
 function showTab(t) {
-  ['profile','project','score'].forEach(id=>{
+  ['profile','project','score','finalize'].forEach(id=>{
     document.getElementById('tab-'+id).classList.toggle('on', id===t);
     const b=document.getElementById('t-'+id);
     if(b) b.classList.toggle('on', id===t);
+    const s=document.getElementById('s-'+id);
+    if(s) s.classList.toggle('on', id===t);
   });
-  // Re-animate skill bars whenever Profile tab becomes active
+  // Re-animate skill bars whenever Diagnosis tab becomes active
   if (t === 'profile') {
     setTimeout(() => {
       document.querySelectorAll('.sk-bar-fill').forEach(b => {
@@ -3053,6 +3320,8 @@ function showTab(t) {
       });
     }, 80);
   }
+  // Populate finalize metrics when tab opens
+  if (t === 'finalize') renderFinalizeMetrics();
 }
 
 // ═══════════════════════════════════════════════════
@@ -3675,7 +3944,7 @@ function renderSummaryCard() {
   document.getElementById('summary-card').innerHTML =
     `<h3 style="font-size:18px;font-weight:800;color:var(--on-surface);display:flex;align-items:center;gap:8px;margin-bottom:20px">
       <span class="material-symbols-outlined" style="color:var(--primary);font-variation-settings:'FILL' 1">checklist</span>
-      Your Action List
+      Remaining Blockers
     </h3>
     <div class="action-list">
       ${row('rgba(70,71,211,.1)','var(--secondary)','edit_note','Bullets to rewrite',
@@ -3930,6 +4199,112 @@ async function submitFeedback() {
       btn.disabled         = false;
     }, 3000);
   }
+}
+
+// ═══════════════════════════════════════════════════
+// FINALIZE — Metrics + Cover Letter
+// ═══════════════════════════════════════════════════
+function renderFinalizeMetrics() {
+  const d = analysisData;
+  if (!d || !d.ats_pass_rate) return;
+
+  const ats = d.ats_pass_rate || 0;
+  const bq  = Math.round((d.bullet_quality || 0) * 10);
+  const im  = Math.round((d.impact_metrics  || 0) * 10);
+
+  // Readiness: composite of ATS, bullet quality, impact
+  const ready = Math.round((ats * 0.4) + (bq * 0.35) + (im * 0.25));
+
+  function setMetric(valId, deltaId, val, note) {
+    const el = document.getElementById(valId);
+    const de = document.getElementById(deltaId);
+    if (el) el.textContent = val + '%';
+    if (de) {
+      de.textContent = note;
+      de.className = 'finalize-metric-delta ' + (val >= 75 ? 'delta-up' : 'delta-same');
+    }
+  }
+
+  setMetric('fin-ats-val',   'fin-ats-delta',   ats,   ats >= 75 ? 'ATS threshold met' : `${75 - ats}% below ATS target`);
+  setMetric('fin-bq-val',    'fin-bq-delta',    bq,    bq >= 70  ? 'Good bullet quality' : 'Bullets need strengthening');
+  setMetric('fin-ready-val', 'fin-ready-delta', ready, ready >= 70 ? 'Ready to apply' : 'Address blockers first');
+}
+
+async function generateCoverLetter() {
+  const btn   = document.getElementById('cl-generate-btn');
+  const out   = document.getElementById('cl-output');
+  const ta    = document.getElementById('cl-textarea');
+  const errEl = document.getElementById('cl-error');
+
+  if (!btn || !ta) return;
+
+  // Guard: need some analysis data
+  if (!analysisData || !currentRole) {
+    if (errEl) { errEl.textContent = 'Please complete your resume analysis first.'; errEl.style.display='block'; }
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:17px;animation:spin .7s linear infinite">autorenew</span> Generating…';
+  if (errEl) errEl.style.display = 'none';
+
+  const skills   = (analysisData.skills || []).slice(0, 8).join(', ');
+  const gaps     = (analysisData.gaps   || []).slice(0, 4).map(g => g.skill || g).join(', ');
+  const jdHints  = currentJD ? currentJD.slice(0, 400) : '';
+  const location = currentLocation || '';
+
+  try {
+    const res = await fetch('/api/coverletter', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: currentRole, location, skills, gaps, jdHints })
+    });
+
+    if (!res.ok) throw new Error('Request failed');
+    const data = await res.json();
+    const text = data?.letter?.trim();
+
+    if (!text || text.length < 50) throw new Error('Empty response');
+
+    ta.value = text;
+    out.style.display = 'block';
+    btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:17px">auto_awesome</span> Regenerate';
+    btn.disabled  = false;
+  } catch(err) {
+    btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:17px">auto_awesome</span> Generate Cover Letter';
+    btn.disabled  = false;
+    if (errEl) {
+      errEl.textContent = 'Could not generate cover letter. Please try again.';
+      errEl.style.display = 'block';
+    }
+  }
+}
+
+function copyCoverLetter(btn) {
+  const ta = document.getElementById('cl-textarea');
+  if (!ta || !ta.value) return;
+  navigator.clipboard.writeText(ta.value).catch(() => {
+    const tmp = document.createElement('textarea');
+    tmp.value = ta.value; document.body.appendChild(tmp); tmp.select();
+    document.execCommand('copy'); document.body.removeChild(tmp);
+  });
+  if (btn) {
+    const orig = btn.innerHTML;
+    btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px">check</span> Copied!';
+    setTimeout(() => { btn.innerHTML = orig; }, 2500);
+  }
+}
+
+function downloadCoverLetter() {
+  const ta   = document.getElementById('cl-textarea');
+  if (!ta || !ta.value) return;
+  const name = (currentRole || 'cover-letter').toLowerCase().replace(/\s+/g,'-');
+  const blob = new Blob([ta.value], { type: 'text/plain' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = `${name}-cover-letter.txt`;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
 }
 
 // ═══════════════════════════════════════════════════
