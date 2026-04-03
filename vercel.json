@@ -5,6 +5,7 @@
     "api/apify.js":   { "maxDuration": 10 },
     "api/upload.js":  { "maxDuration": 30 },
     "api/warmcache.js": { "maxDuration": 60 },
-    "api/rewrite.js": { "maxDuration": 20 }
+    "api/rewrite.js": { "maxDuration": 20 },
+    "api/coverletter.js": { "maxDuration": 30 }
   }
 }
