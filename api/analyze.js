@@ -354,6 +354,46 @@ function computeMatchScore(atsScore, skillsFound, topSkillsRequired) {
   const raw = Math.round(atsScore * 0.7 + skillsCoverage * 0.3);
   return Math.min(95, Math.max(5, raw));
 }
+
+// ═══════════════════════════════════════════════════════
+// RESUME ANCHOR EXTRACTION
+// Extracts specific facts (companies, metrics) for grounding AI outputs.
+// Prevents generic LinkedIn/diagnosis content by giving Claude real anchors.
+// ═══════════════════════════════════════════════════════
+function extractResumeAnchors(resumeText) {
+  if (!resumeText) return { companies: [], metrics: [] };
+
+  const lines = resumeText.split('\n').map(l => l.trim()).filter(Boolean);
+  const datePattern = /\b(20\d{2}|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i;
+  const sectionHeaders = /^(experience|education|skills|projects|work history|summary|objective|certifications|awards|publications|interests|activities|languages)\s*$/i;
+
+  // Company/employer extraction: short lines (2-14 words) containing a year or month
+  // that don't look like section headers, bullet points, or pure date ranges
+  const companies = [];
+  for (const line of lines) {
+    if (line.startsWith('\u2022') || line.startsWith('-') || line.startsWith('*')) continue;
+    if (sectionHeaders.test(line)) continue;
+    const words = line.split(/\s+/);
+    if (words.length < 2 || words.length > 14) continue;
+    if (!datePattern.test(line)) continue;
+    // Extract first segment as company/employer name (before common separators)
+    const seg = line.split(/[\|–\u2014\u00b7\t]/)[0].trim();
+    if (seg.length >= 2 && seg.length <= 60 && !sectionHeaders.test(seg) && !/^\d/.test(seg)) {
+      companies.push(seg);
+    }
+  }
+
+  // Metrics extraction: numbers with business units (%, x, $, K, M)
+  const metricPattern = /\b(\d+(?:\.\d+)?%|\d+[xX]|\$\d+(?:[kmb]|k\+?|m\+?)?|\d{1,3}(?:,\d{3})+|\d+[km]\+?)\b/gi;
+  const rawMetrics = resumeText.match(metricPattern) || [];
+  const metrics = [...new Set(rawMetrics)].slice(0, 6);
+
+  return {
+    companies: [...new Set(companies)].slice(0, 4),
+    metrics
+  };
+}
+
 function httpsPost(hostname, path, headers, body) {
   return new Promise((resolve, reject) => {
     const data = JSON.stringify(body);
@@ -555,11 +595,11 @@ const TOOLS_B = [
       properties: {
         linkedin_headline: {
           type: 'string',
-          description: 'Format: [Core identity] | [Strongest specific tool or domain] | [What you deliver for the business]. Under 160 chars. Zero status language. Must name a specific tool or method from the resume. Example: Product Analyst | Mixpanel and SQL | Translating user behaviour into decisions that move revenue.'
+          description: 'Format: [Core identity] | [Named tool from resume] | [Concrete outcome type]. Under 160 chars. [Core identity]: what this person actually does based on resume content, not a generic job title. [Named tool]: must be a specific real tool named in the resume text (e.g. Python, dbt, Mixpanel, Snowflake, Tableau, Spark — not "analytics" or "technology"). [Concrete outcome]: the type of result this person delivers, grounded in their experience. Example: Data Analyst | dbt + Snowflake | Turning warehouse data into decisions product teams actually use. Never use "seeking", "open to", or any status phrase.'
         },
         linkedin_about: {
           type: 'string',
-          description: 'Exactly 3 sentences. SENTENCE 1: Name one specific thing you built or solved from this resume, include the tool you used and a result with a number if one exists. SENTENCE 2: The 2-3 skills most demanded for this role from market data, written as what you do well not a list. SENTENCE 3: What kind of problem you want to work on next, stated as a capability not a job title. FORBIDDEN OPENERS: I am a, As a, With X years, Passionate about, Dedicated professional, Results-driven. Must sound like a smart person wrote it themselves.'
+          description: 'Exactly 3 sentences. MAXIMUM 80 WORDS TOTAL. SENTENCE 1: Start with a specific action at a named company from the resume — e.g. "At [Company], built [specific thing] using [tool] that [specific result or outcome]." If no metric exists, name the tool and the scope. Do NOT start with "I am" or any forbidden opener. SENTENCE 2: Write the 2-3 skills most demanded for this role from market data as active capabilities — what you do, not what you know. SENTENCE 3: The type of problem you want to work on next, stated as a capability or approach, not a job title or aspiration. FORBIDDEN OPENERS: I am a, As a, With X years, Passionate about, Dedicated, Results-driven, Looking for, Seeking. Sound like a smart person wrote this for themselves — specific, grounded, direct.'
         },
         linkedin_skills: {
           type: 'array',
@@ -674,8 +714,8 @@ impact_metrics: score based on whether the quantified results are the type this 
 Example: a beautifully written analytics bullet on an SDE resume scores 2-3/10 on both metrics, not 8/10.
 
 VERDICT QUALITY:
-verdict_headline must name something SPECIFIC from this resume. A company, a tool, a number, a gap. If you could apply the same sentence to a different resume without changing a word, rewrite it.
-brutal_honey: MAXIMUM 3 SENTENCES. No dashes. Sentence 1: why a recruiter skips this exact bullet. Sentence 2: what is salvageable. Sentence 3: direction for the rewrite. Nothing more.
+verdict_headline must name something SPECIFIC from this resume. A company, a tool, a number, a gap. If you could apply the same sentence to a different resume without changing a word, rewrite it. GROUNDING CHECK: does it name a real company from this resume, OR a specific gap by exact skill name, OR a specific metric from the resume? If none of these, name the most unusual or differentiating aspect of this person's experience. Generic phrases like "strong potential but gaps remain" are forbidden.
+brutal_honey: MAXIMUM 3 SENTENCES. No dashes. Sentence 1: quote or directly reference the specific verb or claim from this exact bullet — not a generic observation like "this bullet lacks impact." Sentence 2: what is salvageable from the bullet text itself. Sentence 3: one concrete direction for the rewrite. Nothing more.
 rewrite: ONE sentence under 25 words. Strong verb first. Most relevant ATS keyword from market data. [X][Y][Z] only where numbers are genuinely missing. Self-check before outputting: strong verb? keyword? under 25 words? Revise once if any check fails.
 NEVER output <REMOVE>, <DELETE>, or any meta-instruction as the rewrite value. If a bullet is completely irrelevant to the target role and cannot be salvaged, set rewrite to null and explain in brutal_honey why the bullet should be removed or replaced with a role-relevant one.
 
@@ -709,9 +749,16 @@ You may ONLY reference facts that appear explicitly in the resume text or job de
 
 LINKEDIN ABOUT RULE: Every sentence in linkedin_about must be directly traceable to content in the RESUME TEXT provided. If you cannot cite the source in the resume, do not write it.
 
+QUALITY GATE — NON-NEGOTIABLE:
+Before finalising linkedin_about, check each sentence: "Could this sentence appear on a different person's resume without changing a word?" If yes, rewrite it. Every sentence must anchor to at least one of: (a) a company name from this resume, (b) a specific tool + action from this resume, (c) a metric from this resume, or (d) a specific type of problem this person has demonstrably worked on. If the resume lacks metrics, name the tool and the context. Generic phrases like "passionate about data" or "experienced in analytics" are forbidden.
+
+HEADLINE SPECIFICITY — CRITICAL:
+The [Core identity] segment must reflect this person's actual work type, not just a job title anyone could claim. The [Specific tool or domain] segment must name a real tool from the resume (e.g. Python, dbt, Mixpanel, Snowflake — not "analytics" or "technology"). The [What you deliver] segment must describe the concrete outcome type this person has demonstrated, grounded in their actual experience.
+
 FORBIDDEN OUTPUTS — if you produce any of these, stop and rewrite before outputting:
 LinkedIn About openers: I am a, As a, With X years of experience, Passionate about, Dedicated professional, Results-driven, Dynamic, Innovative, Looking for
 Any sentence that could apply to a different person's resume without changing a word
+linkedin_headline that does not name at least one specific tool from the resume in the middle segment
 Project ai_prompt fields that are vague, short, or do not name specific tools and free datasets
 linkedin_skills that include skills already prominent in the resume
 
@@ -797,7 +844,7 @@ cert_picks must address skills high on this list that are missing from the resum
 // ═══════════════════════════════════════════════════════
 // ANALYSIS PROMPTS
 // ═══════════════════════════════════════════════════════
-function buildAnalysisPromptA(role, locationStr, jd, hasJD, sal, marketDataBlock, atsFactLine, serverSkills) {
+function buildAnalysisPromptA(role, locationStr, jd, hasJD, sal, marketDataBlock, atsFactLine, serverSkills, anchors) {
   const salaryCtx = sal._fromPostings
     ? `Salary from real postings: ${sal._fromPostings} (${sal._confidence === 'high' ? 'high confidence' : 'moderate confidence'}, ${sal._postingNote || ''}). Use this as the basis for the salary range in set_verdict.`
     : sal._weakPostingData
@@ -814,18 +861,34 @@ PRE-COMPUTED SKILL GAPS (missing from resume, sorted by market frequency): ${mis
 USE THESE EXACT SKILLS in set_skills (skills_present) and set_gaps. The server controls skill selection, relevance %, and gap priority. Your role is to provide skill_levels assessment and how_to_fix suggestions for each gap. Include how_to_fix for ALL 5 gaps listed above.`;
   }
 
+  // Resume anchors: specific companies and metrics extracted server-side
+  // These ground verdict_headline in real resume content, not generic observations
+  let anchorLine = '';
+  if (anchors) {
+    const parts = [];
+    if (anchors.companies && anchors.companies.length > 0) {
+      parts.push(`Employers/companies found in resume: ${anchors.companies.join(', ')}`);
+    }
+    if (anchors.metrics && anchors.metrics.length > 0) {
+      parts.push(`Metrics found in resume: ${anchors.metrics.join(', ')}`);
+    }
+    if (parts.length > 0) {
+      anchorLine = `RESUME ANCHORS (server-extracted):\n${parts.join('\n')}\nverdict_headline MUST reference one of these companies, one of these metrics, OR name the most critical gap by exact skill name. Never write a generic verdict.\n`;
+    }
+  }
+
   return `Analyze this resume for a ${role} role${locationStr !== 'Nationwide USA' ? ` in ${locationStr}` : ''}.
 
 ${marketDataBlock}
 
-${atsFactLine ? atsFactLine + '\n' : ''}${skillFactLine ? skillFactLine + '\n' : ''}${salaryCtx}
+${atsFactLine ? atsFactLine + '\n' : ''}${skillFactLine ? skillFactLine + '\n' : ''}${anchorLine}${salaryCtx}
 
 ${hasJD ? `JOB DESCRIPTION:\n${jd}\n\nSince a JD was provided, also call set_jd_breakdown.` : ''}
 
 Call ALL tools in order. Never stop after set_verdict. Every output must reference actual content from this specific resume.`;
 }
 
-function buildAnalysisPromptB(role, locationStr, jd, hasJD, sal, marketDataBlock, resumeText, confirmedSkills, detectedGaps) {
+function buildAnalysisPromptB(role, locationStr, jd, hasJD, sal, marketDataBlock, resumeText, confirmedSkills, detectedGaps, anchors) {
   // confirmedSkills comes from Stream A's set_skills output — use these as ground truth
   // for what's already in the resume so Sonnet never recommends adding a skill they have
   const skillsNote = confirmedSkills && confirmedSkills.length
@@ -837,14 +900,30 @@ function buildAnalysisPromptB(role, locationStr, jd, hasJD, sal, marketDataBlock
     ? `\nDETECTED SKILL GAPS (missing from resume, sorted by market frequency):\n${detectedGaps.map(g => `- ${g.skill} (${g.pct}% of postings)`).join('\n')}\nCertification recommendations MUST address skills from this gap list. Do NOT recommend certs for skills already confirmed in the resume.\n`
     : '';
 
+  // Resume anchors: server-extracted companies and metrics for LinkedIn grounding
+  // These are the specific facts linkedin_about and linkedin_headline MUST reference
+  let anchorsNote = '';
+  if (anchors) {
+    const anchorParts = [];
+    if (anchors.companies && anchors.companies.length > 0) {
+      anchorParts.push(`Companies/employers from this resume: ${anchors.companies.join(', ')}`);
+    }
+    if (anchors.metrics && anchors.metrics.length > 0) {
+      anchorParts.push(`Metrics found in this resume: ${anchors.metrics.join(', ')}`);
+    }
+    if (anchorParts.length > 0) {
+      anchorsNote = `\nRESUME ANCHORS — REQUIRED for linkedin_about and linkedin_headline:\n${anchorParts.join('\n')}\nlinkedin_about sentence 1 MUST name at least one of these companies OR one of these metrics. linkedin_headline middle segment MUST name a real tool found in the RESUME TEXT. If no metric is available, name the specific tool and the context in which it was used at one of the listed companies.\n`;
+    }
+  }
+
   return `Write LinkedIn optimization, certifications, and project suggestions for a ${role} candidate.
 
 ${marketDataBlock}
-${skillsNote}${gapsNote}
+${skillsNote}${gapsNote}${anchorsNote}
 ${resumeText ? `RESUME TEXT:\n${resumeText}\n` : ''}
 ${hasJD ? `JOB DESCRIPTION:\n${jd}\n` : ''}
 Call ALL tools: set_linkedin, set_certifications, set_projects.
-Every LinkedIn sentence must reference something specific from this resume. Every cert must close a real gap from the DETECTED SKILL GAPS list above. Every project ai_prompt must cover all 4 phases (PLAN, DESIGN, BUILD, RESUME VALUE) and be complete enough to paste directly into Claude or ChatGPT. All 3 project ai_prompts must have identical depth. Every project ats_keywords must name 2-3 verbatim market-data top-10 skills this project demonstrates.`;
+Every LinkedIn sentence must reference something specific from this resume — use the RESUME ANCHORS above as your primary grounding points. linkedin_about sentence 1 must name a company or metric from the anchors list. Every cert must close a real gap from the DETECTED SKILL GAPS list above. Every project ai_prompt must cover all 4 phases (PLAN, DESIGN, BUILD, RESUME VALUE) and be complete enough to paste directly into Claude or ChatGPT. All 3 project ai_prompts must have identical depth. Every project ats_keywords must name 2-3 verbatim market-data top-10 skills this project demonstrates.`;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1458,8 +1537,11 @@ module.exports = async function handler(req, res) {
   const serverSkills = computeSkillsAndGaps(resumeForATS, mergedSkillFreq);
   serverSkills._resumeText = resumeForATS; // attached for skill level computation
 
+  // Resume anchors: server-extracted for grounding both prompts in real resume content
+  const resumeAnchors = extractResumeAnchors(resumeForATS);
+
   // Stream A user content — includes file or resume text
-  const promptA    = buildAnalysisPromptA(role, locationStr, jd, hasJD, sal, marketDataBlock, atsFactLine, serverSkills);
+  const promptA    = buildAnalysisPromptA(role, locationStr, jd, hasJD, sal, marketDataBlock, atsFactLine, serverSkills, resumeAnchors);
   const userContentA = fileId
     ? [
         { type: 'document', source: { type: 'file', file_id: fileId } },
@@ -1543,7 +1625,7 @@ module.exports = async function handler(req, res) {
       const detectedGaps = serverSkills?.missing?.slice(0, 5) || [];
       const userContentB = buildAnalysisPromptB(
         role, locationStr, jd, hasJD, sal, marketDataBlock,
-        resumeForB, streamASkills, detectedGaps
+        resumeForB, streamASkills, detectedGaps, resumeAnchors
       );
 
       const anthropicResB = await makeStreamRequest({
