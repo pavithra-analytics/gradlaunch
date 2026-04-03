@@ -1393,6 +1393,34 @@ button{cursor:pointer;border:none;outline:none}
   font-size:12px;font-weight:800;background:var(--surface-low);color:var(--on-surface-v);transition:all .15s;
 }
 .dlg-close-btn:hover{background:var(--surface-container);border-color:var(--outline-v)}
+.dlg-adopt-btn{
+  flex:1;padding:10px 14px;border:none;border-radius:10px;
+  font-size:12px;font-weight:800;background:var(--secondary);color:#fff;
+  cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:6px;justify-content:center;
+}
+.dlg-adopt-btn:hover{filter:brightness(1.1);transform:translateY(-1px)}
+.dlg-adopt-btn:disabled{opacity:.45;cursor:default;transform:none;filter:none}
+.dlg-edit-area{
+  width:100%;min-height:72px;padding:10px 12px;box-sizing:border-box;
+  background:var(--green-light);border:1.5px solid var(--green);
+  border-radius:10px;font-size:12px;color:#14532d;
+  line-height:1.6;font-weight:600;font-family:inherit;resize:vertical;
+  outline:none;transition:border-color .15s,box-shadow .15s;margin-bottom:8px;
+}
+.dlg-edit-area:focus{border-color:var(--secondary);box-shadow:0 0 0 3px rgba(70,71,211,.12)}
+.dark .dlg-edit-area{background:rgba(0,105,71,.12);color:#6ee7b7;border-color:var(--green)}
+.bullet-item.adopted{border-left-color:var(--tertiary) !important;cursor:default !important}
+.bullet-item.adopted:hover{box-shadow:none !important}
+.bullet-adopted-badge{
+  display:inline-flex;align-items:center;gap:4px;margin-top:8px;
+  font-size:11px;font-weight:700;color:var(--tertiary);
+}
+.dlg-section-label{
+  font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;
+  margin-bottom:6px;display:flex;align-items:center;gap:5px;
+}
+.dlg-section-label.before{color:var(--error)}
+.dlg-section-label.after{color:var(--tertiary)}
 
 @media(max-width:768px){
   .score-gauges{grid-template-columns:1fr}
@@ -1563,6 +1591,7 @@ button{cursor:pointer;border:none;outline:none}
 .dark .dlg,.dark .dlg-hdr{background:var(--card-bg)}
 .dark .dlg-orig{color:#fca5a5}
 .dark .dlg-rewrite{color:#6ee7b7}
+.dark .dlg-adopt-btn{background:var(--secondary);color:#fff}
 
 /* Project tab */
 .dark .sum-card,.dark .proj-intro,.dark .headline-roast,
@@ -3846,13 +3875,13 @@ function appendBulletGroup(data) {
       ? `<div class="bullet-suggestion">Suggested: "${esc(item.rewrite.replace(/\[.*?\]/g,'…').substring(0,110))}${item.rewrite.length>110?'…':''}"</div>`
       : '';
 
-    return `<div class="bullet-item red" onclick="openDlg(${idx})">
+    return `<div class="bullet-item red" data-bullet-idx="${idx}" onclick="openDlg(${idx})">
       ${tagHtml ? `<div class="bullet-tags">${tagHtml}</div>` : ''}
       <p class="bullet-text">${esc(item.text)}</p>
       ${suggestion}
       <div class="bullet-see-more">
         <span class="material-symbols-outlined" style="font-size:14px">arrow_forward</span>
-        See full analysis
+        See full analysis &amp; rewrite
       </div>
     </div>`;
   }).join('');
@@ -3991,19 +4020,25 @@ async function generateBulletRewrite(bulletText, brutalHoney, role) {
     const text = data?.rewrite?.trim();
 
     if (text && text.length > 10 && rwEl.isConnected) {
-      rwEl.textContent   = text;
+      rwEl.value         = text;
+      rwEl.disabled      = false;
       rwEl.style.fontStyle = 'normal';
       rwEl.style.opacity   = '1';
       if (copyBtn) {
         copyBtn.disabled = false;
-        copyBtn.onclick  = () => copyEl('dlg-rw-text', copyBtn);
       }
+      const adoptBtn = document.getElementById('dlg-adopt-btn');
+      if (adoptBtn) adoptBtn.disabled = false;
+      // Update section label
+      const afterLbl = document.querySelector('.dlg-section-label.after');
+      if (afterLbl) afterLbl.innerHTML = '<span class="material-symbols-outlined" style="font-size:13px">arrow_forward</span>After — edit, then adopt';
     } else {
       throw new Error('Empty rewrite');
     }
   } catch {
     if (rwEl && rwEl.isConnected) {
-      rwEl.textContent   = `Rewrite this bullet to show a specific ${currentRole || 'target role'} outcome — what decision did you enable or what metric did you move?`;
+      rwEl.value         = '';
+      rwEl.placeholder   = `Rewrite this bullet to show a specific ${currentRole || 'target role'} outcome — what decision did you enable or what metric did you move?`;
       rwEl.style.fontStyle = 'italic';
       rwEl.style.opacity   = '.8';
     }
@@ -4032,7 +4067,9 @@ function openDlg(idx) {
 
   document.getElementById('dlg-body').innerHTML =
     `<div style="margin-bottom:14px">
-      <div class="dlg-lbl">Your bullet</div>
+      <div class="dlg-section-label before">
+        <span class="material-symbols-outlined" style="font-size:13px">arrow_back</span>Before
+      </div>
       <div class="dlg-orig">${esc(d.text||'')}</div>
       ${tagHtml ? `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px">${tagHtml}</div>` : ''}
     </div>
@@ -4053,26 +4090,34 @@ function openDlg(idx) {
     </div>` :
     d.rw ? `
     <div>
-      <div class="dlg-lbl">What it should sound like</div>
-      <div class="dlg-rewrite" id="dlg-rw-text">${esc(d.rw)}</div>
-      <div class="dlg-note">Don't have exact numbers? "40% faster based on before/after testing" is real data. "Optimized" is not.</div>
+      <div class="dlg-section-label after">
+        <span class="material-symbols-outlined" style="font-size:13px">arrow_forward</span>After — edit, then adopt
+      </div>
+      <textarea class="dlg-edit-area" id="dlg-rw-text">${esc(d.rw)}</textarea>
+      <div class="dlg-note">Edit freely — numbers, context, tone. Click Adopt to replace your original bullet.</div>
       <div class="dlg-footer">
-        <button class="copy-btn" onclick="copyEl('dlg-rw-text',this)">
-          <span class="material-symbols-outlined" style="font-size:15px;vertical-align:middle;margin-right:4px">content_copy</span>Copy rewrite
+        <button class="dlg-adopt-btn" onclick="adoptRewrite(${idx})">
+          <span class="material-symbols-outlined" style="font-size:15px">check_circle</span>Adopt this rewrite
         </button>
-        <button class="dlg-close-btn" onclick="closeDlg()">Close</button>
+        <button class="copy-btn" id="dlg-copy-btn" onclick="copyEl('dlg-rw-text',this)" style="flex:.5">
+          <span class="material-symbols-outlined" style="font-size:15px;vertical-align:middle;margin-right:4px">content_copy</span>Copy
+        </button>
+        <button class="dlg-close-btn" onclick="closeDlg()">Skip</button>
       </div>
     </div>` :
     `<div>
-      <div class="dlg-lbl">What it should sound like</div>
-      <div id="dlg-rw-text" class="dlg-rewrite" style="font-style:italic;opacity:.7;font-size:12px">
-        Generating a ${esc(currentRole||'target role')}-relevant replacement…
+      <div class="dlg-section-label after">
+        <span class="material-symbols-outlined" style="font-size:13px">arrow_forward</span>After — generating…
       </div>
+      <textarea class="dlg-edit-area" id="dlg-rw-text" disabled placeholder="Generating a ${esc(currentRole||'target role')}-relevant replacement…" style="opacity:.7;font-style:italic"></textarea>
       <div class="dlg-footer">
-        <button class="copy-btn" id="dlg-copy-btn" disabled onclick="copyEl('dlg-rw-text',this)">
-          <span class="material-symbols-outlined" style="font-size:15px;vertical-align:middle;margin-right:4px">content_copy</span>Copy rewrite
+        <button class="dlg-adopt-btn" id="dlg-adopt-btn" disabled onclick="adoptRewrite(${idx})">
+          <span class="material-symbols-outlined" style="font-size:15px">check_circle</span>Adopt this rewrite
         </button>
-        <button class="dlg-close-btn" onclick="closeDlg()">Close</button>
+        <button class="copy-btn" id="dlg-copy-btn" disabled onclick="copyEl('dlg-rw-text',this)" style="flex:.5">
+          <span class="material-symbols-outlined" style="font-size:15px;vertical-align:middle;margin-right:4px">content_copy</span>Copy
+        </button>
+        <button class="dlg-close-btn" onclick="closeDlg()">Skip</button>
       </div>
     </div>`}`;
 
@@ -4092,11 +4137,62 @@ function closeDlg(e) {
 }
 
 // ═══════════════════════════════════════════════════
+// ADOPT REWRITE — applies suggested text to bullet card
+// ═══════════════════════════════════════════════════
+function adoptRewrite(idx) {
+  const d = bulletStore.get(idx);
+  if (!d) return;
+
+  const rwEl   = document.getElementById('dlg-rw-text');
+  const newText = rwEl ? (rwEl.tagName === 'TEXTAREA' ? rwEl.value : rwEl.textContent || '').trim() : '';
+  if (!newText || newText.length < 5) return;
+
+  // Update resumeText with the adopted version
+  if (resumeText && d.text) {
+    const escaped = d.text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    resumeText = resumeText.replace(new RegExp(escaped), newText);
+  }
+
+  // Update store
+  bulletStore.set(idx, Object.assign({}, d, { adopted: true, adoptedText: newText }));
+
+  // Update the card in the DOM
+  const card = document.querySelector(`[data-bullet-idx="${idx}"]`);
+  if (card) {
+    card.classList.remove('red');
+    card.classList.add('adopted');
+    card.onclick = null;
+    const textEl = card.querySelector('.bullet-text');
+    if (textEl) textEl.textContent = newText;
+    card.querySelectorAll('.bullet-suggestion, .bullet-see-more').forEach(el => el.remove());
+    const badge = document.createElement('div');
+    badge.className = 'bullet-adopted-badge';
+    badge.innerHTML = '<span class="material-symbols-outlined" style="font-size:13px;vertical-align:middle">check_circle</span> Adopted';
+    card.appendChild(badge);
+  }
+
+  // Recount flagged
+  const redCount = document.querySelectorAll('.bullet-item.red').length;
+  const flagBadge = document.getElementById('bullets-flagged-count');
+  if (flagBadge) {
+    if (redCount > 0) {
+      flagBadge.textContent = `${redCount} flagged`;
+    } else {
+      flagBadge.style.display = 'none';
+    }
+  }
+
+  // Close dialog
+  document.getElementById('dlg-overlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+// ═══════════════════════════════════════════════════
 // COPY HELPERS
 // ═══════════════════════════════════════════════════
 function copyEl(elId, btn) {
   const el   = document.getElementById(elId);
-  const text = el ? (el.innerText || el.textContent || '') : '';
+  const text = el ? (el.tagName === 'TEXTAREA' ? el.value : (el.innerText || el.textContent || '')) : '';
   navigator.clipboard.writeText(text).catch(() => {
     const ta = document.createElement('textarea');
     ta.value = text; document.body.appendChild(ta); ta.select();
