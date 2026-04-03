@@ -610,10 +610,11 @@ const TOOLS_B = [
               justification: { type: 'string', description: 'One sentence referencing the exact market data % for the skill this builds and why it matters for this specific resume.' },
               description:   { type: 'string', description: 'Two sentences. Sentence 1: name the specific free API or public dataset they will use. Sentence 2: name the exact tool stack and what the final deliverable looks like visually.' },
               skills:        { type: 'array', items: { type: 'string' }, description: '3-5 specific skills this project builds. Use exact market data skill names.' },
+              ats_keywords:  { type: 'array', items: { type: 'string' }, maxItems: 3, description: '2-3 ATS keywords (verbatim from market data top-10) that recruiters and hiring systems will find demonstrated by this project. Choose the highest-frequency missing skills this project directly proves.' },
               time_hours:    { type: 'number' },
               ai_prompt:     {
                 type: 'string',
-                description: 'A complete 3-phase AI prompt the student can paste into Claude or ChatGPT. Must follow this EXACT structure for ALL THREE projects: Start with Act as a senior [specific role matching tech stack]. We are building [exact project title] together from scratch using [specific free API or dataset] and [exact tool stack]. The final output will be [specific visual description of deliverable]. PHASE 1: Ask me 2 specific questions about what this should do and who will use it. Say next phase when ready. PHASE 2: Show me the exact folder structure, every file name, and every function as a stub with inputs and outputs. Get my approval before writing implementation code. Say next phase when ready. PHASE 3: Build one function at a time starting with data fetching. Show actual output after each function. Never move to the next function until the current one works. Under 220 words. No dashes. This exact quality and length is required for project 1, 2, AND 3.'
+                description: 'A complete 4-phase AI prompt the student can paste into Claude or ChatGPT. EXACT STRUCTURE REQUIRED for ALL THREE projects: Line 1: Act as a senior [specific role matching tech stack]. We are building [exact project title] together from scratch using [specific free API or dataset] and [exact tool stack]. The final output will be [specific visual description of deliverable]. PHASE 1 — PLAN: Ask me 3 targeted questions: what this will do, who will use it, and what the most important metric I want to show a recruiter is. Say ready to design when done. PHASE 2 — DESIGN: Show the exact folder structure, every file name, and every function as a stub with typed inputs and outputs. Get my approval before writing any implementation code. Say ready to build when done. PHASE 3 — BUILD: Implement one function at a time starting with data fetching. Show actual output after each function. Never advance until the current function works. PHASE 4 — RESUME VALUE: Once the project is complete, generate 2 resume bullets. Strong action verb first. Include [the top ATS keyword for this role]. Under 20 words each. Format: [Verb] [what you built] [metric placeholder]. Under 250 words total. No dashes. This exact structure and quality is required for project 1, 2, AND 3.'
               },
               bullets: {
                 type: 'array',
@@ -623,7 +624,7 @@ const TOOLS_B = [
                 description: 'Two resume bullets assuming project complete. Strong action verb. Metric placeholders [X] [Y] [Z]. Include the most in-demand ATS keyword for this role from market data. Under 20 words each.'
               }
             },
-            required: ['market_signal','title','justification','description','skills','time_hours','ai_prompt','bullets']
+            required: ['market_signal','title','justification','description','skills','ats_keywords','time_hours','ai_prompt','bullets']
           },
           minItems: 3,
           maxItems: 3
@@ -740,6 +741,12 @@ Only suggest a project if its primary skill appears in 25% or more of postings i
 PROJECT QUALITY RULE — CRITICAL:
 All 3 projects must have identical depth and length in ai_prompt. If you find yourself writing a shorter or vaguer ai_prompt for project 2 or 3, stop and bring it up to match project 1 quality. All three students are paying equal attention. Treat all 3 projects as equally important. The ai_prompt for project 3 must be as complete and copy-pasteable as project 1.
 
+PROJECT PHASES — CRITICAL:
+Each ai_prompt must explicitly cover all 4 phases in order: PHASE 1 — PLAN (ask 3 questions about goals, users, and target recruiter metric), PHASE 2 — DESIGN (full folder structure and function stubs with typed inputs/outputs), PHASE 3 — BUILD (one function at a time, show output before advancing), PHASE 4 — RESUME VALUE (generate 2 ATS-optimized bullets using the top missing keyword for this role). No phase can be omitted.
+
+ATS KEYWORDS — CRITICAL:
+ats_keywords must contain 2-3 verbatim strings from the market data top-10 that this project directly demonstrates. These are the exact strings ATS systems match. Never list a skill that is already present in the resume. Never list a skill not in the market data top-10.
+
 OUTPUT CONCISENESS — CRITICAL FOR SPEED:
 linkedin_about: MAXIMUM 80 WORDS. Three focused sentences only. No padding. Every word must earn its place.
 cert_reasons: ONE sentence per cert maximum. Format: "Provider · Cost · Duration · URL · Why: one sentence."
@@ -837,7 +844,7 @@ ${skillsNote}${gapsNote}
 ${resumeText ? `RESUME TEXT:\n${resumeText}\n` : ''}
 ${hasJD ? `JOB DESCRIPTION:\n${jd}\n` : ''}
 Call ALL tools: set_linkedin, set_certifications, set_projects.
-Every LinkedIn sentence must reference something specific from this resume. Every cert must close a real gap from the DETECTED SKILL GAPS list above. Every project ai_prompt must be complete and copy-pasteable. All 3 project ai_prompts must have identical depth.`;
+Every LinkedIn sentence must reference something specific from this resume. Every cert must close a real gap from the DETECTED SKILL GAPS list above. Every project ai_prompt must cover all 4 phases (PLAN, DESIGN, BUILD, RESUME VALUE) and be complete enough to paste directly into Claude or ChatGPT. All 3 project ai_prompts must have identical depth. Every project ats_keywords must name 2-3 verbatim market-data top-10 skills this project demonstrates.`;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1061,7 +1068,8 @@ function emitToolCallA(name, args, res, sal, role, marketData, atsResult, server
   }
 }
 
-function emitToolCallB(name, args, res, role, marketData) {
+function emitToolCallB(name, args, res, role, marketData, detectedGaps) {
+  detectedGaps = detectedGaps || [];
   const skillFreq = marketData?._mergedSkillFreq || marketData?.skillFreq || [];
   switch (name) {
     case 'set_linkedin':
@@ -1085,6 +1093,30 @@ function emitToolCallB(name, args, res, role, marketData) {
       break;
     }
     case 'set_projects': {
+      // Composite ranking: weights skill-gap severity, ATS impact, hiring relevance,
+      // resume value, and practical feasibility so a low-frequency signal like 13%
+      // does not outrank a more actionable, feasible project.
+      function projectCompositeScore(signal, primarySkill, timeHours) {
+        // Hiring relevance + ATS impact: sqrt-normalize so a 13% skill isn't
+        // ranked close to a 60% skill purely on raw frequency ratio
+        const normalizedSignal = Math.sqrt(clamp(signal, 0, 100) / 100);
+
+        // Gap severity: rank within the detected gap list drives importance
+        const needle = primarySkill.toLowerCase().trim();
+        const gapIdx = detectedGaps.findIndex(g => {
+          const s = (g.skill || g || '').toLowerCase();
+          return s === needle || s.includes(needle) || needle.includes(s);
+        });
+        // Top-3 gap: highest severity; top-5: medium; not in list: baseline
+        const gapSeverity = gapIdx < 0 ? 0.40 : gapIdx < 3 ? 1.0 : 0.70;
+
+        // Practical feasibility: prefer projects completable in a weekend
+        const feasibility = timeHours <= 8 ? 1.0 : timeHours <= 16 ? 0.75 : 0.45;
+
+        // Composite: 40% hiring relevance, 35% gap severity, 15% feasibility, 10% ATS
+        return 0.40 * normalizedSignal + 0.35 * gapSeverity + 0.15 * feasibility + 0.10 * normalizedSignal;
+      }
+
       let projects = (args.projects || []).map(p => {
         // Override with scrape when confidence >= threshold; trust Claude otherwise
         // This fixes 10% everywhere for product roles where scrape lacks verbatim terms
@@ -1094,22 +1126,26 @@ function emitToolCallB(name, args, res, role, marketData) {
           ? scrapedSignal
           : clamp(p.market_signal || 0, 0, 100);
 
+        const composite = projectCompositeScore(signal, primarySkill, p.time_hours || 8);
+
         return {
-          market_signal: signal,
-          title:         p.title         || '',
-          justification: p.justification || '',
-          description:   p.description   || '',
-          skills:        p.skills        || [],
-          time_hours:    p.time_hours    || 8,
-          ai_prompt:     p.ai_prompt     || '',
-          bullets:       (p.bullets || []).slice(0, 2)
+          market_signal:   signal,
+          composite_score: composite,
+          title:           p.title         || '',
+          justification:   p.justification || '',
+          description:     p.description   || '',
+          skills:          p.skills        || [],
+          ats_keywords:    (p.ats_keywords || []).slice(0, 3),
+          time_hours:      p.time_hours    || 8,
+          ai_prompt:       p.ai_prompt     || '',
+          bullets:         (p.bullets || []).slice(0, 2)
         };
       });
 
-      // Sort by real signal descending
-      projects.sort((a, b) => b.market_signal - a.market_signal);
+      // Sort by composite score descending — prevents low-frequency signals from dominating
+      projects.sort((a, b) => b.composite_score - a.composite_score);
 
-      // Floor: if 3+ projects above 20%, drop those below
+      // Floor: if 3+ projects above 20% signal, drop those below signal floor
       const SIGNAL_FLOOR = 20;
       const aboveFloor = projects.filter(p => p.market_signal >= SIGNAL_FLOOR);
       if (aboveFloor.length >= 3) {
@@ -1117,13 +1153,14 @@ function emitToolCallB(name, args, res, role, marketData) {
         const dropped = (args.projects || []).length - aboveFloor.length;
         if (dropped > 0) console.log(`Projects: dropped ${dropped} below ${SIGNAL_FLOOR}% floor`);
       } else {
-        console.log(`Projects: fewer than 3 above ${SIGNAL_FLOOR}%, keeping top 3 by signal`);
+        console.log(`Projects: fewer than 3 above ${SIGNAL_FLOOR}%, keeping top 3 by composite`);
       }
 
-      // Projects are now constrained by prompt to top missing high-freq skills.
-      // Use market_signal directly — it reflects real posting frequency.
-      // No artificial inflation needed since the prompt guarantees relevance.
-      projects = projects.map(p => ({ ...p, career_impact: p.market_signal }));
+      // career_impact: composite score as 0-100 for UI priority display
+      projects = projects.map(p => ({
+        ...p,
+        career_impact: Math.round(p.composite_score * 100)
+      }));
 
       sendEvent(res, 'projects', { projects: projects.slice(0, 3) });
       break;
@@ -1519,7 +1556,7 @@ module.exports = async function handler(req, res) {
         maxTokens:   2200  // tightened — concise prompts + smaller cert schema = sufficient
       });
 
-      return processStream(anthropicResB, (name, args) => emitToolCallB(name, args, res, role, marketData));
+      return processStream(anthropicResB, (name, args) => emitToolCallB(name, args, res, role, marketData, detectedGaps));
     };
 
     await Promise.all([streamAPromise, launchStreamB()]);
