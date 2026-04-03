@@ -181,15 +181,17 @@ function setCachedJDParse(jd, result) {
 }
 
 // Build a merged skill frequency list from market data + JD requirements.
-// JD skills not in market data get a synthetic frequency based on position
-// in the JD (earlier mention = higher implied importance).
+// Two-tier approach:
+//   Tier 1: skills in both JD and market data — ranked by real market pct
+//   Tier 2: JD-only skills (not in market data) — always ranked below Tier 1,
+//           ordered by appearance in JD. No fake market percentages.
 function mergeMarketAndJDSkills(marketSkillFreq, jdRequirements) {
   if (!jdRequirements || !jdRequirements.length) return marketSkillFreq || [];
 
   const merged = [];
   const seen   = new Set();
 
-  // Start with market data (authoritative frequencies)
+  // Tier 1: market data skills (authoritative frequencies)
   if (marketSkillFreq && marketSkillFreq.length) {
     for (const s of marketSkillFreq) {
       merged.push({ ...s });
@@ -197,18 +199,23 @@ function mergeMarketAndJDSkills(marketSkillFreq, jdRequirements) {
     }
   }
 
-  // Add JD-only requirements not already in market data
-  // Assign synthetic pct: start at 70 (strong JD signal) and decrease
-  let syntheticPct = 70;
+  // Tier 2: JD-only requirements not in market data
+  // pct: 0 ensures they never outrank real market skills.
+  // _jdOrder preserves appearance order within Tier 2.
+  let jdOrder = 0;
   for (const req of jdRequirements) {
     if (seen.has(req)) continue;
     seen.add(req);
-    merged.push({ skill: req, pct: syntheticPct, _fromJD: true });
-    syntheticPct = Math.max(20, syntheticPct - 5);
+    merged.push({ skill: req, pct: 0, _fromJD: true, _jdOrder: jdOrder++ });
   }
 
-  // Re-sort by pct descending
-  merged.sort((a, b) => b.pct - a.pct);
+  // Sort: Tier 1 by pct descending, then Tier 2 by JD appearance order
+  merged.sort((a, b) => {
+    if (a._fromJD && !b._fromJD) return 1;  // JD-only after market
+    if (!a._fromJD && b._fromJD) return -1;  // market before JD-only
+    if (a._fromJD && b._fromJD) return (a._jdOrder || 0) - (b._jdOrder || 0);
+    return b.pct - a.pct;
+  });
   return merged;
 }
 
@@ -294,14 +301,21 @@ function computeSkillsAndGaps(resumeText, skillFreq) {
       present.push({ skill: s.skill, pct: s.pct });
       presentSet.add(skillLower);
     } else {
-      missing.push({ skill: s.skill, pct: s.pct });
+      const entry = { skill: s.skill, pct: s.pct };
+      if (s._fromJD) entry._fromJD = true;
+      missing.push(entry);
     }
   }
 
   // Sort present by market frequency descending
   present.sort((a, b) => b.pct - a.pct);
-  // Sort missing by market frequency descending (highest-impact gaps first)
-  missing.sort((a, b) => b.pct - a.pct);
+  // Sort missing: market skills by pct descending, then JD-only skills last
+  // (JD-only already in appearance order from the merged list)
+  missing.sort((a, b) => {
+    if (a._fromJD && !b._fromJD) return 1;
+    if (!a._fromJD && b._fromJD) return -1;
+    return b.pct - a.pct;
+  });
 
   return { present, missing, presentSet };
 }
@@ -942,12 +956,16 @@ function emitToolCallA(name, args, res, sal, role, marketData, atsResult, server
           }
         }
 
-        const gaps = serverGaps.map(g => ({
-          skill:      g.skill,
-          priority:   computeGapPriority(g.pct),
-          how_often:  g.pct,
-          how_to_fix: claudeFixes[g.skill.toLowerCase()] || claudeFixes[g.skill] || ''
-        }));
+        const gaps = serverGaps.map(g => {
+          const isJDOnly = !!g._fromJD;
+          return {
+            skill:      g.skill,
+            priority:   isJDOnly ? 'Important' : computeGapPriority(g.pct),
+            how_often:  isJDOnly ? 0 : g.pct,
+            how_to_fix: claudeFixes[g.skill.toLowerCase()] || claudeFixes[g.skill] || '',
+            _fromJD:    isJDOnly || undefined
+          };
+        });
 
         emitToolCallA._lastGaps = gaps;
         sendEvent(res, 'gaps', { gaps });

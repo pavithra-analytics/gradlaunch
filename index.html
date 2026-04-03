@@ -3224,7 +3224,7 @@ function renderGaps(gaps) {
       <div class="gap-badge ${cls}">${lbl}</div>
       <div style="flex:1;min-width:0">
         <div class="gap-name-txt">${esc(g.skill)}</div>
-        <div class="gap-sub-txt">${sub}${g.how_often ? ' · ' + g.how_often + '% of postings' : ''}</div>
+        <div class="gap-sub-txt">${sub}${g._fromJD ? ' · Required by this job' : g.how_often ? ' · ' + g.how_often + '% of postings' : ''}</div>
       </div>
     </div>`;
   }).join('');
