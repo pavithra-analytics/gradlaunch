@@ -705,6 +705,7 @@ button{cursor:pointer;border:none;outline:none}
    BOTTOM TAB BAR (results pages)
 ═══════════════════════════════════════════════════ */
 .tab-bar{
+  display:none;
   position:fixed;bottom:0;left:0;right:0;
   background:rgba(245,247,249,.92);
   backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
@@ -783,17 +784,6 @@ button{cursor:pointer;border:none;outline:none}
 .dark .sidebar-btn.on{background:rgba(110,159,255,.1);color:var(--primary-container)}
 .sidebar-btn .material-symbols-outlined{font-size:18px;flex-shrink:0}
 .sidebar-divider{height:1px;background:var(--border);margin:10px 4px;opacity:.5}
-.sidebar-finalize-btn{
-  margin-top:auto;
-}
-.sidebar-finalize-btn .sidebar-btn{
-  background:linear-gradient(135deg,rgba(0,87,189,.1),rgba(70,71,211,.08));
-  color:var(--primary);border:1px solid rgba(0,87,189,.15);
-}
-.sidebar-finalize-btn .sidebar-btn.on{
-  background:linear-gradient(135deg,rgba(0,87,189,.15),rgba(70,71,211,.12));
-  border-color:rgba(0,87,189,.3);
-}
 .results-main{
   flex:1;min-width:0;overflow-x:hidden;
 }
@@ -810,6 +800,7 @@ button{cursor:pointer;border:none;outline:none}
 @media(max-width:768px){
   .results-layout{display:block}
   .sidebar{display:none}
+  .tab-bar{display:flex}
   .tab-panel{padding:1.25rem 1.25rem 6rem}
 }
 
@@ -2308,13 +2299,10 @@ body{line-height:1.5}
     <span class="material-symbols-outlined">rocket_launch</span>
     Projects
   </button>
-  <div class="sidebar-divider"></div>
-  <div class="sidebar-finalize-btn">
-    <button class="sidebar-btn" id="s-finalize" onclick="showTab('finalize')">
-      <span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1">check_circle</span>
-      Finalize
-    </button>
-  </div>
+  <button class="sidebar-btn" id="s-finalize" onclick="showTab('finalize')">
+    <span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1">check_circle</span>
+    Finalize
+  </button>
 </nav>
 
 <div class="results-main">
