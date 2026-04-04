@@ -1311,7 +1311,7 @@ function processStream(anthropicRes, emitFn) {
 // ═══════════════════════════════════════════════════════
 // MAKE ANTHROPIC STREAMING REQUEST
 // ═══════════════════════════════════════════════════════
-function makeStreamRequest({ apiKey, model, system, userContent, tools, fileId, maxTokens }) {
+function makeStreamRequest({ apiKey, model, system, userContent, tools, fileId, maxTokens, toolChoice }) {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({
       model,
@@ -1319,7 +1319,7 @@ function makeStreamRequest({ apiKey, model, system, userContent, tools, fileId, 
       system,
       messages: [{ role: 'user', content: userContent }],
       tools,
-      tool_choice: { type: 'any' },
+      tool_choice: toolChoice || { type: 'any' },
       stream: true
     });
 
@@ -1396,6 +1396,10 @@ module.exports = async function handler(req, res) {
   const location   = (body.location|| '').substring(0, 50);
   const jd         = (body.jd      || '').substring(0, 1200);
   const hasJD    = jd.trim().length > 50;
+
+  // Per-section retry: skips Stream A and runs only the requested Stream B section
+  const SECTION_TOOLS = { linkedin: 'set_linkedin', certifications: 'set_certifications', projects: 'set_projects' };
+  const sectionOnly = (body.sectionOnly && SECTION_TOOLS[body.sectionOnly]) ? body.sectionOnly : null;
 
   // Role: explicit or extracted from JD
   let role         = (body.role || '').substring(0, 80).trim();
@@ -1570,6 +1574,44 @@ module.exports = async function handler(req, res) {
     totalJobs:     marketData?.totalJobs || null
   });
 
+  // ── Per-section retry fast-path ──
+  // When sectionOnly is set, skip Stream A entirely and run just the requested Stream B tool.
+  // confirmedSkills and detectedGaps are passed from the frontend (captured from the original run).
+  if (sectionOnly) {
+    const targetTool = SECTION_TOOLS[sectionOnly];
+    const confirmedSkills = Array.isArray(body.confirmedSkills) ? body.confirmedSkills : [];
+    const rawGaps = Array.isArray(body.detectedGaps) ? body.detectedGaps.slice(0, 5) : [];
+    const retryGaps = rawGaps.map(g => ({
+      skill: g.skill || String(g),
+      pct:   typeof g.how_often === 'number' ? g.how_often : (g.pct || 0)
+    }));
+    const retryResumeAnchors = extractResumeAnchors(resumeFull || resume || '');
+    const userContentB = buildAnalysisPromptB(
+      role, locationStr, jd, hasJD, sal, marketDataBlock,
+      resume, confirmedSkills, retryGaps, retryResumeAnchors
+    );
+    try {
+      const anthropicResB = await makeStreamRequest({
+        apiKey,
+        model:       MODEL_B,
+        system:      systemPromptB,
+        userContent: userContentB,
+        tools:       TOOLS_B,
+        toolChoice:  { type: 'tool', name: targetTool },
+        maxTokens:   1200
+      });
+      await processStream(anthropicResB, (name, args) =>
+        emitToolCallB(name, args, res, role, marketData, retryGaps)
+      );
+      sendEvent(res, 'done', { complete: true });
+    } catch (err) {
+      console.error('Section retry error:', err.message);
+      sendEvent(res, 'error', { message: err.message || 'Retry failed. Please try again.' });
+    }
+    res.end();
+    return;
+  }
+
   let fileDeleted = false;
   const cleanupFile = async () => {
     if (fileId && !fileDeleted) {
@@ -1609,7 +1651,7 @@ module.exports = async function handler(req, res) {
       userContent: userContentA,
       tools:       TOOLS_A,
       fileId,
-      maxTokens:   8000
+      maxTokens:   4000
     });
 
     const streamAPromise = processStream(anthropicResA, emitA);
@@ -1617,7 +1659,7 @@ module.exports = async function handler(req, res) {
     // Launch Stream B after 4s — Stream A typically emits set_skills by T+5s
     // so we use whatever skills are available at launch time
     const launchStreamB = async () => {
-      await new Promise(r => setTimeout(r, 4000));
+      await new Promise(r => setTimeout(r, 2000));
 
       // Use skills captured so far (may be empty if set_skills hasn't fired yet —
       // in that case Stream B gets no confirmed skills, acceptable tradeoff for speed)

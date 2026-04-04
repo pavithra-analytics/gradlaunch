@@ -2713,6 +2713,7 @@ let currentJD       = '';
 let lvlTimer        = null;
 let abortCtrl       = null;
 let analysisData    = {};
+let sectionLoaded   = { linkedin: false, certifications: false, projects: false };
 let _currentEvent   = '';
 
 // ═══════════════════════════════════════════════════
@@ -3267,6 +3268,7 @@ async function launchAnalysis() {
   analysisData={}; _currentEvent='';
   bulletStore.clear(); bulletStoreIdx=0;
   resultReady = false; // I10: reset gate
+  sectionLoaded = { linkedin: false, certifications: false, projects: false };
 
   document.getElementById('bullets-list').innerHTML = '<div class="skeleton sk-box"></div>';
 
@@ -3397,6 +3399,14 @@ function handleSSE(name, data) {
 
     case 'verdict':
       renderVerdict(data);
+      if (!resultReady) {
+        resultReady = true;
+        stopLoading();
+        showPage('results');
+        document.getElementById('back-btn').style.display = 'block';
+        // Replace Stream B skeletons with animated messages after Stream B launches (~2s)
+        setTimeout(showStreamBLoading, 2200);
+      }
       break;
 
     case 'skills':
@@ -3413,37 +3423,40 @@ function handleSSE(name, data) {
 
     case 'scores':
       renderScores(data);
-      // Stream A is done — show results immediately with Stream B sections in loading state
+      // Animate score meter bars (always, not gated on resultReady)
+      setTimeout(() => {
+        document.querySelectorAll('.sk-bar-fill').forEach(b => {
+          b.style.width = b.dataset.w + '%';
+        });
+      }, 200);
+      // Render action list with whatever data is available (bullets, gaps, ATS)
+      renderSummaryCard();
+      // Safety net: if verdict never fired (shouldn't happen), show results now
       if (!resultReady) {
         resultReady = true;
         stopLoading();
         showPage('results');
         document.getElementById('back-btn').style.display = 'block';
         showStreamBLoading();
-        setTimeout(() => {
-          document.querySelectorAll('.sk-bar-fill').forEach(b => {
-            b.style.width = b.dataset.w + '%';
-          });
-        }, 200);
       }
-      // Render action list now with whatever data is available (bullets, gaps, ATS)
-      // It will re-render at 'done' with certs and projects filled in
-      renderSummaryCard();
       break;
 
     case 'bullet_group': appendBulletGroup(data);       break;
     case 'jd_breakdown': renderJDBreakdown(data.jd_breakdown); break;
 
     case 'linkedin':
+      sectionLoaded.linkedin = true;
       renderLinkedIn(data);
       break;
 
     case 'certifications':
+      sectionLoaded.certifications = true;
       analysisData.certs = data.certifications;
       renderCerts(data.certifications);
       break;
 
     case 'projects':
+      sectionLoaded.projects = true;
       analysisData.projects = data.projects;
       renderProjects(data.projects);
       break;
@@ -3460,6 +3473,8 @@ function handleSSE(name, data) {
       // Both streams complete — render summary card now that bullets/certs/projects are all populated
       renderSummaryCard();
       renderFinalizeMetrics();
+      // Show retry buttons for any Stream B sections that didn't load
+      showMissingSectionRetry();
       if (!resultReady) {
         // Safety net if scores event somehow didn't fire
         resultReady = true;
@@ -4144,6 +4159,89 @@ function showStreamBLoading() {
   // Projects tab intro
   const projTxt = document.getElementById('proj-intro-txt');
   if (projTxt) projTxt.textContent = 'Generating your personalised project recommendations…';
+}
+
+// ═══════════════════════════════════════════════════
+// PER-SECTION RETRY
+// ═══════════════════════════════════════════════════
+function showMissingSectionRetry() {
+  const SECTION_META = {
+    linkedin:       { container: 'li-hl-text',  label: 'LinkedIn section' },
+    certifications: { container: 'certs-list',  label: 'Certifications'   },
+    projects:       { container: 'proj-cards',  label: 'Projects'         }
+  };
+  for (const [section, meta] of Object.entries(SECTION_META)) {
+    if (sectionLoaded[section]) continue;
+    const el = document.getElementById(meta.container);
+    if (!el) continue;
+    el.innerHTML = `<div style="padding:16px;text-align:center;color:var(--on-surface-v);font-size:13px">
+      <div style="margin-bottom:10px">This section didn't load in time.</div>
+      <button onclick="retrySection('${section}')" style="font-size:12px;font-weight:700;padding:8px 18px;border-radius:10px;border:none;background:var(--primary);color:#fff;cursor:pointer">Retry ${meta.label}</button>
+    </div>`;
+  }
+}
+
+async function retrySection(section) {
+  const SECTION_META = {
+    linkedin:       { container: 'li-hl-text', loadingHtml: '<span style="font-size:12px;color:var(--on-surface-v);font-style:italic;animation:pulse 1.5s ease-in-out infinite">Retrying — writing your LinkedIn headline…</span>' },
+    certifications: { container: 'certs-list', loadingHtml: '<div class="skeleton sk-box" style="height:180px;border-radius:16px"></div><div class="skeleton sk-box" style="height:180px;border-radius:16px"></div>' },
+    projects:       { container: 'proj-cards', loadingHtml: '<div class="skeleton sk-box" style="height:120px;border-radius:16px"></div><div class="skeleton sk-box" style="height:120px;border-radius:16px"></div>' }
+  };
+  const meta = SECTION_META[section];
+  if (!meta) return;
+  const el = document.getElementById(meta.container);
+  if (el) el.innerHTML = meta.loadingHtml;
+
+  const payload = {
+    role:            currentRole,
+    location:        currentLocation,
+    jd:              currentJD,
+    resume:          resumeText ? resumeText.substring(0, 4000) : '',
+    resumeFull:      resumeText || '',
+    sectionOnly:     section,
+    confirmedSkills: analysisData.skills_present || [],
+    detectedGaps:    analysisData.gaps           || []
+  };
+
+  try {
+    const fetchRes = await fetch('/api/analyze', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(payload)
+    });
+    if (!fetchRes.ok) throw new Error('Retry request failed');
+    const reader  = fetchRes.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    let evtName = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for (const line of lines) {
+        if (line.startsWith('event: ')) { evtName = line.slice(7).trim(); continue; }
+        if (line.startsWith('data: ')) {
+          const raw = line.slice(6).trim();
+          if (!raw) continue;
+          try { handleSSE(evtName, JSON.parse(raw)); evtName = ''; } catch {}
+        }
+      }
+    }
+    // If section still didn't load, show error
+    if (!sectionLoaded[section]) {
+      if (el) el.innerHTML = `<div style="padding:16px;text-align:center;color:var(--on-surface-v);font-size:13px">
+        <div style="margin-bottom:10px">Retry failed.</div>
+        <button onclick="retrySection('${section}')" style="font-size:12px;font-weight:700;padding:8px 18px;border-radius:10px;border:none;background:var(--primary);color:#fff;cursor:pointer">Try again</button>
+      </div>`;
+    }
+  } catch (err) {
+    if (el) el.innerHTML = `<div style="padding:16px;text-align:center;color:var(--on-surface-v);font-size:13px">
+      <div style="margin-bottom:10px">Retry failed — ${esc(err.message || 'please try again')}.</div>
+      <button onclick="retrySection('${section}')" style="font-size:12px;font-weight:700;padding:8px 18px;border-radius:10px;border:none;background:var(--primary);color:#fff;cursor:pointer">Try again</button>
+    </div>`;
+  }
 }
 
 // ═══════════════════════════════════════════════════
