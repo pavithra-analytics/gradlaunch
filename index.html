@@ -1977,6 +1977,312 @@ body{line-height:1.5}
   --el-2:0 2px 10px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.2);
   --el-3:0 8px 32px rgba(0,0,0,.4),0 2px 8px rgba(0,0,0,.25);
 }
+
+/* ═══════════════════════════════════════════════════════════
+   UI UPGRADE — World-class polish
+   Source: ui-ux-pro-max "career SaaS premium trustworthy data-dense"
+   Style: Data-Dense Dashboard · Priority: a11y → interaction → visual → type
+═══════════════════════════════════════════════════════════ */
+
+/* ── P1 ACCESSIBILITY: focus-visible rings (WCAG 2.4.7) ── */
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+/* Elements that already use box-shadow for focus — skip outline */
+.finput:focus-visible,
+.paste-box:focus-visible,
+.feedback-ta:focus-visible,
+.cl-textarea:focus-visible,
+.dlg-edit-area:focus-visible { outline: none; }
+
+/* ── P1 ACCESSIBILITY: cursor pointer on every clickable ── */
+.sidebar-btn,.tab-btn,.cert-enroll,.proj-sel-btn,.co-nav-btn,
+.copy-btn-sm,.copy-btn,.li-copy-btn,.feedback-btn,.cl-btn,
+.cl-generate-btn,.cta-btn:not(:disabled),.dlg-x,.frem,
+.bullet-item.red,.proj-card,.dark-btn,#back-btn,
+.jd-hd,.dz,.dz-large { cursor:pointer; }
+
+/* ── P1 ACCESSIBILITY: prefers-reduced-motion ── */
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{
+    animation-duration:.01ms!important;
+    animation-iteration-count:1!important;
+    transition-duration:.01ms!important;
+  }
+}
+
+/* ── P2 SIDEBAR: active left-edge indicator, refined spacing ── */
+.sidebar { width:220px; padding:1.5rem .875rem; }
+.sidebar-btn {
+  position:relative;
+  border-radius:10px;
+  padding:10px 12px;
+  font-size:13px;
+  letter-spacing:-.01em;
+  color:var(--text-3);
+  transition:background .15s,color .15s;
+  margin-bottom:2px;
+}
+/* Active left-edge accent bar */
+.sidebar-btn::before {
+  content:'';
+  position:absolute;
+  left:-.875rem;            /* flush to sidebar left padding */
+  top:50%;
+  transform:translateY(-50%) scaleY(0);
+  width:3px;
+  height:58%;
+  background:var(--primary);
+  border-radius:0 3px 3px 0;
+  transition:transform .25s cubic-bezier(.34,1.56,.64,1);
+}
+.sidebar-btn.on::before  { transform:translateY(-50%) scaleY(1); }
+.dark .sidebar-btn.on::before { background:var(--primary-container); }
+.sidebar-btn:hover        { color:var(--on-surface); background:var(--surface-low); }
+.sidebar-btn.on           { color:var(--primary); background:rgba(0,87,189,.08); font-weight:600; }
+.dark .sidebar-btn.on     { color:var(--primary-container); background:rgba(110,159,255,.1); }
+.sidebar-btn .material-symbols-outlined { font-size:18px; flex-shrink:0; line-height:1; }
+.sidebar-section-label    { font-size:10px; letter-spacing:.14em; padding:0 .5rem; }
+.sidebar-divider          { margin:8px 4px; opacity:.4; }
+
+/* ── P2 MOBILE TAB BAR: top-edge active indicator ── */
+.tab-btn { position:relative; transition:color .15s; }
+.tab-btn.on::before {
+  content:'';
+  position:absolute;
+  top:0; left:50%;
+  transform:translateX(-50%);
+  width:28px; height:3px;
+  background:var(--primary);
+  border-radius:0 0 4px 4px;
+}
+.dark .tab-btn.on::before { background:var(--primary-container); }
+
+/* ── P2 UPLOAD ZONE: icon lift animation on hover/drag ── */
+.dz-icon-lg {
+  transition:transform .3s cubic-bezier(.34,1.56,.64,1),
+             box-shadow .3s;
+}
+.dz-large:hover .dz-icon-lg,
+.dz-large.drag  .dz-icon-lg {
+  transform:scale(1.1) translateY(-4px);
+  box-shadow:0 14px 40px rgba(0,87,189,.45);
+}
+/* File-ok success pulse — needs position:relative for ::after */
+.file-ok {
+  border-radius:14px;
+  position:relative;
+  overflow:hidden;
+}
+.file-ok::after {
+  content:'';
+  position:absolute; inset:0;
+  border-radius:14px;
+  border:1.5px solid var(--green-border);
+  animation:ok-pulse 2.4s ease-in-out infinite;
+  pointer-events:none;
+}
+@keyframes ok-pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* ── P2 BULLET ITEMS: click affordance on red (touch-aware) ── */
+.bullet-item.red { transition:box-shadow .2s,border-left-color .2s; }
+.bullet-item.red .bullet-see-more {
+  opacity:0;
+  transform:translateY(3px);
+  transition:opacity .2s,transform .2s;
+}
+.bullet-item.red:hover .bullet-see-more { opacity:1; transform:none; }
+/* Always visible on touch devices */
+@media(hover:none){ .bullet-item.red .bullet-see-more { opacity:1; transform:none; } }
+/* Once adopted, remove click hint */
+.bullet-item.adopted .bullet-see-more { display:none; }
+
+/* ── P2 CERT ENROLL: always-visible bordered CTA ── */
+.cert-enroll {
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  font-size:11px;
+  font-weight:700;
+  color:var(--primary);
+  border:1.5px solid rgba(0,87,189,.2);
+  border-radius:8px;
+  padding:6px 10px;
+  background:rgba(0,87,189,.04);
+  width:fit-content;
+  transition:background .15s,border-color .15s,color .15s,gap .15s;
+}
+.cert-enroll:hover {
+  background:var(--primary);
+  color:var(--on-primary);
+  border-color:var(--primary);
+  gap:8px;
+}
+
+/* ── P3 SCORE HERO CARD: deeper, richer gradient ── */
+.score-hero-card {
+  background:linear-gradient(135deg,#062857 0%,#0a4898 60%,#0057bd 100%);
+}
+.dark .score-hero-card {
+  background:linear-gradient(135deg,#04101f 0%,#091b42 60%,#0a2d6b 100%);
+}
+.score-hero-text h2 { font-size:20px; font-weight:700; letter-spacing:-.3px; }
+.score-hero-text p  { font-style:normal; color:rgba(255,255,255,.8); }
+
+/* ── P3 BANNERS: consistent deep gradient across tabs ── */
+.proj-intro {
+  background:linear-gradient(135deg,#062857 0%,#0057bd 100%);
+}
+.dark .proj-intro {
+  background:linear-gradient(135deg,#04122a 0%,#0a2550 100%);
+}
+.score-diagnosis {
+  background:linear-gradient(135deg,#062857 0%,var(--primary) 100%);
+  box-shadow:0 4px 24px rgba(0,87,189,.18);
+}
+.dark .score-diagnosis {
+  background:linear-gradient(135deg,#04122a 0%,#0a2550 100%);
+  box-shadow:0 4px 24px rgba(0,0,0,.4);
+}
+.finalize-hero {
+  background:linear-gradient(135deg,#0a3d7a 0%,#3a3bc8 100%);
+}
+.dark .finalize-hero {
+  background:linear-gradient(135deg,#06213e 0%,#1d1e8a 100%);
+}
+.finalize-hero-title { font-size:22px; font-weight:700; letter-spacing:-.3px; }
+
+/* ── P3 VERDICT BAR: sticky positioning ── */
+.sum-card {
+  position:sticky;
+  top:56px;
+  z-index:50;
+  border-bottom:1px solid rgba(255,255,255,.08);
+}
+
+/* ── P3 DIALOG: backdrop blur + border + tighter spring ── */
+.dlg { border:1px solid var(--border); }
+.dlg-overlay {
+  background:rgba(0,0,0,.55);
+  backdrop-filter:blur(6px);
+  -webkit-backdrop-filter:blur(6px);
+}
+@keyframes dlg-in {
+  from { transform:scale(.94) translateY(12px); opacity:0; }
+  to   { transform:none; opacity:1; }
+}
+
+/* ── P3 LOADING: icon glow pulse ── */
+@keyframes loading-glow {
+  0%,100% { box-shadow:0 12px 40px rgba(0,87,189,.35); }
+  50%      { box-shadow:0 18px 56px rgba(0,87,189,.55),0 0 0 10px rgba(0,87,189,.07); }
+}
+.loading-icon {
+  animation:loading-float 3s ease-in-out infinite,
+            loading-glow  3s ease-in-out infinite;
+}
+/* Loading steps: slightly larger text */
+.lstep { font-size:13px; letter-spacing:-.01em; }
+
+/* ── P3 GAP BADGES: pill shape, legible font ── */
+.gap-badge {
+  width:auto;
+  min-width:0;
+  padding:0 8px;
+  height:22px;
+  border-radius:5px;
+  font-size:10px;
+  letter-spacing:.04em;
+  white-space:nowrap;
+}
+/* Gap item hover border */
+.gap-item {
+  border:1px solid transparent;
+  transition:background .2s,border-color .2s;
+}
+.gap-item:hover { border-color:var(--border-soft); }
+
+/* ── P3 LINKEDIN CARD: remove decorative icon rotation ── */
+.li-icon-box { transform:none; }
+
+/* ── P3 PROJ CARDS: overlay on hover ── */
+.proj-card { overflow:hidden; }
+.proj-card::after {
+  content:'';
+  position:absolute; inset:0;
+  border-radius:inherit;
+  background:linear-gradient(135deg,rgba(0,87,189,.04),transparent);
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .2s;
+}
+.proj-card:hover::after        { opacity:1; }
+.proj-card.selected::after     { opacity:1; background:linear-gradient(135deg,rgba(0,87,189,.06),transparent); }
+
+/* ── P3 CARD TRANSITIONS: unified timing ── */
+.cert-card,.proj-card,.stat-card,.score-gauge-card,.insight-card-v2,.finalize-metric-card {
+  transition:transform .2s cubic-bezier(.34,1.56,.64,1),
+             box-shadow .2s,
+             border-color .2s;
+}
+
+/* ── P3 SKILL/GAP CARDS: dark border ── */
+.dark .sg-card {
+  background:var(--surface-container);
+  border-color:rgba(255,255,255,.04);
+}
+
+/* ── P3 SKELETON: content-aware helpers ── */
+.skeleton { border-radius:8px; }
+/* Multi-line paragraph skeleton */
+.sk-paragraph { display:flex; flex-direction:column; gap:7px; }
+.sk-paragraph .skeleton { height:12px; border-radius:6px; }
+.sk-paragraph .skeleton:last-child { width:65%; }
+
+/* ── P4 TYPOGRAPHY: minimum sizes (body-visible text) ── */
+.gap-sub-txt    { font-size:11px; }
+.cert-provider  { font-size:11px; }
+.stat-note      { font-size:11px; }
+.proj-time      { font-size:11px; }
+.bullet-note    { font-size:11px; }
+/* Input placeholder: readable, lower weight */
+.finput::placeholder,
+.paste-box::placeholder { color:var(--text-4); font-weight:400; }
+
+/* ── P4 SCORE GAUGES: smooth tablet breakpoint ── */
+@media(max-width:900px) and (min-width:641px){
+  .score-gauges { gap:14px; }
+  .score-gauge-card { padding:1.5rem 1rem; }
+  .score-gauge-wrap,.score-gauge-svg { width:100px; height:100px; }
+  .score-gauge-label { font-size:18px; }
+}
+
+/* ── EMPTY STATES: guided, never blank ── */
+.empty-state {
+  text-align:center;
+  padding:3rem 1.5rem;
+}
+.empty-state-icon {
+  font-size:40px;
+  color:var(--outline-v);
+  margin-bottom:14px;
+  display:block;
+  font-variation-settings:'FILL' 0,'wght' 300;
+}
+.empty-state-title {
+  font-size:15px;
+  font-weight:700;
+  color:var(--on-surface);
+  margin-bottom:6px;
+}
+.empty-state-sub {
+  font-size:13px;
+  color:var(--on-surface-v);
+  font-weight:500;
+  line-height:1.55;
+}
 </style>
 </head>
 <body>
@@ -1999,7 +2305,7 @@ body{line-height:1.5}
     <span class="nav-badge">
       Free
     </span>
-    <button class="dark-btn" id="dark-btn" onclick="toggleDark()" title="Toggle dark mode">🌙</button>
+    <button class="dark-btn" id="dark-btn" onclick="toggleDark()" title="Toggle dark mode" aria-label="Toggle dark mode">🌙</button>
     <button id="back-btn" onclick="goBack()">← Start over</button>
   </div>
 </nav>
@@ -2285,27 +2591,27 @@ body{line-height:1.5}
 <div class="results-layout">
 
 <!-- LEFT SIDEBAR NAV -->
-<nav class="sidebar" id="sidebar">
+<nav class="sidebar" id="sidebar" aria-label="Main navigation">
   <div class="sidebar-section-label">Analysis</div>
-  <button class="sidebar-btn on" id="s-profile" onclick="showTab('profile')">
-    <span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1">person</span>
+  <button class="sidebar-btn on" id="s-profile" onclick="showTab('profile')" aria-current="page">
+    <span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1" aria-hidden="true">person</span>
     Diagnosis
   </button>
   <button class="sidebar-btn" id="s-score" onclick="showTab('score')">
-    <span class="material-symbols-outlined">query_stats</span>
+    <span class="material-symbols-outlined" aria-hidden="true">query_stats</span>
     Resume Fix
   </button>
   <button class="sidebar-btn" id="s-project" onclick="showTab('project')">
-    <span class="material-symbols-outlined">rocket_launch</span>
+    <span class="material-symbols-outlined" aria-hidden="true">rocket_launch</span>
     Projects
   </button>
   <button class="sidebar-btn" id="s-finalize" onclick="showTab('finalize')">
-    <span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1">check_circle</span>
+    <span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1" aria-hidden="true">check_circle</span>
     Finalize
   </button>
 </nav>
 
-<div class="results-main">
+<div class="results-main" role="main">
 
   <!-- TOP APP BAR — blue gradient, sticky -->
   <div class="sum-card">
@@ -2649,7 +2955,7 @@ body{line-height:1.5}
 </div><!-- end results-layout -->
 
   <!-- BOTTOM TAB BAR — mobile only, fixed, glassmorphism -->
-  <div class="tab-bar">
+  <div class="tab-bar" role="navigation" aria-label="Tab navigation">
     <div class="tab-bar-inner">
       <button class="tab-btn on" id="t-profile" onclick="showTab('profile')">
         <span class="material-symbols-outlined ticon" style="font-variation-settings:'FILL' 1">person</span>
@@ -2675,12 +2981,12 @@ body{line-height:1.5}
 <!-- ═══════════════════════════════════════════════════
      BULLET ROAST DIALOG
 ═══════════════════════════════════════════════════ -->
-<div class="dlg-overlay" id="dlg-overlay" onclick="closeDlg(event)">
-  <div class="dlg" onclick="event.stopPropagation()">
+<div class="dlg-overlay" id="dlg-overlay" onclick="closeDlg(event)" role="presentation">
+  <div class="dlg" onclick="event.stopPropagation()" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
     <div class="dlg-hdr">
       <div style="display:flex;align-items:center;gap:8px">
-        <span class="material-symbols-outlined" style="color:var(--error);font-size:18px;font-variation-settings:'FILL' 1">diagnosis</span>
-        <div class="dlg-hdr-title">What a recruiter actually thinks</div>
+        <span class="material-symbols-outlined" style="color:var(--error);font-size:18px;font-variation-settings:'FILL' 1" aria-hidden="true">diagnosis</span>
+        <div class="dlg-hdr-title" id="dlg-title">What a recruiter actually thinks</div>
       </div>
       <button class="dlg-x" onclick="closeDlg()">
         <span class="material-symbols-outlined" style="font-size:16px">close</span>
