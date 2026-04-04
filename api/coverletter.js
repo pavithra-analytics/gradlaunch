@@ -58,15 +58,24 @@ module.exports = async function handler(req, res) {
   const gapsLine     = gaps     ? `\nSkills to develop: ${gaps}` : '';
   const jdLine       = jdHints  ? `\nJob description excerpt: ${jdHints}` : '';
 
-  const prompt = `Write a professional cover letter for a ${role} role${locationLine}.${skillsLine}${gapsLine}${jdLine}
+  const prompt = `Write a cover letter for a ${role} role${locationLine}.${skillsLine}${gapsLine}${jdLine}
 
-Requirements:
+GROUNDING RULES — CRITICAL:
+You have been given only the role, skills, gaps, and optionally a job description excerpt above. You have NOT been given a full resume. Do not invent specific companies, project names, metrics, achievements, or experiences that were not provided. Every specific claim must come from the skills, gaps, or role information above. Where experience details are needed, write them as fill-in placeholders: [e.g. at [Company], I built X using Y]. The student will replace placeholders with their real experience before sending.
+
+VOICE RULES — this must sound like a real person wrote it, not an AI:
+FORBIDDEN words: leveraged, utilized, spearheaded, passionate, dedicated, results-driven, synergy, innovative, impactful, value-add, game-changer, proven track record, well-versed, seasoned.
+FORBIDDEN sentence patterns: "not only X but also Y", "having said that", "that being said", "in today's competitive landscape", "I am a highly motivated", "I have always been passionate about", "I would love to".
+Opening sentence must NOT start with "I am", "As a", "With X years of", or "I have always been". Start with a concrete action or observation tied to the role.
+Vary sentence length. Short sentences land harder. Do not write three medium-length sentences in a row.
+
+FORMAT:
 - 3 short paragraphs (opening, value proposition, closing)
-- Professional but genuine tone — not corporate boilerplate
-- Acknowledge one specific skill gap honestly and show growth mindset
+- Genuine tone — write like a real person talking, not a template
+- Acknowledge one specific skill gap honestly and show a concrete plan to close it
 - Under 250 words total
-- Use [Your Name], [Company Name], [Date] as placeholders where needed
-- Output only the cover letter text, no subject line or meta-commentary`;
+- Placeholders: [Your Name], [Company Name], [Date] — and [specific experience] where the student must fill in real details
+- Output only the cover letter text, no subject line, no meta-commentary`;
 
   try {
     const data = await callAnthropic(apiKey, [{ role: 'user', content: prompt }]);

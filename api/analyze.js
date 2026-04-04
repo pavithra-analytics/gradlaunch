@@ -599,7 +599,7 @@ const TOOLS_B = [
         },
         linkedin_about: {
           type: 'string',
-          description: 'Exactly 3 sentences. MAXIMUM 80 WORDS TOTAL. SENTENCE 1: Start with a specific action at a named company from the resume — e.g. "At [Company], built [specific thing] using [tool] that [specific result or outcome]." If no metric exists, name the tool and the scope. Do NOT start with "I am" or any forbidden opener. SENTENCE 2: Write the 2-3 skills most demanded for this role from market data as active capabilities — what you do, not what you know. SENTENCE 3: The type of problem you want to work on next, stated as a capability or approach, not a job title or aspiration. FORBIDDEN OPENERS: I am a, As a, With X years, Passionate about, Dedicated, Results-driven, Looking for, Seeking. Sound like a smart person wrote this for themselves — specific, grounded, direct.'
+          description: 'Maximum 3 sentences. MAXIMUM 80 WORDS TOTAL. SENTENCE 1: Start with a specific action at a named company from the resume — e.g. "At [Company], built [specific thing] using [tool] that [specific result or outcome]." If no metric exists, name the tool and the scope. Do NOT start with "I am" or any forbidden opener. SENTENCE 2: Write the 2-3 skills most demanded for this role from market data as active capabilities — what you do, not what you know. SENTENCE 3: The type of problem you want to work on next, stated as a capability or approach, not a job title or aspiration. OMISSION RULE: if sentence 1 cannot be written without inventing a company, tool, or outcome not in the resume, it must reference the most specific real thing in the resume. If sentence 3 cannot be grounded in evidence from the resume, omit it — write 2 sentences instead of 3. A shorter about with real content is better than a padded one. FORBIDDEN OPENERS: I am a, As a, With X years, Passionate about, Dedicated, Results-driven, Looking for, Seeking. Sound like a smart person wrote this for themselves in 5 minutes — specific, grounded, direct.'
         },
         linkedin_skills: {
           type: 'array',
@@ -628,7 +628,7 @@ const TOOLS_B = [
         cert_reasons: {
           type: 'object',
           additionalProperties: { type: 'string' },
-          description: 'Map cert name to a single string: "Provider · Cost · Duration · URL · Why: one sentence on which gap it closes." Example: "AWS · $150 · 2-3 months · aws.amazon.com/certification · Java appears in 95% of SDE postings and this cert demonstrates backend system knowledge."'
+          description: 'Map cert name to a single string: "Provider · Cost · Duration · URL · Why: one sentence on which gap it closes." The why sentence MUST name the specific gap skill, its posting frequency from market data, and why this cert closes that gap for this candidate. Example: "AWS · $150 · 2-3 months · aws.amazon.com/certification · SQL appears in 95% of SDE postings and this resume shows no database experience — this cert demonstrates that gap is closed." FORBIDDEN in the why: "expands your knowledge", "builds your career", "demonstrates expertise in the field", "gives you a competitive edge", or any benefit that could apply to any candidate.'
         }
       },
       required: ['cert_picks','cert_reasons']
@@ -647,8 +647,8 @@ const TOOLS_B = [
             properties: {
               market_signal: { type: 'number', description: 'EXACT % from market data for the primary skill this project builds. Never invent a number.' },
               title:         { type: 'string', description: 'Specific title naming the actual tech and deliverable. Not Data Dashboard but Customer Churn Prediction Dashboard using Python and Streamlit.' },
-              justification: { type: 'string', description: 'One sentence referencing the exact market data % for the skill this builds and why it matters for this specific resume.' },
-              description:   { type: 'string', description: 'Two sentences. Sentence 1: name the specific free API or public dataset they will use. Sentence 2: name the exact tool stack and what the final deliverable looks like visually.' },
+              justification: { type: 'string', description: 'One sentence naming the specific gap skill, its EXACT market data posting frequency, and why this specific candidate needs it based on what their resume currently shows. Must be candidate-specific — a justification that applies to any candidate with this role is not acceptable. Example: "SQL appears in 82% of Data Analyst postings, and this resume shows no database work, making it the single most critical gap to close."' },
+              description:   { type: 'string', description: 'Two sentences. Sentence 1: name a specific, real, publicly accessible free API or public dataset that genuinely exists (e.g. Open Library API, NOAA Climate Data, Kaggle public datasets). Do not name fictional or paywalled sources. Sentence 2: name the exact tool stack consistent with skills shown in this resume or natural for the target role, and describe what the final deliverable looks like visually.' },
               skills:        { type: 'array', items: { type: 'string' }, description: '3-5 specific skills this project builds. Use exact market data skill names.' },
               ats_keywords:  { type: 'array', items: { type: 'string' }, maxItems: 3, description: '2-3 ATS keywords (verbatim from market data top-10) that recruiters and hiring systems will find demonstrated by this project. Choose the highest-frequency missing skills this project directly proves.' },
               time_hours:    { type: 'number' },
@@ -694,7 +694,15 @@ CRITICAL RULES:
 NEVER use dashes, em-dashes, or en-dashes in output text.
 NEVER use bullet points inside brutal_honey or verdict fields. Flowing sentences only.
 NEVER start with Additionally, Furthermore, Moreover, or Overall.
-NEVER use: results-driven, passionate about, seeking opportunities, team player, synergy, leveraged, utilized, or any visa language.
+NEVER use these words anywhere: results-driven, passionate about, seeking opportunities, team player, synergy, leveraged, utilized, spearheaded, deep dive, delve, impactful, value-add, game-changer, proven track record, thought leader, innovative, or any visa language.
+NEVER use these sentence patterns: "not only X but also Y", "not only X but X as well", "having said that", "that being said", "it is worth noting", "in today's competitive landscape", "moving forward", "in conclusion", "with that in mind".
+
+HUMAN VOICE — REQUIRED FOR ALL TEXT OUTPUTS:
+You are the brutally honest senior friend, not a feedback generator. When writing brutal_honey: sound like a real recruiter venting to a colleague after reading 200 resumes today — specific about this bullet, occasionally blunt, immediately useful. Not a coaching tip. Not a numbered list of observations.
+verdict_headline and headline_roast must sound like a specific person said them out loud in a meeting. Short, punchy, named to this resume. If it could be said about any resume in the pile, it is wrong. Rewrite it.
+
+REWRITE GROUNDING:
+rewrite must not invent any company name, project name, technology, or context that does not appear in the original bullet text. Preserve the real tools and real context. The only invented placeholders allowed are [X], [Y], [Z] — and only for numbers that are genuinely absent from the original bullet.
 
 MARKET DATA IS LAW:
 skill_relevance: The server will override your values using the actual scraped data. Still output your best estimate using the EXACT percentages listed — it helps validation. If SQL appears at 82% in the data, output 82 for SQL. Never output a value higher than what the market data shows for that skill.
@@ -743,17 +751,29 @@ You may ONLY reference facts that appear explicitly in the resume text or job de
 - Only mention projects that are described in the resume
 - Only mention tools, technologies, or skills that appear in the resume
 - Only use numbers or metrics that appear in the resume
-- If the resume does not contain enough specific detail for a sentence, write a more general capability statement instead
 - NEVER invent a project, achievement, company, or metric that is not in the resume
-- If you find yourself writing something specific that you cannot point to in the resume text, replace it with a general statement about skills or direction
+- If you find yourself writing something specific that you cannot point to in the resume text, omit that sentence entirely — do not substitute a generic claim
 
-LINKEDIN ABOUT RULE: Every sentence in linkedin_about must be directly traceable to content in the RESUME TEXT provided. If you cannot cite the source in the resume, do not write it.
+OMIT RATHER THAN INVENT — CRITICAL:
+When the resume lacks enough evidence to write a grounded sentence, omit the sentence. This applies everywhere:
+linkedin_about: if you cannot write three sentences each traceable to real resume content, write two strong grounded sentences instead. Two sentences that are specific and real beat three sentences where one is generic or invented. Never pad to meet a count.
+cert_reasons why: must name the specific gap skill by name, its approximate posting frequency from market data, and how this exact certification closes that specific gap. Forbidden: phrases like "expands your knowledge", "builds your career", "demonstrates your expertise", "gives you an edge". If you cannot write a specific one-sentence why, the cert is wrong.
+project.justification: must name the gap skill, its posting frequency from the market data, and why this specific candidate's resume is missing it. A justification that could apply to any candidate targeting this role is not grounded. Rewrite it until it is candidate-specific.
+project.description: only name real, publicly accessible free APIs or datasets that genuinely exist. The tool stack in sentence 2 must be consistent with the tools shown in this resume or the natural tools for the target role.
+
+LINKEDIN ABOUT RULE: Every sentence in linkedin_about must be directly traceable to content in the RESUME TEXT provided. Before writing each sentence, locate the specific line in the resume that supports it. If no line supports it, that sentence does not belong. If you cannot cite the source in the resume, do not write it.
 
 QUALITY GATE — NON-NEGOTIABLE:
 Before finalising linkedin_about, check each sentence: "Could this sentence appear on a different person's resume without changing a word?" If yes, rewrite it. Every sentence must anchor to at least one of: (a) a company name from this resume, (b) a specific tool + action from this resume, (c) a metric from this resume, or (d) a specific type of problem this person has demonstrably worked on. If the resume lacks metrics, name the tool and the context. Generic phrases like "passionate about data" or "experienced in analytics" are forbidden.
 
+ANTI-AI LANGUAGE — BANNED IN ALL TEXT OUTPUTS:
+You can spot AI-generated writing instantly. Do not produce it. Specific banned words and phrases:
+Words: spearheaded, leveraged, utilized, delve, deep dive, impactful, value-add, game-changer, thought leader, innovative, passionate, dedicated, results-driven, well-versed, seasoned, dynamic, motivated.
+Sentence patterns: "not only X but also Y", "not only X but X as well", "having said that", "that being said", "it is worth noting", "in today's competitive landscape", "moving forward", "in conclusion", "with that in mind", "I bring X years of", "as someone who", "with a passion for".
+Three-sentence about rhythm: vary sentence length. A short sentence after a longer one creates momentum. If all three sentences are identical in length and structure, they were generated. Short. Punch. Then explain.
+
 HEADLINE SPECIFICITY — CRITICAL:
-The [Core identity] segment must reflect this person's actual work type, not just a job title anyone could claim. The [Specific tool or domain] segment must name a real tool from the resume (e.g. Python, dbt, Mixpanel, Snowflake — not "analytics" or "technology"). The [What you deliver] segment must describe the concrete outcome type this person has demonstrated, grounded in their actual experience.
+The [Core identity] segment must reflect this person's actual work type, not just a job title anyone could claim. The [Specific tool or domain] segment must name a real tool from the resume (e.g. Python, dbt, Mixpanel, Snowflake — not "analytics" or "technology"). The [What you deliver] segment must describe outcomes this person has ALREADY produced, as evidenced by the resume. If the resume lacks outcome evidence, state what this person builds or analyzes — do not invent a promised future outcome. A headline that promises results the resume does not demonstrate is a lie.
 
 FORBIDDEN OUTPUTS — if you produce any of these, stop and rewrite before outputting:
 LinkedIn About openers: I am a, As a, With X years of experience, Passionate about, Dedicated professional, Results-driven, Dynamic, Innovative, Looking for
