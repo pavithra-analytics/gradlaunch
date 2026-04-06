@@ -2259,6 +2259,105 @@ body{line-height:1.5}
   .score-gauge-label { font-size:18px; }
 }
 
+/* ── ISSUE 3: Resume Fix split-screen ── */
+.score-split{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:24px;
+  align-items:start;
+}
+@media(max-width:960px){.score-split{grid-template-columns:1fr}}
+
+/* Left pane: bullet list */
+.score-left-pane{}
+
+/* Right pane: live resume text */
+.score-right-pane{
+  position:sticky;
+  top:calc(56px + 16px); /* below sticky nav */
+  background:var(--card-bg);
+  border-radius:var(--r-lg);
+  border:1px solid var(--border);
+  box-shadow:var(--el-1);
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+}
+.score-right-header{
+  display:flex;align-items:center;gap:8px;
+  padding:12px 16px;
+  border-bottom:1px solid var(--border);
+  font-size:13px;font-weight:700;color:var(--on-surface);
+  flex-shrink:0;
+}
+.score-right-header .material-symbols-outlined{font-size:16px;color:var(--primary)}
+.score-resume-ta{
+  flex:1;
+  min-height:420px;
+  max-height:60vh;
+  padding:12px 16px;
+  font-size:12px;font-weight:500;
+  color:var(--on-surface);
+  background:var(--surface-low);
+  line-height:1.7;
+  resize:none;
+  outline:none;
+  border:none;
+  border-bottom:1px solid var(--border);
+  font-family:inherit;
+  overflow-y:auto;
+}
+.score-resume-ta:focus{background:var(--card-bg)}
+.dark .score-resume-ta{background:var(--input-bg);color:var(--on-surface)}
+.score-resume-download{
+  display:flex;align-items:center;justify-content:center;gap:6px;
+  width:100%;padding:11px;
+  background:linear-gradient(135deg,var(--primary),var(--primary-container));
+  color:var(--on-primary);
+  font-size:12px;font-weight:700;
+  border:none;cursor:pointer;
+  transition:opacity .15s;
+  flex-shrink:0;
+}
+.score-resume-download:hover{opacity:.9}
+
+/* Inline bullet detail (replaces modal for Resume Fix tab) */
+.bullet-inline-detail{
+  margin-top:10px;padding-top:10px;
+  border-top:1px solid var(--border-soft);
+}
+.bid-verdict{
+  font-size:12px;color:var(--on-surface-v);line-height:1.6;
+  font-weight:500;margin-bottom:10px;
+  background:var(--surface-low);border-radius:8px;padding:8px 10px;
+}
+.bid-textarea{
+  width:100%;min-height:64px;
+  padding:9px 12px;box-sizing:border-box;
+  background:var(--green-light);border:1.5px solid var(--green);
+  border-radius:8px;font-size:12px;color:#14532d;
+  line-height:1.6;font-weight:600;font-family:inherit;resize:vertical;
+  outline:none;transition:border-color .15s;margin-bottom:8px;
+}
+.dark .bid-textarea{background:rgba(0,105,71,.12);color:#6ee7b7;border-color:var(--green)}
+.bid-textarea:focus{border-color:var(--secondary)}
+.bid-actions{display:flex;gap:6px;flex-wrap:wrap}
+.bid-adopt{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:7px 14px;border:none;border-radius:8px;
+  background:var(--secondary);color:#fff;
+  font-size:11px;font-weight:700;cursor:pointer;transition:filter .15s;
+}
+.bid-adopt:hover{filter:brightness(1.1)}
+.bid-adopt:disabled{opacity:.45;cursor:default;filter:none}
+.bid-revert{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:7px 14px;border:1.5px solid var(--border);border-radius:8px;
+  background:var(--surface-low);color:var(--on-surface-v);
+  font-size:11px;font-weight:700;cursor:pointer;transition:all .15s;
+}
+.bid-revert:hover{background:var(--surface-container);border-color:var(--outline-v)}
+
 /* ── EMPTY STATES: guided, never blank ── */
 .empty-state {
   text-align:center;
@@ -2851,11 +2950,11 @@ body{line-height:1.5}
 
     <div class="ats-notice" id="ats-notice" style="display:none"></div>
 
-    <!-- Bullet analysis — full width -->
-    <div class="score-body">
+    <!-- Split screen: bullets (left) + live resume text (right) -->
+    <div class="score-split">
 
-      <!-- Bullet list -->
-      <section class="score-bullets-col">
+      <!-- Left: bullet list -->
+      <section class="score-left-pane score-bullets-col">
         <h3>
           <span class="material-symbols-outlined" style="color:var(--secondary);font-variation-settings:'FILL' 1">description</span>
           Resume Analysis
@@ -2869,7 +2968,23 @@ body{line-height:1.5}
         </div>
       </section>
 
+      <!-- Right: live editable resume text -->
+      <div class="score-right-pane" id="score-right-pane">
+        <div class="score-right-header">
+          <span class="material-symbols-outlined">description</span>
+          Your Resume — click a flagged bullet to fix it
+        </div>
+        <textarea class="score-resume-ta" id="resume-edit-area"
+          placeholder="Your resume text will appear here once analysis loads…"
+          spellcheck="false"></textarea>
+        <button class="score-resume-download" onclick="downloadResumeEdit()">
+          <span class="material-symbols-outlined" style="font-size:16px">download</span>
+          Download updated resume
+        </button>
+      </div>
+
     </div>
+
   </div>
 
   <!-- TAB 4 — FINALIZE -->
@@ -2879,25 +2994,6 @@ body{line-height:1.5}
     <div class="finalize-hero">
       <div class="finalize-hero-title">Ready to Apply?</div>
       <div class="finalize-hero-sub">Review your readiness, address blockers, then generate and download your cover letter.</div>
-    </div>
-
-    <!-- Before / After Metrics -->
-    <div class="finalize-metrics" id="finalize-metrics">
-      <div class="finalize-metric-card">
-        <div class="finalize-metric-label">ATS Keyword Match</div>
-        <div class="finalize-metric-value" id="fin-ats-val">—</div>
-        <div class="finalize-metric-delta" id="fin-ats-delta"></div>
-      </div>
-      <div class="finalize-metric-card">
-        <div class="finalize-metric-label">Bullet Quality</div>
-        <div class="finalize-metric-value" id="fin-bq-val">—</div>
-        <div class="finalize-metric-delta" id="fin-bq-delta"></div>
-      </div>
-      <div class="finalize-metric-card">
-        <div class="finalize-metric-label">Readiness Score</div>
-        <div class="finalize-metric-value" id="fin-ready-val">—</div>
-        <div class="finalize-metric-delta" id="fin-ready-delta"></div>
-      </div>
     </div>
 
     <!-- Remaining Blockers (Action List) -->
@@ -3710,6 +3806,7 @@ function handleSSE(name, data) {
         stopLoading();
         showPage('results');
         document.getElementById('back-btn').style.display = 'block';
+        populateResumePane(); // ISSUE 3: fill right pane with resume text
         // Replace Stream B skeletons with animated messages after Stream B launches (~2s)
         setTimeout(showStreamBLoading, 2200);
       }
@@ -3778,7 +3875,6 @@ function handleSSE(name, data) {
     case 'done':
       // Both streams complete — render summary card now that bullets/certs/projects are all populated
       renderSummaryCard();
-      renderFinalizeMetrics();
       // Show retry buttons for any Stream B sections that didn't load
       showMissingSectionRetry();
       if (!resultReady) {
@@ -3861,8 +3957,9 @@ function showTab(t) {
       });
     }, 80);
   }
-  // Populate finalize metrics when tab opens
-  if (t === 'finalize') renderFinalizeMetrics();
+  // Populate resume pane whenever Resume Fix tab opens (ISSUE 3)
+  if (t === 'score') populateResumePane();
+  // Finalize tab — no metric cards to populate (removed per ISSUE 1)
 }
 
 // ═══════════════════════════════════════════════════
@@ -3874,6 +3971,14 @@ function togAcc(bodyId, arrId) {
   const open=body.classList.contains('open');
   body.classList.toggle('open',!open);
   if(arr) arr.classList.toggle('open',!open);
+}
+
+// ═══════════════════════════════════════════════════
+// SALARY HELPER — strip parenthetical explanations (ISSUE 5)
+// "  $75k – $145k (estimate)" → "$75k – $145k"
+// ═══════════════════════════════════════════════════
+function stripSalParen(s) {
+  return (s || '').replace(/\s*\(.*$/, '').trim();
 }
 
 // ═══════════════════════════════════════════════════
@@ -3894,11 +3999,10 @@ function renderVerdict(d) {
     ? `${d.ats_pass_rate||0}% of top keywords found. ${100-(d.ats_pass_rate||50)}% missing — fixable.`
     : `${d.ats_pass_rate}% keyword coverage — ATS-friendly.`;
 
-  // Salary: confidence-gated display — suppress fake precision
-  const salDisplay = sal.fromPostings || sal.range || '';
+  // Salary: confidence-gated display — suppress fake precision (ISSUE 5: strip parens)
+  const salDisplay = stripSalParen(sal.fromPostings || sal.range || '');
   const salConf    = sal.confidence || 'estimate';
-  const salSuffix  = salConf === 'high' ? '' : salConf === 'medium' ? ' (limited data)' : salDisplay ? ' (estimate)' : '';
-  const salText    = salDisplay ? salDisplay + salSuffix : '';
+  const salText    = salDisplay;
 
   document.getElementById('sum-row').innerHTML =
     `<div class="smet"><div class="smv">${d.match_score||0}%</div><div class="sml">Role match</div></div>`+
@@ -3931,29 +4035,14 @@ function renderVerdict(d) {
   const atsVal  = document.getElementById('profile-ats-val');
   const atsNote = document.getElementById('profile-ats-note');
   if (atsVal)  atsVal.textContent  = (d.ats_pass_rate || '—') + (d.ats_pass_rate ? '%' : '');
-  if (atsNote) atsNote.textContent = (d.ats_pass_rate || 0) < 60
-    ? `of top keywords found. Add "${d.ats_missing_keyword || 'key terms'}" to improve.`
-    : `Strong keyword coverage for this role.`;
+  // ISSUE 4: do not overwrite the static note — keep label clean
 
-  // Salary stat card — confidence-gated display
+  // Salary stat card — show clean range only, no parenthetical (ISSUE 5)
   const salVal = document.getElementById('profile-sal-val');
   if (salVal) {
-    const display = sal.fromPostings || sal.range || '';
-    if (!display) {
-      salVal.textContent = '—';
-    } else {
-      salVal.textContent = display;
-    }
-    // Add confidence qualifier below salary value
-    const existingCtx = salVal.parentElement.querySelector('.sal-ctx');
-    if (existingCtx) existingCtx.remove();
-    if (display && salConf !== 'high') {
-      const ctx = document.createElement('div');
-      ctx.className = 'sal-ctx';
-      ctx.style.cssText = 'font-size:10px;color:var(--text-3);margin-top:2px';
-      ctx.textContent = salConf === 'medium' ? 'Based on limited posting data' : 'Estimate — actual range may vary';
-      salVal.parentElement.appendChild(ctx);
-    }
+    salVal.textContent = salDisplay || '—';
+    // Remove any stale qualifier
+    salVal.parentElement.querySelectorAll('.sal-ctx').forEach(el => el.remove());
   }
 
   // Store ATS data for summary card
@@ -4095,33 +4184,58 @@ function renderLinkedIn(d) {
 // RENDER — CERTIFICATIONS (Tab 1)
 // 3 cards horizontal, Enroll Now links
 // ═══════════════════════════════════════════════════
+// Trim text to at most N sentences (split on '. ', '! ', '? ', trailing '.'/!/?')
+function trimToSentences(text, n) {
+  if (!text) return '';
+  // Split on sentence boundaries while keeping the punctuation
+  const parts = text.match(/[^.!?]+[.!?]+/g) || [text];
+  return parts.slice(0, n).join(' ').trim();
+}
+
+// Extract a URL from text that may contain one, returning { url, cleaned }
+function extractUrlFromText(text) {
+  const m = (text || '').match(/https?:\/\/[^\s·,)]+/);
+  if (!m) return { url: '', cleaned: text };
+  return { url: m[0], cleaned: text.replace(m[0], '').replace(/\s{2,}/g, ' ').trim() };
+}
+
 function renderCerts(certs) {
   const el = document.getElementById('certs-list');
   if (!certs || !certs.length) {
     el.innerHTML = '<div style="font-size:13px;color:var(--on-surface-v)">No certifications available.</div>';
     return;
   }
-  el.innerHTML = certs.map(c => `
-    <div class="cert-card">
+  el.innerHTML = certs.map(c => {
+    // ISSUE 6a: trim why text to 2 sentences max
+    let why = trimToSentences(c.why || '', 2);
+    // ISSUE 6b: if URL ended up in why text, extract it
+    let enrollUrl = c.url || '';
+    if (!enrollUrl) {
+      const extracted = extractUrlFromText(why);
+      if (extracted.url) { enrollUrl = extracted.url; why = extracted.cleaned; }
+    }
+    // Re-trim after URL removal
+    why = trimToSentences(why, 2);
+
+    return `<div class="cert-card">
       <div>
         <div class="cert-icon-wrap">
           <span class="material-symbols-outlined" style="color:#fff;font-size:22px;font-variation-settings:'FILL' 1">workspace_premium</span>
         </div>
         <div class="cert-name-txt">${esc(c.name)}</div>
         <div class="cert-provider">${esc(c.provider)}</div>
-        ${c.addressesGap ? `<div style="font-size:10px;color:var(--blue);font-weight:600;margin:4px 0 2px">Closes gap: ${esc(c.addressesGap)}</div>` : ''}
-        <div class="cert-why-txt">${esc(c.why)}</div>
+        ${c.addressesGap ? `<div style="font-size:10px;color:var(--primary);font-weight:600;margin:4px 0 2px">Closes gap: ${esc(c.addressesGap)}</div>` : ''}
+        <div class="cert-why-txt">${esc(why)}</div>
         <div class="cert-meta-chips">
-          <span class="cert-meta-chip">${esc(c.cost)}</span>
-          <span class="cert-meta-chip">${esc(c.duration)}</span>
+          ${c.cost ? `<span class="cert-meta-chip">${esc(c.cost)}</span>` : ''}
+          ${c.duration ? `<span class="cert-meta-chip">${esc(c.duration)}</span>` : ''}
         </div>
       </div>
-      ${c.url ? `<a href="${c.url}" target="_blank" rel="noopener" class="cert-enroll">
-        Enroll Now <span class="material-symbols-outlined">arrow_forward</span>
+      ${enrollUrl ? `<a href="${esc(enrollUrl)}" target="_blank" rel="noopener" class="cert-enroll">
+        Enroll now <span class="material-symbols-outlined">arrow_forward</span>
       </a>` : ''}
-    </div>`
-  ).join('');
-  // Note: showPage('results') intentionally removed — only 'done' event triggers that (I10)
+    </div>`;
+  }).join('');
 }
 
 // ═══════════════════════════════════════════════════
@@ -4390,14 +4504,14 @@ function appendBulletGroup(data) {
         </div>`
       : '';
 
-    return `<div class="bullet-item red" data-bullet-idx="${idx}" onclick="openDlg(${idx})">
+    return `<div class="bullet-item red" data-bullet-idx="${idx}" onclick="toggleBulletDetail(${idx})">
       ${tagHtml ? `<div class="bullet-tags">${tagHtml}</div>` : ''}
       <div class="bullet-before-lbl">Before</div>
       <p class="bullet-text">${esc(item.text)}</p>
       ${suggestion}
       <div class="bullet-see-more">
-        <span class="material-symbols-outlined" style="font-size:14px">arrow_forward</span>
-        See full analysis &amp; rewrite
+        <span class="material-symbols-outlined" style="font-size:14px">expand_more</span>
+        See analysis &amp; fix inline
       </div>
     </div>`;
   }).join('');
@@ -4800,6 +4914,233 @@ function adoptRewrite(idx) {
   // Close dialog
   document.getElementById('dlg-overlay').classList.remove('open');
   document.body.style.overflow = '';
+}
+
+// ═══════════════════════════════════════════════════
+// ISSUE 3 — INLINE BULLET DETAIL (split-screen Resume Fix)
+// Replaces modal for the Resume Fix tab.
+// ═══════════════════════════════════════════════════
+function toggleBulletDetail(idx) {
+  const card = document.querySelector(`[data-bullet-idx="${idx}"]`);
+  if (!card || card.classList.contains('adopted')) return;
+
+  const isOpen = card.classList.contains('expanded');
+
+  // Collapse any other open bullet first
+  document.querySelectorAll('.bullet-item.expanded').forEach(c => {
+    if (c !== card) {
+      c.classList.remove('expanded');
+      const det = c.querySelector('.bullet-inline-detail');
+      if (det) det.remove();
+      const see = c.querySelector('.bullet-see-more .material-symbols-outlined');
+      if (see) see.textContent = 'expand_more';
+    }
+  });
+
+  if (isOpen) {
+    // Collapse this bullet
+    card.classList.remove('expanded');
+    const det = card.querySelector('.bullet-inline-detail');
+    if (det) det.remove();
+    const see = card.querySelector('.bullet-see-more .material-symbols-outlined');
+    if (see) see.textContent = 'expand_more';
+  } else {
+    // Expand this bullet
+    card.classList.add('expanded');
+    const see = card.querySelector('.bullet-see-more .material-symbols-outlined');
+    if (see) see.textContent = 'expand_less';
+    renderBulletInlineDetail(idx, card);
+  }
+}
+
+function renderBulletInlineDetail(idx, card) {
+  const d = bulletStore.get(idx);
+  if (!d) return;
+
+  const isRemove = d.rw && /^<\s*REMOVE/i.test(d.rw.trim());
+  const taId = `bid-ta-${idx}`;
+
+  const detEl = document.createElement('div');
+  detEl.className = 'bullet-inline-detail';
+  detEl.onclick = e => e.stopPropagation(); // prevent collapse when clicking inside
+
+  if (isRemove) {
+    detEl.innerHTML = `<div class="bid-verdict">${esc(d.bh || 'This bullet needs work.')}</div>
+      <div style="background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);border-radius:8px;padding:10px 12px;font-size:12px;font-weight:600;color:var(--on-surface)">
+        <span class="material-symbols-outlined" style="color:#d97706;font-size:16px;vertical-align:middle;margin-right:4px;font-variation-settings:'FILL' 1">info</span>
+        Consider removing — not relevant to target role.
+      </div>`;
+  } else {
+    const rwText = d.rw || '';
+    detEl.innerHTML = `<div class="bid-verdict">${esc(d.bh || 'This bullet needs work.')}</div>
+      <div style="font-size:10px;font-weight:800;color:var(--tertiary);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px">After — edit freely, then adopt</div>
+      <textarea class="bid-textarea" id="${taId}">${esc(rwText)}</textarea>
+      <div class="bid-actions">
+        <button class="bid-adopt" id="bid-adopt-${idx}" onclick="adoptRewriteInline(${idx})" ${rwText ? '' : 'disabled'}>
+          <span class="material-symbols-outlined" style="font-size:14px">check_circle</span>Adopt
+        </button>
+        ${d.adopted ? `<button class="bid-revert" onclick="revertBulletInline(${idx})">
+          <span class="material-symbols-outlined" style="font-size:14px">undo</span>Revert
+        </button>` : ''}
+      </div>`;
+
+    // If no rewrite yet, generate one via micro-call
+    if (!rwText) {
+      generateBulletRewriteInline(idx);
+    }
+  }
+
+  card.appendChild(detEl);
+}
+
+async function generateBulletRewriteInline(idx) {
+  const d = bulletStore.get(idx);
+  if (!d) return;
+  const ta = document.getElementById(`bid-ta-${idx}`);
+  const adoptBtn = document.getElementById(`bid-adopt-${idx}`);
+  if (ta) {
+    ta.placeholder = `Generating a ${esc(currentRole || 'target role')}-relevant replacement…`;
+    ta.style.fontStyle = 'italic';
+    ta.style.opacity   = '.7';
+  }
+
+  try {
+    const res = await fetch('/api/rewrite', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        bullet:          d.text,
+        role:            currentRole || 'this role',
+        brutalHoney:     d.bh || '',
+        missingKeywords: analysisData.ats_missing_keyword ? [analysisData.ats_missing_keyword] : []
+      })
+    });
+    if (!res.ok) throw new Error('Rewrite failed');
+    const data = await res.json();
+    const text = data?.rewrite?.trim();
+    if (text && text.length > 10 && ta && ta.isConnected) {
+      ta.value         = text;
+      ta.style.fontStyle = 'normal';
+      ta.style.opacity   = '1';
+      if (adoptBtn) adoptBtn.disabled = false;
+      // Update stored rewrite so it's available if detail is closed/reopened
+      bulletStore.set(idx, { ...d, rw: text });
+    } else throw new Error('Empty');
+  } catch {
+    if (ta && ta.isConnected) {
+      ta.placeholder = `Write a ${currentRole || 'role'}-relevant version showing a specific outcome.`;
+      ta.style.fontStyle = 'normal';
+      ta.style.opacity   = '1';
+      if (adoptBtn) adoptBtn.disabled = false;
+    }
+  }
+}
+
+function adoptRewriteInline(idx) {
+  const d = bulletStore.get(idx);
+  if (!d) return;
+
+  const taEl  = document.getElementById(`bid-ta-${idx}`);
+  const newText = taEl ? taEl.value.trim() : '';
+  if (!newText || newText.length < 5) return;
+
+  // Update resumeText so download reflects the change
+  if (resumeText && d.text) {
+    const escaped = d.text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    resumeText = resumeText.replace(new RegExp(escaped), newText);
+  }
+
+  // Sync to right-pane textarea
+  const rta = document.getElementById('resume-edit-area');
+  if (rta) rta.value = resumeText;
+
+  // Update store with adopted flag and original text for revert
+  bulletStore.set(idx, { ...d, rw: newText, adopted: true, original: d.text, adoptedText: newText });
+
+  // Mark card as adopted
+  const card = document.querySelector(`[data-bullet-idx="${idx}"]`);
+  if (card) {
+    card.classList.remove('red', 'expanded');
+    card.classList.add('adopted');
+    card.onclick = null;
+    const textEl = card.querySelector('.bullet-text');
+    if (textEl) textEl.textContent = newText;
+    card.querySelectorAll('.bullet-before-lbl,.bullet-suggestion,.bullet-see-more,.bullet-inline-detail').forEach(el => el.remove());
+    const badge = document.createElement('div');
+    badge.className = 'bullet-adopted-badge';
+    badge.innerHTML = '<span class="material-symbols-outlined" style="font-size:13px;vertical-align:middle">check_circle</span> Adopted — click to revert';
+    badge.style.cursor = 'pointer';
+    badge.onclick = () => revertBulletInline(idx);
+    card.appendChild(badge);
+  }
+
+  // Recount flagged
+  const redCount = document.querySelectorAll('.bullet-item.red').length;
+  const flagBadge = document.getElementById('bullets-flagged-count');
+  if (flagBadge) {
+    if (redCount > 0) { flagBadge.textContent = `${redCount} flagged`; }
+    else { flagBadge.style.display = 'none'; }
+  }
+}
+
+function revertBulletInline(idx) {
+  const d = bulletStore.get(idx);
+  if (!d || !d.original) return;
+
+  // Revert resumeText
+  if (resumeText && d.adoptedText) {
+    const escaped = d.adoptedText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    resumeText = resumeText.replace(new RegExp(escaped), d.original);
+  }
+
+  // Sync right pane
+  const rta = document.getElementById('resume-edit-area');
+  if (rta) rta.value = resumeText;
+
+  // Restore store
+  bulletStore.set(idx, { ...d, adopted: false, adoptedText: null });
+
+  // Re-render card as red/expandable
+  const card = document.querySelector(`[data-bullet-idx="${idx}"]`);
+  if (card) {
+    card.classList.remove('adopted');
+    card.classList.add('red');
+    card.onclick = () => toggleBulletDetail(idx);
+    const textEl = card.querySelector('.bullet-text');
+    if (textEl) textEl.textContent = d.original;
+    card.querySelectorAll('.bullet-adopted-badge').forEach(el => el.remove());
+
+    const seeMore = document.createElement('div');
+    seeMore.className = 'bullet-see-more';
+    seeMore.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px">expand_more</span>See analysis &amp; fix inline';
+    card.appendChild(seeMore);
+  }
+
+  // Recount
+  const redCount = document.querySelectorAll('.bullet-item.red').length;
+  const flagBadge = document.getElementById('bullets-flagged-count');
+  if (flagBadge && redCount > 0) {
+    flagBadge.textContent = `${redCount} flagged`;
+    flagBadge.style.display = 'inline-flex';
+  }
+}
+
+function downloadResumeEdit() {
+  const ta = document.getElementById('resume-edit-area');
+  const text = ta ? ta.value : resumeText || '';
+  if (!text.trim()) return;
+  const blob = new Blob([text], { type: 'text/plain' });
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = (currentRole || 'resume').replace(/[^a-z0-9]/gi, '_') + '_updated.txt';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// Populate resume right pane whenever results become visible (ISSUE 3)
+function populateResumePane() {
+  const ta = document.getElementById('resume-edit-area');
+  if (ta && resumeText && !ta.value) ta.value = resumeText;
 }
 
 // ═══════════════════════════════════════════════════

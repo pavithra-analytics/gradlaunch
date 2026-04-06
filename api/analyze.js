@@ -1618,7 +1618,7 @@ module.exports = async function handler(req, res) {
         userContent: userContentB,
         tools:       TOOLS_B,
         toolChoice:  { type: 'tool', name: targetTool },
-        maxTokens:   1200
+        maxTokens:   1800
       });
       await processStream(anthropicResB, (name, args) =>
         emitToolCallB(name, args, res, role, marketData, retryGaps)
@@ -1697,7 +1697,7 @@ module.exports = async function handler(req, res) {
         userContent: userContentB,
         tools:       TOOLS_B,
         fileId:      null,
-        maxTokens:   2200  // tightened — concise prompts + smaller cert schema = sufficient
+        maxTokens:   3200  // raised from 2200 — 3 full projects with ai_prompts need headroom
       });
 
       return processStream(anthropicResB, (name, args) => emitToolCallB(name, args, res, role, marketData, detectedGaps));
