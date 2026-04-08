@@ -256,14 +256,14 @@ function computeATS(resumeText, skillFreq) {
   const missing = top15.filter(s => !text.includes(s.skill.toLowerCase()));
 
   const atsScore     = Math.round((present.length / top15.length) * 100);
-  // Target 75% (industry ATS pass threshold) — show how many keywords needed
-  const TARGET       = 75;
+  // Target 80% (industry ATS pass threshold) — show how many keywords needed
+  const TARGET       = 80;
   const targetCount  = Math.ceil(top15.length * TARGET / 100); // = 12 for top15
   const needed       = Math.max(0, targetCount - present.length);
   // atsPotential: what score would be after adding the needed keywords
   const atsPotential = atsScore >= TARGET
     ? Math.min(100, Math.round(((present.length + Math.min(3, missing.length)) / top15.length) * 100))
-    : TARGET; // always show 75 as the achievable target when below threshold
+    : TARGET; // always show 80 as the achievable target when below threshold
 
   return {
     atsScore,
@@ -479,16 +479,16 @@ const TOOLS_A = [
   },
   {
     name: 'set_skills',
-    description: 'Set skills present in resume with market data relevance percentages.',
+    description: 'Set skills present in resume that are ALSO relevant to the target role. CRITICAL: Only include skills that (1) appear in the resume AND (2) appear in the market data top skills list for the target role. Do NOT include generic skills or skills from the resume that have no bearing on the target role. These are displayed as the user\'s "superpowers" for this specific role — every skill listed must be a genuine signal for a recruiter hiring for this role.',
     input_schema: {
       type: 'object',
       properties: {
-        skills_present:  { type: 'array',  items: { type: 'string' }, description: 'Up to 6 skills most relevant to target role found in the resume' },
+        skills_present:  { type: 'array',  items: { type: 'string' }, description: 'Up to 6 skills that are BOTH (a) found in the resume AND (b) present in the market data top skills for the target role. If a skill is in the resume but NOT in the market data for this role, exclude it. If fewer than 3 qualifying skills exist, list only those that qualify — never pad with irrelevant skills.' },
         skill_levels:    { type: 'object', additionalProperties: { type: 'string' }, description: 'Map skill to Strong, Intermediate, or Basic based on how the resume presents it' },
         skill_relevance: {
           type: 'object',
           additionalProperties: { type: 'number' },
-          description: 'Map skill to percentage 0-100 from market data showing how often this skill appears in target role postings. Use EXACT numbers from market data. This is posting frequency, NOT user proficiency. If SQL appears in 82% of postings, output 82. If skill not in market data, estimate conservatively with a max of 55.'
+          description: 'Map skill to percentage 0-100 from market data showing how often this skill appears in target role postings. Use EXACT numbers from market data. This is posting frequency, NOT user proficiency. If SQL appears in 82% of postings, output 82. If skill not in market data, output 0 (which will cause the skill to be filtered server-side).'
         }
       },
       required: ['skills_present','skill_levels','skill_relevance']
@@ -548,10 +548,11 @@ const TOOLS_A = [
               text:         { type: 'string' },
               status:       { type: 'string', enum: ['green','red'] },
               tags:         { type: 'array', items: { type: 'string', enum: ['Missing Metric','Passive Voice','No Impact Statement','Vague Action Verb','Strong','Impact Validated','Quantified'] } },
-              brutal_honey: { type: 'string', description: 'Red only. MAX 3 SENTENCES. No dashes. Sentence 1: why a recruiter skips this exact bullet. Sentence 2: what is salvageable. Sentence 3: direction for the rewrite. Human voice.' },
-              rewrite:      { type: 'string', description: 'Red only. ONE sentence under 25 words. Strong action verb first. Most relevant ATS keyword from market data. Use [X][Y][Z] only where numbers are genuinely missing. Self-check: strong verb? ATS keyword present? Under 25 words? Revise once if any check fails.' }
+              brutal_honey:           { type: 'string', description: 'Red only. MAX 3 SENTENCES. No dashes. Sentence 1: why a recruiter skips this exact bullet. Sentence 2: what is salvageable. Sentence 3: direction for the rewrite. Human voice.' },
+              rewrite:                { type: 'string', description: 'Red only. ONE sentence under 25 words. Strong action verb first. Most relevant ATS keyword from market data. Use [X][Y][Z] only where numbers are genuinely missing. Self-check: strong verb? ATS keyword present? Under 25 words? Revise once if any check fails.' },
+              ats_keyword_introduced: { type: 'string', description: 'Red only. The single ATS keyword from market data top skills that this rewrite introduces to the resume. Just the keyword, no explanation. Example: "Kubernetes" or "A/B Testing". Empty string if no keyword is being added.' }
             },
-            required: ['text','status','tags','brutal_honey','rewrite']
+            required: ['text','status','tags','brutal_honey','rewrite','ats_keyword_introduced']
           }
         }
       },
@@ -589,17 +590,17 @@ const TOOLS_A = [
 const TOOLS_B = [
   {
     name: 'set_linkedin',
-    description: 'Set LinkedIn optimization. Quality is everything here — this must not read like AI output.',
+    description: 'Set LinkedIn optimization for the TARGET ROLE. Quality is everything here — this must not read like AI output.',
     input_schema: {
       type: 'object',
       properties: {
         linkedin_headline: {
           type: 'string',
-          description: 'Format: [Core identity] | [Named tool from resume] | [Concrete outcome type]. Under 160 chars. [Core identity]: what this person actually does based on resume content, not a generic job title. [Named tool]: must be a specific real tool named in the resume text (e.g. Python, dbt, Mixpanel, Snowflake, Tableau, Spark — not "analytics" or "technology"). [Concrete outcome]: the type of result this person delivers, grounded in their experience. Example: Data Analyst | dbt + Snowflake | Turning warehouse data into decisions product teams actually use. Never use "seeking", "open to", or any status phrase.'
+          description: 'Write this headline for the TARGET ROLE the candidate is applying to — not a summary of their past work. Format: [Target role identity] | [Named tool from resume most relevant to target role] | [What they deliver toward that target role]. Under 160 chars. ROLE-ALIGNMENT RULE: [Core identity] must name the TARGET ROLE (e.g. "Data Analyst", "Software Engineer"), not a generic label. [Named tool]: must be a specific real tool named in the resume text that ALSO appears in the top required skills for the target role from market data (e.g. Python, SQL, React — not "analytics" or "technology"). If the resume has no direct evidence for a top required skill, name the closest transferable tool and frame it toward the target role. [Concrete outcome]: the type of result relevant to the TARGET ROLE that this person is positioned to deliver, based on resume evidence. GROUNDING RULE: every skill or capability named must appear in BOTH the market data top skills for the target role AND somewhere in the resume. If a skill is in the resume but irrelevant to the target role, do not mention it. Never use "seeking", "open to", or any status phrase.'
         },
         linkedin_about: {
           type: 'string',
-          description: 'Maximum 3 sentences. MAXIMUM 80 WORDS TOTAL. SENTENCE 1: Start with a specific action at a named company from the resume — e.g. "At [Company], built [specific thing] using [tool] that [specific result or outcome]." If no metric exists, name the tool and the scope. Do NOT start with "I am" or any forbidden opener. SENTENCE 2: Write the 2-3 skills most demanded for this role from market data as active capabilities — what you do, not what you know. SENTENCE 3: The type of problem you want to work on next, stated as a capability or approach, not a job title or aspiration. OMISSION RULE: if sentence 1 cannot be written without inventing a company, tool, or outcome not in the resume, it must reference the most specific real thing in the resume. If sentence 3 cannot be grounded in evidence from the resume, omit it — write 2 sentences instead of 3. A shorter about with real content is better than a padded one. FORBIDDEN OPENERS: I am a, As a, With X years, Passionate about, Dedicated, Results-driven, Looking for, Seeking. Sound like a smart person wrote this for themselves in 5 minutes — specific, grounded, direct.'
+          description: 'Write this as a PITCH FOR THE TARGET ROLE, not a summary of past work. Maximum 3 sentences. MAXIMUM 80 WORDS TOTAL. SENTENCE 1: Start with a specific action at a named company from the resume — e.g. "At [Company], built [specific thing] using [tool] that [specific result or outcome]." Frame the action toward what the target role cares about. If no metric exists, name the tool and the scope. Do NOT start with "I am" or any forbidden opener. SENTENCE 2: Name the 2-3 skills most demanded for the TARGET ROLE from market data as active capabilities this person demonstrates — must be evidenced in the resume AND in the top required skills. If the resume lacks direct evidence for a top required skill, name the closest transferable skill and frame it toward the target role. SENTENCE 3: State the type of problem relevant to the TARGET ROLE this person wants to solve next, as a capability grounded in the resume — not a job title or aspiration. OMISSION RULE: if sentence 1 cannot be written without inventing content, reference the most specific real thing in the resume. If sentence 3 cannot be grounded, omit it. A shorter about with real content beats a padded one. FORBIDDEN OPENERS: I am a, As a, With X years, Passionate about, Dedicated, Results-driven, Looking for, Seeking. Sound like a smart person pitching themselves for this exact role — specific, grounded, direct.'
         },
         linkedin_skills: {
           type: 'array',
@@ -706,6 +707,7 @@ rewrite must not invent any company name, project name, technology, or context t
 
 MARKET DATA IS LAW:
 skill_relevance: The server will override your values using the actual scraped data. Still output your best estimate using the EXACT percentages listed — it helps validation. If SQL appears at 82% in the data, output 82 for SQL. Never output a value higher than what the market data shows for that skill.
+set_skills skills_present: ONLY include skills that BOTH appear in the resume AND appear in the market data top skills list for the target role. These are shown as the user's "superpowers" for this specific role — a skill not in the market data for this role has no place here, even if the user is expert at it. If Python is not in the market data for a role, do not list it in set_skills.
 set_gaps how_often: EXACT % from market data. Only name skills that appear in the market data list. Do NOT invent skill name variations like "Advanced SQL" if the market data shows "sql". Use the exact skill name from the market data.
 set_gaps skills: ONLY use skill names that appear verbatim in the market data list provided. If a skill is not in the market data list, do not include it as a gap.
 set_gaps count: ALWAYS output exactly 5 gaps. If fewer than 5 critical gaps exist, add Important or Nice to have items to reach exactly 5. Never output fewer than 5.
@@ -772,8 +774,12 @@ Words: spearheaded, leveraged, utilized, delve, deep dive, impactful, value-add,
 Sentence patterns: "not only X but also Y", "not only X but X as well", "having said that", "that being said", "it is worth noting", "in today's competitive landscape", "moving forward", "in conclusion", "with that in mind", "I bring X years of", "as someone who", "with a passion for".
 Three-sentence about rhythm: vary sentence length. A short sentence after a longer one creates momentum. If all three sentences are identical in length and structure, they were generated. Short. Punch. Then explain.
 
-HEADLINE SPECIFICITY — CRITICAL:
-The [Core identity] segment must reflect this person's actual work type, not just a job title anyone could claim. The [Specific tool or domain] segment must name a real tool from the resume (e.g. Python, dbt, Mixpanel, Snowflake — not "analytics" or "technology"). The [What you deliver] segment must describe outcomes this person has ALREADY produced, as evidenced by the resume. If the resume lacks outcome evidence, state what this person builds or analyzes — do not invent a promised future outcome. A headline that promises results the resume does not demonstrate is a lie.
+HEADLINE SPECIFICITY AND ROLE-ALIGNMENT — CRITICAL:
+The headline and about section MUST be written for the TARGET ROLE the user searched, not as a reflection of past work. A Data Science candidate targeting a Software Engineer role must write a headline and about that position them as an SDE candidate.
+The [Core identity] segment must name the TARGET ROLE, not just a summary of what they have done. The [Specific tool or domain] segment must name a real tool from the resume that ALSO appears in the top required skills for the target role in market data. If no tool in the resume matches the target role's top skills, name the closest transferable tool and frame it toward the target role. The [What you deliver] segment must describe outcomes relevant to the TARGET ROLE that this person is positioned to deliver based on resume evidence.
+GROUNDING RULE — EVERY SKILL IN THE HEADLINE MUST: (1) appear in the top required skills for the target role from market data, AND (2) be evidenced somewhere in the resume (directly or as a transferable skill). A skill that is strong in the resume but irrelevant to the target role must NOT appear in the headline or about section.
+If the resume has no direct evidence for a required skill, name the closest transferable skill and frame it toward the target role (e.g. if they have Excel but the role needs SQL, write "data querying" or name the specific Excel feature used analytically).
+A headline that reflects the resume without pitching for the target role is wrong. Rewrite it until it serves as a pitch for that exact role.
 
 FORBIDDEN OUTPUTS — if you produce any of these, stop and rewrite before outputting:
 LinkedIn About openers: I am a, As a, With X years of experience, Passionate about, Dedicated professional, Results-driven, Dynamic, Innovative, Looking for
@@ -1357,7 +1363,7 @@ function makeStreamRequest({ apiKey, model, system, userContent, tools, fileId, 
         'anthropic-beta':    betaHeaders.join(','),
         'Content-Length':    Buffer.byteLength(body)
       },
-      timeout: 55000
+      timeout: 90000  // 90s — Stream B with Sonnet + 5000 tokens can take 60-80s
     };
 
     const req = https.request(opts, anthropicRes => {
@@ -1618,7 +1624,7 @@ module.exports = async function handler(req, res) {
         userContent: userContentB,
         tools:       TOOLS_B,
         toolChoice:  { type: 'tool', name: targetTool },
-        maxTokens:   1800
+        maxTokens:   targetTool === 'set_projects' ? 3500 : 1800
       });
       await processStream(anthropicResB, (name, args) =>
         emitToolCallB(name, args, res, role, marketData, retryGaps)
@@ -1697,7 +1703,7 @@ module.exports = async function handler(req, res) {
         userContent: userContentB,
         tools:       TOOLS_B,
         fileId:      null,
-        maxTokens:   3200  // raised from 2200 — 3 full projects with ai_prompts need headroom
+        maxTokens:   5000  // raised from 3200 — 3 full projects with 4-phase ai_prompts each need ~1800 tokens alone
       });
 
       return processStream(anthropicResB, (name, args) => emitToolCallB(name, args, res, role, marketData, detectedGaps));
