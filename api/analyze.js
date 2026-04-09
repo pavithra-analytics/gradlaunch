@@ -420,15 +420,29 @@ function httpsPost(hostname, path, headers, body) {
 function normalizeCerts(certPicks, certReasons) {
   if (!certPicks || !certPicks.length) return [];
   return certPicks.slice(0, 3).map(name => {
-    const raw      = certReasons?.[name] || '';
-    const parts    = raw.split('·').map(p => p.trim());
+    const raw   = certReasons?.[name] || '';
+    const parts = raw.split('·').map(p => p.trim());
     // Format: "Provider · Cost · Duration · URL · Why: ..."
     const provider = parts[0] || '';
     const cost     = parts[1] || '';
     const duration = parts[2] || '';
-    const url      = (parts[3] || '').startsWith('http') ? parts[3] : '';
-    const why      = parts.slice(url ? 4 : 3).join('·').replace(/^Why:\s*/i,'').trim()
-                  || raw || 'Closes your top gap for this role.';
+
+    // Primary: check structured position [3] for URL
+    const urlInPos3 = /^https?:\/\//.test(parts[3] || '');
+    // Fallback: scan the entire raw string for any https URL (handles Claude formatting variations)
+    const rawUrlMatch = !urlInPos3 ? (raw.match(/https?:\/\/[^\s·,)"'\]>]+/) || null) : null;
+    const url = urlInPos3 ? parts[3] : (rawUrlMatch ? rawUrlMatch[0] : '');
+
+    // Why text: everything after the URL part, stripping the URL if found via regex
+    const whyParts = urlInPos3 ? parts.slice(4) : parts.slice(3);
+    let why = whyParts.join(' · ').replace(/^Why:\s*/i, '').trim();
+    if (rawUrlMatch && why.includes(rawUrlMatch[0])) {
+      why = why.replace(rawUrlMatch[0], '').replace(/\s{2,}/g, ' ').trim();
+    }
+    why = why
+       || raw.replace(/https?:\/\/[^\s·,)"'\]>]+/g, '').replace(/·/g, ' ').replace(/\s{2,}/g, ' ').trim()
+       || 'Closes your top gap for this role.';
+
     return { name, provider, cost, duration, url, why };
   }).filter(c => c.name.length > 2);
 }
@@ -1202,24 +1216,27 @@ function emitToolCallB(name, args, res, role, marketData, detectedGaps) {
       // resume value, and practical feasibility so a low-frequency signal like 13%
       // does not outrank a more actionable, feasible project.
       function projectCompositeScore(signal, primarySkill, timeHours) {
-        // Hiring relevance + ATS impact: sqrt-normalize so a 13% skill isn't
-        // ranked close to a 60% skill purely on raw frequency ratio
-        const normalizedSignal = Math.sqrt(clamp(signal, 0, 100) / 100);
+        // Linear signal: all recommended projects address real gaps, so scale linearly
+        const normalizedSignal = clamp(signal, 0, 100) / 100;
 
-        // Gap severity: rank within the detected gap list drives importance
+        // Gap severity: rank within the detected gap list drives importance.
+        // High baseline (0.75) because ALL recommended projects address role gaps —
+        // a project outside the explicit gap list is still valuable if it has high signal.
         const needle = primarySkill.toLowerCase().trim();
         const gapIdx = detectedGaps.findIndex(g => {
           const s = (g.skill || g || '').toLowerCase();
           return s === needle || s.includes(needle) || needle.includes(s);
         });
-        // Top-3 gap: highest severity; top-5: medium; not in list: baseline
-        const gapSeverity = gapIdx < 0 ? 0.40 : gapIdx < 3 ? 1.0 : 0.70;
+        // Top-3 gap: critical; top-5: high; not in gap list: solid baseline
+        const gapSeverity = gapIdx < 0 ? 0.75 : gapIdx < 3 ? 1.0 : 0.88;
 
         // Practical feasibility: prefer projects completable in a weekend
-        const feasibility = timeHours <= 8 ? 1.0 : timeHours <= 16 ? 0.75 : 0.45;
+        const feasibility = timeHours <= 8 ? 1.0 : timeHours <= 16 ? 0.85 : 0.65;
 
-        // Composite: 40% hiring relevance, 35% gap severity, 15% feasibility, 10% ATS
-        return 0.40 * normalizedSignal + 0.35 * gapSeverity + 0.15 * feasibility + 0.10 * normalizedSignal;
+        // Base 0.40 guarantees recommended projects start at a meaningful score.
+        // Variable factors add differentiation: gap severity most important, then
+        // hiring-signal relevance, then feasibility.
+        return 0.40 + 0.20 * normalizedSignal + 0.25 * gapSeverity + 0.15 * feasibility;
       }
 
       let projects = (args.projects || []).map(p => {

@@ -1303,6 +1303,8 @@ button{cursor:pointer;border:none;outline:none}
 .bullet-item.red{border-left-color:var(--error);cursor:pointer}
 .bullet-item.red:hover{box-shadow:0 4px 20px rgba(179,27,37,.14)}
 .bullet-item.green{border-left-color:var(--tertiary)}
+/* Active/selected bullet — blue ring to show which one is open */
+.bullet-item.active{outline:2px solid var(--primary);outline-offset:-2px;background:rgba(0,87,189,.03)}
 .bullet-tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
 .btag{
   font-size:10px;font-weight:800;padding:2px 9px;border-radius:99px;
@@ -1438,8 +1440,8 @@ button{cursor:pointer;border:none;outline:none}
 }
 .dlg-edit-area:focus{border-color:var(--secondary);box-shadow:0 0 0 3px rgba(70,71,211,.12)}
 .dark .dlg-edit-area{background:rgba(0,105,71,.12);color:#6ee7b7;border-color:var(--green)}
-.bullet-item.adopted{border-left-color:var(--tertiary) !important;cursor:default !important}
-.bullet-item.adopted:hover{box-shadow:none !important}
+.bullet-item.adopted{border-left-color:var(--tertiary) !important;cursor:pointer !important}
+.bullet-item.adopted:hover{box-shadow:0 4px 16px rgba(0,105,71,.1) !important}
 .bullet-adopted-badge{
   display:inline-flex;align-items:center;gap:4px;margin-top:8px;
   font-size:11px;font-weight:700;color:var(--tertiary);
@@ -2096,8 +2098,8 @@ body{line-height:1.5}
 .bullet-item.red:hover .bullet-see-more { opacity:1; transform:none; }
 /* Always visible on touch devices */
 @media(hover:none){ .bullet-item.red .bullet-see-more { opacity:1; transform:none; } }
-/* Once adopted, remove click hint */
-.bullet-item.adopted .bullet-see-more { display:none; }
+/* Once adopted, keep the see-more visible but relabel to revert affordance */
+.bullet-item.adopted .bullet-see-more { opacity:1; transform:none; }
 
 /* ── P2 CERT ENROLL: always-visible bordered CTA ── */
 .cert-enroll {
@@ -2271,10 +2273,13 @@ body{line-height:1.5}
 /* Left pane: bullet list */
 .score-left-pane{}
 
-/* Right pane: live resume text — same height as left, independently scrollable */
+/* Right pane: sticky sidebar — stays visible while scrolling through bullets */
 .score-right-pane{
   position:sticky;
-  top:calc(56px + 16px); /* below sticky nav */
+  top:72px;            /* below sticky nav */
+  align-self:start;    /* required: sticky only works with align-self:start in CSS grid */
+  height:calc(100vh - 88px);
+  min-height:500px;
   background:var(--card-bg);
   border-radius:var(--r-lg);
   border:1px solid var(--border);
@@ -2282,9 +2287,6 @@ body{line-height:1.5}
   display:flex;
   flex-direction:column;
   overflow:hidden;
-  /* Height: match the left pane by using min-height of the viewport minus nav */
-  min-height:min(600px, calc(100vh - 120px));
-  max-height:calc(100vh - 120px);
 }
 .score-right-header{
   display:flex;align-items:center;gap:8px;
@@ -2296,7 +2298,8 @@ body{line-height:1.5}
 .score-right-header .material-symbols-outlined{font-size:16px;color:var(--primary)}
 .score-resume-ta{
   flex:1;
-  min-height:0;   /* let flexbox shrink */
+  height:0;        /* force flex to compute remaining height correctly (textarea intrinsic height workaround) */
+  min-height:0;
   padding:12px 16px;
   font-size:12px;font-weight:500;
   color:var(--on-surface);
@@ -3002,25 +3005,6 @@ body{line-height:1.5}
     <div class="finalize-hero">
       <div class="finalize-hero-title">Ready to Apply?</div>
       <div class="finalize-hero-sub">Review your readiness, address blockers, then generate and download your cover letter.</div>
-    </div>
-
-    <!-- Readiness Metrics -->
-    <div class="finalize-metrics" id="finalize-metrics-grid" style="display:none">
-      <div class="finalize-metric-card">
-        <div class="finalize-metric-label">ATS Match</div>
-        <div class="finalize-metric-value" id="fin-ats-val">—</div>
-        <div class="finalize-metric-delta delta-same" id="fin-ats-delta">Calculating…</div>
-      </div>
-      <div class="finalize-metric-card">
-        <div class="finalize-metric-label">Bullet Quality</div>
-        <div class="finalize-metric-value" id="fin-bq-val">—</div>
-        <div class="finalize-metric-delta delta-same" id="fin-bq-delta">Calculating…</div>
-      </div>
-      <div class="finalize-metric-card">
-        <div class="finalize-metric-label">Application Readiness</div>
-        <div class="finalize-metric-value" id="fin-ready-val">—</div>
-        <div class="finalize-metric-delta delta-same" id="fin-ready-delta">Calculating…</div>
-      </div>
     </div>
 
     <!-- Remaining Blockers (Action List) -->
@@ -4574,7 +4558,7 @@ function appendBulletGroup(data) {
     if (nav.children.length > 1) nav.style.display = 'flex';
   }
 
-  const redCount = list.querySelectorAll('.bullet-item.red').length;
+  const redCount = list.querySelectorAll('.bullet-item.red:not(.adopted)').length;
   const badge = document.getElementById('bullets-flagged-count');
   if (badge && redCount > 0) {
     badge.textContent = `${redCount} flagged`;
@@ -4707,7 +4691,7 @@ async function retrySection(section) {
 // ═══════════════════════════════════════════════════
 function renderSummaryCard() {
   const bullets  = document.getElementById('bullets-list');
-  const redCount = bullets ? bullets.querySelectorAll('.bullet-item.red').length : 0;
+  const redCount = bullets ? bullets.querySelectorAll('.bullet-item.red:not(.adopted)').length : 0;
   const topGap   = (analysisData.gaps&&analysisData.gaps[0])         ? analysisData.gaps[0].skill     : null;
   const topCert  = (analysisData.certs&&analysisData.certs[0])       ? analysisData.certs[0].name     : null;
   const topProj  = (analysisData.projects&&analysisData.projects[0]) ? analysisData.projects[0].title : null;
@@ -4771,9 +4755,6 @@ function renderSummaryCard() {
       ${row('rgba(0,87,189,.08)','var(--primary)','account_circle','LinkedIn headline',
         `<div class="action-value">Updated in Your Profile tab</div>`, false)}
     </div>`;
-
-  // Keep finalize metrics in sync whenever blockers are re-rendered
-  renderFinalizeMetrics();
 }
 
 // ═══════════════════════════════════════════════════
@@ -4944,16 +4925,18 @@ function adoptRewrite(idx) {
   // Update the card in the DOM
   const card = document.querySelector(`[data-bullet-idx="${idx}"]`);
   if (card) {
-    card.classList.remove('red');
+    card.classList.remove('red', 'expanded', 'active');
     card.classList.add('adopted');
-    card.onclick = null;
     const textEl = card.querySelector('.bullet-text');
     if (textEl) textEl.textContent = newText;
-    card.querySelectorAll('.bullet-suggestion, .bullet-see-more').forEach(el => el.remove());
+    card.querySelectorAll('.bullet-adopted-badge,.bullet-inline-detail').forEach(el => el.remove());
     const badge = document.createElement('div');
     badge.className = 'bullet-adopted-badge';
-    badge.innerHTML = '<span class="material-symbols-outlined" style="font-size:13px;vertical-align:middle">check_circle</span> Adopted';
+    badge.innerHTML = '<span class="material-symbols-outlined" style="font-size:13px;vertical-align:middle;color:var(--tertiary)">check_circle</span> Adopted';
     card.appendChild(badge);
+    // Restore see-more as revert affordance (card stays clickable)
+    const seeEl = card.querySelector('.bullet-see-more');
+    if (seeEl) seeEl.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px">undo</span>Click to revert';
   }
 
   // Recount flagged
@@ -5010,10 +4993,10 @@ function toggleBulletDetail(idx) {
 
   const isOpen = card.classList.contains('expanded');
 
-  // Collapse any other open bullet first
+  // Collapse any other open bullet first; remove active from all
   document.querySelectorAll('.bullet-item.expanded').forEach(c => {
     if (c !== card) {
-      c.classList.remove('expanded');
+      c.classList.remove('expanded', 'active');
       const det = c.querySelector('.bullet-inline-detail');
       if (det) det.remove();
       const see = c.querySelector('.bullet-see-more .material-symbols-outlined');
@@ -5022,22 +5005,23 @@ function toggleBulletDetail(idx) {
   });
 
   if (isOpen) {
-    // Collapse this bullet
-    card.classList.remove('expanded');
+    // Collapse this bullet and remove active highlight
+    card.classList.remove('expanded', 'active');
     const det = card.querySelector('.bullet-inline-detail');
     if (det) det.remove();
     const see = card.querySelector('.bullet-see-more .material-symbols-outlined');
     if (see) see.textContent = 'expand_more';
   } else {
-    // Expand this bullet
-    card.classList.add('expanded');
+    // Expand and mark as active (visible selected state)
+    card.classList.add('expanded', 'active');
     const see = card.querySelector('.bullet-see-more .material-symbols-outlined');
     if (see) see.textContent = 'expand_less';
     renderBulletInlineDetail(idx, card);
 
     // Scroll right pane to align with this bullet
     const d = bulletStore.get(idx);
-    if (d && d.text) scrollResumePaneToText(d.text);
+    const scrollTarget = d && (d.adoptedText || d.text);
+    if (scrollTarget) scrollResumePaneToText(scrollTarget);
   }
 }
 
@@ -5161,27 +5145,32 @@ function adoptRewriteInline(idx) {
   const originalText = d.original || d.text;
   bulletStore.set(idx, { ...d, rw: newText, adopted: true, original: originalText, adoptedText: newText });
 
-  // Mark card visually as adopted — but KEEP it expandable (keep .red, keep onclick)
+  // Mark card visually as adopted — keep clickable so user can revert
   const card = document.querySelector(`[data-bullet-idx="${idx}"]`);
   if (card) {
     // Update displayed bullet text to adopted version
     const textEl = card.querySelector('.bullet-text');
     if (textEl) textEl.textContent = newText;
 
-    // Add/update adopted badge (doesn't remove expand affordance)
+    // Add adopted class (green border, still pointer cursor) and remove expanded
+    card.classList.add('adopted');
+    card.classList.remove('expanded', 'active');
+
+    // Remove inline detail; update badge
     card.querySelectorAll('.bullet-adopted-badge').forEach(el => el.remove());
     card.querySelectorAll('.bullet-inline-detail').forEach(el => el.remove());
-    card.classList.remove('expanded');
 
-    // Add adopted badge
+    // Adopted badge
     const badge = document.createElement('div');
     badge.className = 'bullet-adopted-badge';
-    badge.innerHTML = '<span class="material-symbols-outlined" style="font-size:13px;vertical-align:middle;color:var(--tertiary)">check_circle</span> Adopted — click to see revert option';
+    badge.innerHTML = '<span class="material-symbols-outlined" style="font-size:13px;vertical-align:middle;color:var(--tertiary)">check_circle</span> Adopted';
     card.appendChild(badge);
 
-    // Update chevron
-    const see = card.querySelector('.bullet-see-more .material-symbols-outlined');
-    if (see) see.textContent = 'expand_more';
+    // Update see-more to revert affordance
+    const seeEl = card.querySelector('.bullet-see-more');
+    if (seeEl) {
+      seeEl.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px">undo</span>Click to revert';
+    }
   }
 
   // Recount flagged (adopted bullets no longer count as "to rewrite")
@@ -5218,21 +5207,21 @@ function revertBulletInline(idx) {
   // Re-render card as red/expandable (collapsed)
   const card = document.querySelector(`[data-bullet-idx="${idx}"]`);
   if (card) {
-    card.classList.remove('adopted', 'expanded');
+    card.classList.remove('adopted', 'expanded', 'active');
     card.classList.add('red');
     const textEl = card.querySelector('.bullet-text');
     if (textEl) textEl.textContent = d.original;
     card.querySelectorAll('.bullet-adopted-badge,.bullet-inline-detail').forEach(el => el.remove());
 
-    // Ensure see-more affordance is present
-    if (!card.querySelector('.bullet-see-more')) {
+    // Restore see-more affordance text
+    const seeEl = card.querySelector('.bullet-see-more');
+    if (seeEl) {
+      seeEl.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px">expand_more</span>See analysis &amp; fix inline';
+    } else {
       const seeMore = document.createElement('div');
       seeMore.className = 'bullet-see-more';
       seeMore.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px">expand_more</span>See analysis &amp; fix inline';
       card.appendChild(seeMore);
-    } else {
-      const see = card.querySelector('.bullet-see-more .material-symbols-outlined');
-      if (see) see.textContent = 'expand_more';
     }
   }
 
