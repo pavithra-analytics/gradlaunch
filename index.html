@@ -3359,9 +3359,15 @@ async function extractDOCXBrowser(arrayBuffer) {
           } else {
             throw new Error('DecompressionStream not supported');
           }
-        } else {
+        } else if (compression === 0) {
+          // STORED — raw bytes are the XML text, decode directly
           xml = new TextDecoder().decode(rawData);
+        } else {
+          // Unknown compression (BZIP2, LZMA, etc.) — cannot decode as text
+          throw new Error(`Unsupported DOCX compression method ${compression}`);
         }
+        // Sanity-check: decoded content must contain Word XML markup, not binary garbage
+        if (!xml || !xml.includes('<w:')) throw new Error('DOCX word/document.xml contains no Word XML markup');
 
         // Parse XML same as server
         return xml
@@ -4064,6 +4070,11 @@ function renderVerdict(d) {
   analysisData.ats_needed          = d.ats_needed ?? null;
   analysisData.salary              = sal;
   // Salary rendered in stat card above via salVal
+
+  // Update the landing-page ATS insight bar with the real score so if the user
+  // navigates back to the home page they see their actual score, not the 80% demo.
+  const atsBar = document.getElementById('ic-ats-fill');
+  if (atsBar && d.ats_pass_rate != null) atsBar.style.width = d.ats_pass_rate + '%';
 }
 
 // salary-section kept as empty div for layout compatibility
@@ -4474,7 +4485,7 @@ function renderScores(d) {
   if (analysisData.ats_missing_keyword) {
     const an = document.getElementById('ats-notice');
     an.style.display = 'block';
-    an.textContent = `Your resume matches ${analysisData.ats_pass_rate||50}% of the top keywords for this role. The biggest missing keyword is "${analysisData.ats_missing_keyword}". Adding it could push your keyword match to ${analysisData.ats_potential||80}%.`;
+    an.textContent = `Your resume matches ${analysisData.ats_pass_rate||50}% of the top keywords for this role. The biggest missing keyword is "${analysisData.ats_missing_keyword}". Adding it could push your keyword match to ${analysisData.ats_potential || Math.min(100, (analysisData.ats_pass_rate||50)+7)}%.`;
   }
 
   // Clear bullet skeleton

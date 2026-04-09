@@ -260,10 +260,10 @@ function computeATS(resumeText, skillFreq) {
   const TARGET       = 80;
   const targetCount  = Math.ceil(top15.length * TARGET / 100); // = 12 for top15
   const needed       = Math.max(0, targetCount - present.length);
-  // atsPotential: what score would be after adding the needed keywords
-  const atsPotential = atsScore >= TARGET
-    ? Math.min(100, Math.round(((present.length + Math.min(3, missing.length)) / top15.length) * 100))
-    : TARGET; // always show 80 as the achievable target when below threshold
+  // atsPotential: actual score after adding the top missing keyword (1 keyword improvement).
+  // Derived from the resume's real keyword count — not hardcoded to TARGET.
+  // This makes the ATS notice ("adding it could push you to X%") resume-specific.
+  const atsPotential = Math.min(100, Math.round(((present.length + Math.min(1, missing.length)) / top15.length) * 100));
 
   return {
     atsScore,
@@ -962,6 +962,7 @@ ${marketDataBlock}
 ${skillsNote}${gapsNote}${anchorsNote}
 ${resumeText ? `RESUME TEXT:\n${resumeText}\n` : ''}
 ${hasJD ? `JOB DESCRIPTION:\n${jd}\n` : ''}
+HARD GROUNDING RULE FOR linkedin_about AND linkedin_headline: Every company name, employer, job title, tool, technology, and quantified achievement you write MUST appear verbatim in the RESUME TEXT above. Before writing each sentence, locate the specific words in the RESUME TEXT. If a company name, role, or metric is not in the RESUME TEXT, do NOT write it — not even to make the copy sound better. Do not use your training knowledge about the person. Only use what is in the RESUME TEXT.
 Call ALL tools: set_linkedin, set_certifications, set_projects.
 Every LinkedIn sentence must reference something specific from this resume — use the RESUME ANCHORS above as your primary grounding points. linkedin_about sentence 1 must name a company or metric from the anchors list. Every cert must close a real gap from the DETECTED SKILL GAPS list above. Every project ai_prompt must cover all 4 phases (PLAN, DESIGN, BUILD, RESUME VALUE) and be complete enough to paste directly into Claude or ChatGPT. All 3 project ai_prompts must have identical depth. Every project ats_keywords must name 2-3 verbatim market-data top-10 skills this project demonstrates.`;
 }
@@ -1244,9 +1245,17 @@ function emitToolCallB(name, args, res, role, marketData, detectedGaps) {
         // This fixes 10% everywhere for product roles where scrape lacks verbatim terms
         const primarySkill = (p.skills || [])[0] || p.title || '';
         const scrapedSignal = lookupSkillPct(primarySkill, skillFreq);
+        // When scrape lookup fails, use the matching detectedGap's pct (real market data)
+        // so each project gets a distinct signal based on which gap it closes.
+        // This prevents identical composite scores when Claude sends market_signal: 0.
+        const needle = primarySkill.toLowerCase().trim();
+        const matchedGap = needle ? detectedGaps.find(g => {
+          const s = (g.skill || '').toLowerCase().trim();
+          return s === needle || s.includes(needle) || needle.includes(s);
+        }) : null;
         const signal = scrapedSignal !== null
           ? scrapedSignal
-          : clamp(p.market_signal || 0, 0, 100);
+          : clamp(matchedGap ? matchedGap.pct : (p.market_signal || 0), 0, 100);
 
         const composite = projectCompositeScore(signal, primarySkill, p.time_hours || 8);
 
@@ -1596,8 +1605,10 @@ module.exports = async function handler(req, res) {
       ]
     : promptA + `\n\nRESUME TEXT:\n${resume}`;
 
-  // Stream B user content built dynamically after Stream A emits set_skills
-  const resumeForB = resume || '';
+  // Stream B user content built dynamically after Stream A emits set_skills.
+  // Use the full resume text (not the 4000-char truncated version) so company names
+  // and experience details in the lower half of longer resumes are available for grounding.
+  const resumeForB = (resumeFull || resume || '').substring(0, 6000);
 
   // SSE headers
   res.setHeader('Content-Type',      'text/event-stream');
@@ -1631,7 +1642,7 @@ module.exports = async function handler(req, res) {
     const retryResumeAnchors = extractResumeAnchors(resumeFull || resume || '');
     const userContentB = buildAnalysisPromptB(
       role, locationStr, jd, hasJD, sal, marketDataBlock,
-      resume, confirmedSkills, retryGaps, retryResumeAnchors
+      (resumeFull || resume || '').substring(0, 6000), confirmedSkills, retryGaps, retryResumeAnchors
     );
     try {
       const anthropicResB = await makeStreamRequest({
