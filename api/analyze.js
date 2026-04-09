@@ -1010,8 +1010,9 @@ function emitToolCallA(name, args, res, sal, role, marketData, atsResult, server
       const atsMissing = atsResult?.missingTop?.[0] || args.ats_missing_keyword || '';
       // Match score: use server formula — deterministic
       const presentCount = serverSkills ? serverSkills.present.length : ((args.skills_present || []).length || 3);
+      const topSkillsN = Math.max(1, Math.min(15, skillFreq.length));
       const matchScore = atsResult?.atsScore !== null
-        ? computeMatchScore(atsResult.atsScore, presentCount, 15)
+        ? computeMatchScore(atsResult.atsScore, presentCount, topSkillsN)
         : clamp(args.match_score, 0, 100);
       // Salary confidence-gated: only show precise range when confidence is medium+
       const salaryConfidence = sal._confidence || (sal._fromPostings ? 'medium' : 'estimate');
@@ -1041,7 +1042,18 @@ function emitToolCallA(name, args, res, sal, role, marketData, atsResult, server
       // with deterministic mention-count levels. Claude only identifies skills
       // — the server decides relevance and level.
       if (serverSkills && serverSkills.present.length > 0) {
-        const topPresent = serverSkills.present.slice(0, 6);
+        let topPresent = serverSkills.present.slice(0, 6);
+
+        // Supplement with Claude's skills if server found fewer than 5
+        if (topPresent.length < 5) {
+          const serverNames = new Set(topPresent.map(s => s.skill.toLowerCase().trim()));
+          const claudeExtra = (args.skills_present || [])
+            .filter(s => s && !serverNames.has(s.toLowerCase().trim()))
+            .slice(0, 6 - topPresent.length)
+            .map(s => ({ skill: s, pct: Math.min((args.skill_relevance || {})[s] || 0, 85) }));
+          topPresent = [...topPresent, ...claudeExtra];
+        }
+
         const skills     = topPresent.map(s => s.skill);
         const levels     = {};
         const relevance  = {};
@@ -1086,13 +1098,32 @@ function emitToolCallA(name, args, res, sal, role, marketData, atsResult, server
       // Claude provides how_to_fix text (writing), but the gap selection and ranking
       // are deterministic.
       if (serverSkills && serverSkills.missing.length > 0) {
-        const serverGaps = serverSkills.missing.slice(0, 5);
+        let serverGaps = serverSkills.missing.slice(0, 5);
+
         // Build a lookup of Claude's how_to_fix suggestions keyed by lowercase skill
         const claudeFixes = {};
         for (const g of (args.gaps || [])) {
           if (g.skill && g.how_to_fix) {
             claudeFixes[g.skill.toLowerCase().trim()] = g.how_to_fix;
           }
+        }
+
+        // Supplement with Claude's gaps if server found fewer than 5
+        if (serverGaps.length < 5) {
+          const serverGapNames = new Set(serverGaps.map(g => g.skill.toLowerCase().trim()));
+          const presentNames   = new Set((serverSkills.present || []).map(s => s.skill.toLowerCase().trim()));
+          const claudeSupp = (args.gaps || [])
+            .filter(g => g.skill
+              && !serverGapNames.has(g.skill.toLowerCase().trim())
+              && !presentNames.has(g.skill.toLowerCase().trim()))
+            .slice(0, 5 - serverGaps.length)
+            .map(g => ({
+              skill:      g.skill,
+              pct:        0,
+              _fromJD:    true,
+              how_to_fix: g.how_to_fix || ''
+            }));
+          serverGaps = [...serverGaps, ...claudeSupp];
         }
 
         const gaps = serverGaps.map(g => {

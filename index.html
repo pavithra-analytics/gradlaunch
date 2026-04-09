@@ -2273,12 +2273,8 @@ body{line-height:1.5}
 /* Left pane: bullet list */
 .score-left-pane{}
 
-/* Right pane: sticky sidebar — stays visible while scrolling through bullets */
+/* Right pane: matches left column height via grid stretch; scrolls independently */
 .score-right-pane{
-  position:sticky;
-  top:72px;            /* below sticky nav */
-  align-self:start;    /* required: sticky only works with align-self:start in CSS grid */
-  height:calc(100vh - 88px);
   min-height:500px;
   background:var(--card-bg);
   border-radius:var(--r-lg);
@@ -2286,7 +2282,7 @@ body{line-height:1.5}
   box-shadow:var(--el-1);
   display:flex;
   flex-direction:column;
-  overflow:hidden;
+  overflow-y:auto;
 }
 .score-right-header{
   display:flex;align-items:center;gap:8px;
@@ -2298,21 +2294,23 @@ body{line-height:1.5}
 .score-right-header .material-symbols-outlined{font-size:16px;color:var(--primary)}
 .score-resume-ta{
   flex:1;
-  height:0;        /* force flex to compute remaining height correctly (textarea intrinsic height workaround) */
+  height:0;        /* force flex to compute remaining height correctly */
   min-height:0;
   padding:12px 16px;
   font-size:12px;font-weight:500;
   color:var(--on-surface);
   background:var(--surface-low);
   line-height:1.7;
-  resize:none;
   outline:none;
   border:none;
   border-bottom:1px solid var(--border);
   font-family:inherit;
   overflow-y:auto;
+  white-space:pre-wrap;
+  word-break:break-word;
+  cursor:default;
+  user-select:text;
 }
-.score-resume-ta:focus{background:var(--card-bg)}
 .dark .score-resume-ta{background:var(--input-bg);color:var(--on-surface)}
 .score-resume-download{
   display:flex;align-items:center;justify-content:center;gap:6px;
@@ -2985,9 +2983,8 @@ body{line-height:1.5}
           <span class="material-symbols-outlined">description</span>
           Your Resume — click a flagged bullet to fix it
         </div>
-        <textarea class="score-resume-ta" id="resume-edit-area"
-          placeholder="Your resume text will appear here once analysis loads…"
-          spellcheck="false"></textarea>
+        <div class="score-resume-ta" id="resume-edit-area"
+          aria-label="Your resume text" tabindex="0"></div>
         <button class="score-resume-download" onclick="downloadResumeEdit()">
           <span class="material-symbols-outlined" style="font-size:16px">download</span>
           Download as .docx
@@ -3195,6 +3192,7 @@ function resetUpload() {
   }
   document.getElementById('file-input').value = '';
   resumeText = '';
+  window._resumeText = '';
   rawFile    = null; // clear stored file
   showDZ('empty');
   setLaunchEnabled(false);
@@ -3251,6 +3249,7 @@ async function handleFile(input) {
     // Store full text; truncation only applied when sending to Claude (not for ATS)
     if (upData.resumeText && upData.resumeText.length > 0) {
       resumeText = upData.resumeText;
+      window._resumeText = resumeText;
     }
 
     if (!upData.fallback) {
@@ -3289,6 +3288,7 @@ async function handleFile(input) {
         return showFileErr(name,'This PDF appears to be a scanned image. Save as a text-based PDF and try again.');
       }
       resumeText   = text;
+      window._resumeText = resumeText;
       resumeFileId = null;
       rawFile      = file;
       showFileOk(name);
@@ -3302,6 +3302,7 @@ async function handleFile(input) {
           return showFileErr(name, 'Could not extract enough text from this DOCX. Try saving as PDF and uploading again.');
         }
         resumeText   = text;
+        window._resumeText = resumeText;
         resumeFileId = null;
         rawFile      = file;
         showFileOk(name);
@@ -3617,6 +3618,7 @@ async function launchAnalysis() {
         // Server-extracted text always preferred (full text, no truncation)
         if (upData.resumeText) {
           resumeText = upData.resumeText;
+          window._resumeText = resumeText;
         }
 
         if (!upData.fallback && upData.fileId) {
@@ -3633,9 +3635,11 @@ async function launchAnalysis() {
               pages.push(ct.items.map(x => x.str).join(' '));
             }
             resumeText = normalizeResumeText(pages.join('\n'));
+            window._resumeText = resumeText;
           } else if (ext === 'docx') {
             const ab = await readAB(rawFile);
             resumeText = normalizeResumeText(await extractDOCXBrowser(ab));
+            window._resumeText = resumeText;
           }
         }
         errBox.style.display = 'none';
@@ -3976,7 +3980,8 @@ function showTab(t) {
   }
   // Populate resume pane whenever Resume Fix tab opens (ISSUE 3)
   if (t === 'score') populateResumePane();
-  // Finalize tab — no metric cards to populate (removed per ISSUE 1)
+  // Populate Finalize metrics when that tab opens
+  if (t === 'finalize') renderFinalizeMetrics();
 }
 
 // ═══════════════════════════════════════════════════
@@ -4012,9 +4017,12 @@ function renderVerdict(d) {
   document.getElementById('sum-title').textContent = d.verdict_headline || 'Analysis complete';
   document.getElementById('sum-desc').textContent  = d.verdict_sub || '';
 
-  const atsText = (d.ats_pass_rate || 0) < 60
-    ? `${d.ats_pass_rate||0}% of top keywords found. ${100-(d.ats_pass_rate||50)}% missing — fixable.`
-    : `${d.ats_pass_rate}% keyword coverage — ATS-friendly.`;
+  const atsRate = d.ats_pass_rate != null ? d.ats_pass_rate : null;
+  const atsText = atsRate == null
+    ? 'ATS data loading…'
+    : atsRate < 60
+      ? `${atsRate}% of top keywords found. ${100 - atsRate}% missing — fixable.`
+      : `${atsRate}% keyword coverage — ATS-friendly.`;
 
   // Salary: confidence-gated display — suppress fake precision (ISSUE 5: strip parens)
   const salDisplay = stripSalParen(sal.fromPostings || sal.range || '');
@@ -4051,7 +4059,7 @@ function renderVerdict(d) {
   // Keyword Match (ATS) stat card
   const atsVal  = document.getElementById('profile-ats-val');
   const atsNote = document.getElementById('profile-ats-note');
-  if (atsVal)  atsVal.textContent  = (d.ats_pass_rate || '—') + (d.ats_pass_rate ? '%' : '');
+  if (atsVal)  atsVal.textContent  = atsRate != null ? atsRate + '%' : '—';
   // ISSUE 4: do not overwrite the static note — keep label clean
 
   // Salary stat card — show clean range only, no parenthetical (ISSUE 5)
@@ -4195,9 +4203,10 @@ function renderLinkedIn(d) {
   const abEl = document.getElementById('li-ab-text');
   if (abEl) abEl.textContent = d.linkedin_about || '';
 
-  // Skills — cap at 5
+  // Skills — cap at 5; store for use in rewrites and finalize checklist
+  analysisData.linkedin_skills = d.linkedin_skills || [];
   const skEl = document.getElementById('li-skill-tags');
-  if (skEl) skEl.innerHTML = (d.linkedin_skills || [])
+  if (skEl) skEl.innerHTML = analysisData.linkedin_skills
     .slice(0, 5)
     .map(s => `<span class="li-skill-chip">${esc(s)}</span>`).join('');
 }
@@ -4786,9 +4795,9 @@ async function generateBulletRewrite(bulletText, brutalHoney, role) {
         bullet:          bulletText,
         role:            role || currentRole || 'this role',
         brutalHoney:     brutalHoney || '',
-        missingKeywords: analysisData.ats_missing_keyword
-          ? [analysisData.ats_missing_keyword]
-          : []
+        missingKeywords: (analysisData.gaps || []).slice(0, 5).map(g => g.skill).filter(Boolean).length
+          ? (analysisData.gaps || []).slice(0, 5).map(g => g.skill).filter(Boolean)
+          : analysisData.ats_missing_keyword ? [analysisData.ats_missing_keyword] : []
       })
     });
 
@@ -4967,30 +4976,28 @@ function adoptRewrite(idx) {
 }
 
 // ═══════════════════════════════════════════════════
-// SCROLL RIGHT PANE — finds bullet text in resume textarea,
+// SCROLL RIGHT PANE — finds bullet text in resume div,
 // scrolls to it, and briefly highlights it.
 // ═══════════════════════════════════════════════════
 function scrollResumePaneToText(text) {
-  const ta = document.getElementById('resume-edit-area');
-  if (!ta || !text || !ta.value) return;
-  const needle = text.trim().substring(0, 80); // match on first 80 chars
-  const idx = ta.value.indexOf(needle);
+  const el = document.getElementById('resume-edit-area');
+  if (!el || !text) return;
+  const content = el.textContent || '';
+  if (!content) return;
+  const needle = text.trim().substring(0, 80);
+  const idx = content.indexOf(needle);
   if (idx < 0) return;
 
-  // Select/highlight the text in the textarea
-  ta.focus();
-  ta.setSelectionRange(idx, idx + needle.length);
+  // Estimate scroll position from line number
+  const textBefore = content.substring(0, idx);
+  const linesAbove = (textBefore.match(/\n/g) || []).length;
+  const totalLines  = Math.max(1, (content.match(/\n/g) || []).length);
+  const lineH       = el.scrollHeight / totalLines;
+  el.scrollTop      = Math.max(0, (linesAbove - 2) * lineH);
 
-  // Scroll the textarea so the selection is visible
-  const lineHeight = parseFloat(getComputedStyle(ta).lineHeight) || 18;
-  const textBefore = ta.value.substring(0, idx);
-  const linesAbove = textBefore.split('\n').length - 1;
-  // Scroll to 2 lines above the match so context is visible
-  ta.scrollTop = Math.max(0, (linesAbove - 2) * lineHeight);
-
-  // Visual flash: briefly change selection background via a CSS class toggle
-  ta.classList.add('resume-highlight');
-  setTimeout(() => ta.classList.remove('resume-highlight'), 1200);
+  // Visual flash
+  el.classList.add('resume-highlight');
+  setTimeout(() => el.classList.remove('resume-highlight'), 1200);
 }
 
 // ═══════════════════════════════════════════════════
@@ -5148,9 +5155,10 @@ function adoptRewriteInline(idx) {
     resumeText = resumeText.replace(new RegExp(escaped), newText);
   }
 
-  // Sync to right-pane textarea
+  // Sync to right-pane display
+  window._resumeText = resumeText;
   const rta = document.getElementById('resume-edit-area');
-  if (rta) rta.value = resumeText;
+  if (rta) rta.textContent = window._resumeText;
 
   // Update store: preserve original for revert, track adoptedText
   const originalText = d.original || d.text;
@@ -5209,8 +5217,9 @@ function revertBulletInline(idx) {
   }
 
   // Sync right pane
+  window._resumeText = resumeText;
   const rta = document.getElementById('resume-edit-area');
-  if (rta) rta.value = resumeText;
+  if (rta) rta.textContent = window._resumeText;
 
   // Restore store — clear adopted state, preserve original rw for potential re-adoption
   bulletStore.set(idx, { ...d, adopted: false, adoptedText: null });
@@ -5250,71 +5259,67 @@ function revertBulletInline(idx) {
   scrollResumePaneToText(d.original);
 }
 
-// ── Minimal pure-JS .docx generator (ZIP STORED, no CDN) ──
-// A .docx file is a ZIP archive containing XML files.
-// STORED mode = no compression, works natively in all browsers.
-function _crc32(buf) {
-  let c = 0xFFFFFFFF;
-  for (let i = 0; i < buf.length; i++) {
-    c ^= buf[i];
-    for (let j = 0; j < 8; j++) c = (c >>> 1) ^ (c & 1 ? 0xEDB88320 : 0);
-  }
-  return (c ^ 0xFFFFFFFF) >>> 0;
-}
-function makeDocxBlob(text) {
-  const enc = new TextEncoder();
-  // Convert plain text to Word XML paragraphs
-  const paras = text.split('\n').map(line => {
-    const safe = line.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    return `<w:p><w:r><w:t xml:space="preserve">${safe}</w:t></w:r></w:p>`;
-  }).join('');
-
-  const files = [
-    { n:'[Content_Types].xml', d:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>' },
-    { n:'_rels/.rels',         d:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>' },
-    { n:'word/_rels/document.xml.rels', d:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>' },
-    { n:'word/document.xml',   d:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${paras}<w:sectPr/></w:body></w:document>` }
-  ];
-
-  const parts = [], cdirs = [];
-  let off = 0;
-  for (const f of files) {
-    const nb = enc.encode(f.n), db = enc.encode(f.d);
-    const crc = _crc32(db), sz = db.length;
-    const lh = new Uint8Array(30 + nb.length + sz);
-    const dv = new DataView(lh.buffer);
-    dv.setUint32(0,0x04034b50,true); dv.setUint16(4,20,true);
-    dv.setUint16(6,0,true); dv.setUint16(8,0,true);
-    dv.setUint16(10,0,true); dv.setUint16(12,0,true);
-    dv.setUint32(14,crc,true); dv.setUint32(18,sz,true); dv.setUint32(22,sz,true);
-    dv.setUint16(26,nb.length,true); dv.setUint16(28,0,true);
-    lh.set(nb,30); lh.set(db,30+nb.length);
-    const cd = new Uint8Array(46+nb.length);
-    const cv = new DataView(cd.buffer);
-    cv.setUint32(0,0x02014b50,true); cv.setUint16(4,20,true); cv.setUint16(6,20,true);
-    cv.setUint16(8,0,true); cv.setUint16(10,0,true); cv.setUint16(12,0,true); cv.setUint16(14,0,true);
-    cv.setUint32(16,crc,true); cv.setUint32(20,sz,true); cv.setUint32(24,sz,true);
-    cv.setUint16(28,nb.length,true); cv.setUint16(30,0,true); cv.setUint16(32,0,true);
-    cv.setUint16(34,0,true); cv.setUint16(36,0,true); cv.setUint32(38,0,true); cv.setUint32(42,off,true);
-    cd.set(nb,46);
-    parts.push(lh); cdirs.push(cd); off += lh.length;
-  }
-  const cdSz = cdirs.reduce((a,b)=>a+b.length,0);
-  const eocd = new Uint8Array(22);
-  const ev = new DataView(eocd.buffer);
-  ev.setUint32(0,0x06054b50,true); ev.setUint16(4,0,true); ev.setUint16(6,0,true);
-  ev.setUint16(8,files.length,true); ev.setUint16(10,files.length,true);
-  ev.setUint32(12,cdSz,true); ev.setUint32(16,off,true); ev.setUint16(20,0,true);
-  const all=[...parts,...cdirs,eocd], tot=all.reduce((a,b)=>a+b.length,0);
-  const out=new Uint8Array(tot); let p=0;
-  for(const x of all){out.set(x,p);p+=x.length;}
-  return new Blob([out],{type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
-}
-
 function downloadResumeEdit() {
-  const ta = document.getElementById('resume-edit-area');
-  const text = ta ? ta.value : resumeText || '';
+  // Read from window._resumeText — always plain text, never binary
+  const text = window._resumeText || '';
   if (!text.trim()) return;
+
+  // DOCX generation — only runs here, never on page load or tab switch
+  function _crc32(buf) {
+    let c = 0xFFFFFFFF;
+    for (let i = 0; i < buf.length; i++) {
+      c ^= buf[i];
+      for (let j = 0; j < 8; j++) c = (c >>> 1) ^ (c & 1 ? 0xEDB88320 : 0);
+    }
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  }
+  function makeDocxBlob(t) {
+    const enc = new TextEncoder();
+    const paras = t.split('\n').map(line => {
+      const safe = line.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      return `<w:p><w:r><w:t xml:space="preserve">${safe}</w:t></w:r></w:p>`;
+    }).join('');
+    const files = [
+      { n:'[Content_Types].xml', d:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>' },
+      { n:'_rels/.rels',         d:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>' },
+      { n:'word/_rels/document.xml.rels', d:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>' },
+      { n:'word/document.xml',   d:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${paras}<w:sectPr/></w:body></w:document>` }
+    ];
+    const parts = [], cdirs = [];
+    let off = 0;
+    for (const f of files) {
+      const nb = enc.encode(f.n), db = enc.encode(f.d);
+      const crc = _crc32(db), sz = db.length;
+      const lh = new Uint8Array(30 + nb.length + sz);
+      const dv = new DataView(lh.buffer);
+      dv.setUint32(0,0x04034b50,true); dv.setUint16(4,20,true);
+      dv.setUint16(6,0,true); dv.setUint16(8,0,true);
+      dv.setUint16(10,0,true); dv.setUint16(12,0,true);
+      dv.setUint32(14,crc,true); dv.setUint32(18,sz,true); dv.setUint32(22,sz,true);
+      dv.setUint16(26,nb.length,true); dv.setUint16(28,0,true);
+      lh.set(nb,30); lh.set(db,30+nb.length);
+      const cd = new Uint8Array(46+nb.length);
+      const cv = new DataView(cd.buffer);
+      cv.setUint32(0,0x02014b50,true); cv.setUint16(4,20,true); cv.setUint16(6,20,true);
+      cv.setUint16(8,0,true); cv.setUint16(10,0,true); cv.setUint16(12,0,true); cv.setUint16(14,0,true);
+      cv.setUint32(16,crc,true); cv.setUint32(20,sz,true); cv.setUint32(24,sz,true);
+      cv.setUint16(28,nb.length,true); cv.setUint16(30,0,true); cv.setUint16(32,0,true);
+      cv.setUint16(34,0,true); cv.setUint16(36,0,true); cv.setUint32(38,0,true); cv.setUint32(42,off,true);
+      cd.set(nb,46);
+      parts.push(lh); cdirs.push(cd); off += lh.length;
+    }
+    const cdSz = cdirs.reduce((a,b)=>a+b.length,0);
+    const eocd = new Uint8Array(22);
+    const ev = new DataView(eocd.buffer);
+    ev.setUint32(0,0x06054b50,true); ev.setUint16(4,0,true); ev.setUint16(6,0,true);
+    ev.setUint16(8,files.length,true); ev.setUint16(10,files.length,true);
+    ev.setUint32(12,cdSz,true); ev.setUint32(16,off,true); ev.setUint16(20,0,true);
+    const all=[...parts,...cdirs,eocd], tot=all.reduce((a,b)=>a+b.length,0);
+    const out=new Uint8Array(tot); let p=0;
+    for(const x of all){out.set(x,p);p+=x.length;}
+    return new Blob([out],{type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
+  }
+
   const blob = makeDocxBlob(text);
   const a    = document.createElement('a');
   a.href     = URL.createObjectURL(blob);
@@ -5323,10 +5328,11 @@ function downloadResumeEdit() {
   URL.revokeObjectURL(a.href);
 }
 
-// Populate resume right pane whenever results become visible (ISSUE 3)
+// Populate resume right pane whenever results become visible
+// Uses window._resumeText (plain text) set via textContent — never binary data
 function populateResumePane() {
-  const ta = document.getElementById('resume-edit-area');
-  if (ta && resumeText && !ta.value) ta.value = resumeText;
+  const el = document.getElementById('resume-edit-area');
+  if (el && window._resumeText) el.textContent = window._resumeText;
 }
 
 // ═══════════════════════════════════════════════════
@@ -5444,7 +5450,7 @@ async function submitFeedback() {
 // ═══════════════════════════════════════════════════
 function renderFinalizeMetrics() {
   const d = analysisData;
-  if (!d || !d.ats_pass_rate) return;
+  if (!d || d.ats_pass_rate == null) return;
 
   const ats = d.ats_pass_rate || 0;
   const bq  = Math.round((d.bullet_quality || 0) * 10);
