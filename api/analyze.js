@@ -1745,7 +1745,8 @@ module.exports = async function handler(req, res) {
     // Launch Stream B after 4s — Stream A typically emits set_skills by T+5s
     // so we use whatever skills are available at launch time
     const launchStreamB = async () => {
-      await new Promise(r => setTimeout(r, 2000));
+      // No delay — server-detected skills (serverSkills.present) are used as fallback
+      // and are equivalent quality to waiting for Stream A's set_skills event.
 
       const detectedGaps = serverSkills?.missing?.slice(0, 5) || [];
       const userContentB = buildAnalysisPromptB(
@@ -1759,7 +1760,7 @@ module.exports = async function handler(req, res) {
       const SECTION_REQUESTS = [
         { toolName: 'set_linkedin',       maxTokens: 1200 },
         { toolName: 'set_certifications', maxTokens: 1800 },
-        { toolName: 'set_projects',       maxTokens: 4500 },
+        { toolName: 'set_projects',       maxTokens: 3000 },
       ];
 
       await Promise.all(SECTION_REQUESTS.map(async ({ toolName, maxTokens }) => {
