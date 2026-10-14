@@ -522,10 +522,30 @@ module.exports = async function handler(req, res) {
 };
 
 // ═══════════════════════════════════════════════════════
+// IMPACT STATS — persistent counters, no TTL
+// Used by analyze.js to record aggregate stats and by
+// api/impact.js to read them for the public /impact page.
+// ═══════════════════════════════════════════════════════
+async function upstashIncrBy(key, by) {
+  try {
+    const url   = process.env.UPSTASH_REDIS_REST_URL;
+    const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+    if (!url || !token) return null;
+    const cmd = Number.isInteger(by) ? 'incrby' : 'incrbyfloat';
+    const r = await httpGet(
+      `${url}/${cmd}/${encodeURIComponent(key)}/${by}`,
+      { Authorization: `Bearer ${token}` }
+    );
+    return r?.result ?? null;
+  } catch { return null; }
+}
+
+// ═══════════════════════════════════════════════════════
 // EXPORTS — used by analyze.js for cache lookup
 // ═══════════════════════════════════════════════════════
 module.exports.roleCacheKey   = roleCacheKey;
 module.exports.upstashGet     = upstashGet;
 module.exports.upstashSet     = upstashSet;
+module.exports.upstashIncrBy  = upstashIncrBy;
 module.exports.ROLES          = ROLES;
 module.exports.SKILL_KEYWORDS = SKILL_KEYWORDS;

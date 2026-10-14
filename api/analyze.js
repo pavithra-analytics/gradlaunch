@@ -1,7 +1,7 @@
 'use strict';
 const https        = require('https');
 const { deleteFile }              = require('./upload');
-const { roleCacheKey, upstashGet, ROLES, SKILL_KEYWORDS } = require('./warmcache');
+const { roleCacheKey, upstashGet, upstashIncrBy, ROLES, SKILL_KEYWORDS } = require('./warmcache');
 
 // ── Model strings from env vars — swap without code deploy ──
 // Set STREAM_A_MODEL and STREAM_B_MODEL in Vercel environment variables.
@@ -1771,6 +1771,27 @@ module.exports = async function handler(req, res) {
     await Promise.all([streamAPromise, launchStreamB()]);
 
     await cleanupFile();
+
+    // Record aggregate stats — fire-and-forget, never delays the response
+    (async () => {
+      try {
+        const ats = atsResult?.atsScore;
+        const presentCount = serverSkills?.present?.length || 0;
+        const topN  = Math.max(1, Math.min(15, mergedSkillFreq.length));
+        const match = ats != null
+          ? Math.round(Math.min(95, Math.max(5, 0.7 * ats + 0.3 * (presentCount / topN) * 100)))
+          : null;
+        const ps = [
+          upstashIncrBy('impact:total', 1),
+          ats != null ? upstashIncrBy('impact:ats_sum', ats)   : Promise.resolve(),
+          ats != null ? upstashIncrBy('impact:ats_count', 1)   : Promise.resolve(),
+          match != null ? upstashIncrBy('impact:match_count', 1) : Promise.resolve(),
+          (match != null && match >= 70) ? upstashIncrBy('impact:high_match', 1) : Promise.resolve(),
+        ];
+        await Promise.all(ps);
+      } catch { /* never block the response */ }
+    })();
+
     sendEvent(res, 'done', { complete: true });
     res.end();
 
