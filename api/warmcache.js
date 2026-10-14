@@ -540,6 +540,22 @@ async function upstashIncrBy(key, by) {
   } catch { return null; }
 }
 
+// SET key value NX EX ttl — returns true if key was newly created (unique),
+// false if it already existed. Used to deduplicate impact counter writes.
+async function upstashSetNX(key, ttlSeconds) {
+  try {
+    const url   = process.env.UPSTASH_REDIS_REST_URL;
+    const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+    if (!url || !token) return true; // fail open so counters still increment
+    const r = await httpGet(
+      `${url}/set/${encodeURIComponent(key)}/1?NX=true&EX=${ttlSeconds}`,
+      { Authorization: `Bearer ${token}` }
+    );
+    // Upstash returns {"result":"OK"} on new key, {"result":null} if already set
+    return r?.result === 'OK';
+  } catch { return true; } // fail open
+}
+
 // ═══════════════════════════════════════════════════════
 // EXPORTS — used by analyze.js for cache lookup
 // ═══════════════════════════════════════════════════════
@@ -547,5 +563,6 @@ module.exports.roleCacheKey   = roleCacheKey;
 module.exports.upstashGet     = upstashGet;
 module.exports.upstashSet     = upstashSet;
 module.exports.upstashIncrBy  = upstashIncrBy;
+module.exports.upstashSetNX   = upstashSetNX;
 module.exports.ROLES          = ROLES;
 module.exports.SKILL_KEYWORDS = SKILL_KEYWORDS;

@@ -1,7 +1,8 @@
 'use strict';
 const https        = require('https');
+const crypto       = require('crypto');
 const { deleteFile }              = require('./upload');
-const { roleCacheKey, upstashGet, upstashIncrBy, ROLES, SKILL_KEYWORDS } = require('./warmcache');
+const { roleCacheKey, upstashGet, upstashIncrBy, upstashSetNX, ROLES, SKILL_KEYWORDS } = require('./warmcache');
 
 // ── Model strings from env vars — swap without code deploy ──
 // Set STREAM_A_MODEL and STREAM_B_MODEL in Vercel environment variables.
@@ -1787,22 +1788,31 @@ module.exports = async function handler(req, res) {
 
     await cleanupFile();
 
-    // Record aggregate stats — awaited before res.end() so Vercel doesn't
-    // kill the function before the Upstash writes complete
+    // Record aggregate stats — deduplicated by resume hash so uploading the
+    // same resume repeatedly counts as 1. A meaningfully edited resume has a
+    // different hash and counts again. TTL = 180 days.
     try {
-      const ats = atsResult?.atsScore;
-      const presentCount = serverSkills?.present?.length || 0;
-      const topN  = Math.max(1, Math.min(15, mergedSkillFreq.length));
-      const match = ats != null
-        ? Math.round(Math.min(95, Math.max(5, 0.7 * ats + 0.3 * (presentCount / topN) * 100)))
-        : null;
-      await Promise.all([
-        upstashIncrBy('impact:total', 1),
-        ats != null ? upstashIncrBy('impact:ats_sum', ats)   : Promise.resolve(),
-        ats != null ? upstashIncrBy('impact:ats_count', 1)   : Promise.resolve(),
-        match != null ? upstashIncrBy('impact:match_count', 1) : Promise.resolve(),
-        (match != null && match >= 70) ? upstashIncrBy('impact:high_match', 1) : Promise.resolve(),
-      ]);
+      const resumeHash = crypto
+        .createHash('sha256')
+        .update(resumeForATS || '')
+        .digest('hex');
+      const isNew = await upstashSetNX(`impact:seen:${resumeHash}`, 180 * 86400);
+
+      if (isNew) {
+        const ats = atsResult?.atsScore;
+        const presentCount = serverSkills?.present?.length || 0;
+        const topN  = Math.max(1, Math.min(15, mergedSkillFreq.length));
+        const match = ats != null
+          ? Math.round(Math.min(95, Math.max(5, 0.7 * ats + 0.3 * (presentCount / topN) * 100)))
+          : null;
+        await Promise.all([
+          upstashIncrBy('impact:total', 1),
+          ats != null ? upstashIncrBy('impact:ats_sum', ats)   : Promise.resolve(),
+          ats != null ? upstashIncrBy('impact:ats_count', 1)   : Promise.resolve(),
+          match != null ? upstashIncrBy('impact:match_count', 1) : Promise.resolve(),
+          (match != null && match >= 70) ? upstashIncrBy('impact:high_match', 1) : Promise.resolve(),
+        ]);
+      }
     } catch { /* never block the response */ }
 
     sendEvent(res, 'done', { complete: true });
