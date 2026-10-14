@@ -1642,6 +1642,13 @@ module.exports = async function handler(req, res) {
   // and experience details in the lower half of longer resumes are available for grounding.
   const resumeForB = (resumeFull || resume || '').substring(0, 6000);
 
+  // Detect garbled PDF text (>35% non-ASCII non-whitespace).
+  // When garbled, Stream B's resume context is unusable — pass the fileId instead
+  // so Claude reads the original PDF directly, just like Stream A does.
+  const resumeBNonWS = resumeForB.replace(/\s/g, '');
+  const resumeBGarbled = resumeBNonWS.length > 50 &&
+    (resumeBNonWS.match(/[^\x20-\x7E]/g) || []).length / resumeBNonWS.length > 0.35;
+
   // SSE headers
   res.setHeader('Content-Type',      'text/event-stream');
   res.setHeader('Cache-Control',     'no-cache');
@@ -1749,10 +1756,21 @@ module.exports = async function handler(req, res) {
       // and are equivalent quality to waiting for Stream A's set_skills event.
 
       const detectedGaps = serverSkills?.missing?.slice(0, 5) || [];
-      const userContentB = buildAnalysisPromptB(
+
+      // When resume text is garbled (PDF with embedded fonts), Stream B gets the fileId
+      // so Claude reads the original PDF — same as Stream A. Otherwise use extracted text.
+      const streamBText   = resumeBGarbled ? '' : resumeForB;
+      const streamBFileId = resumeBGarbled ? fileId : null;
+      const streamBPrompt = buildAnalysisPromptB(
         role, locationStr, jd, hasJD, sal, marketDataBlock,
-        resumeForB, streamASkills, detectedGaps, resumeAnchors
+        streamBText, streamASkills, detectedGaps, resumeAnchors
       );
+      const userContentB = streamBFileId
+        ? [
+            { type: 'document', source: { type: 'file', file_id: streamBFileId } },
+            { type: 'text', text: streamBPrompt }
+          ]
+        : streamBPrompt;
 
       // Three parallel forced-tool requests so each section always fires independently.
       // tool_choice:{type:'any'} on sonnet-4-6 calls exactly one tool then stops,
@@ -1760,7 +1778,7 @@ module.exports = async function handler(req, res) {
       const SECTION_REQUESTS = [
         { toolName: 'set_linkedin',       maxTokens: 1200 },
         { toolName: 'set_certifications', maxTokens: 1800 },
-        { toolName: 'set_projects',       maxTokens: 3000 },
+        { toolName: 'set_projects',       maxTokens: 4000 },
       ];
 
       await Promise.all(SECTION_REQUESTS.map(async ({ toolName, maxTokens }) => {
@@ -1772,7 +1790,7 @@ module.exports = async function handler(req, res) {
             userContent: userContentB,
             tools:       TOOLS_B,
             toolChoice:  { type: 'tool', name: toolName },
-            fileId:      null,
+            fileId:      streamBFileId,
             maxTokens,
           });
           await processStream(anthropicRes, (name, args) =>
