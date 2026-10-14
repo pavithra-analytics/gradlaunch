@@ -1796,7 +1796,7 @@ module.exports = async function handler(req, res) {
         .createHash('sha256')
         .update(resumeForATS || '')
         .digest('hex');
-      const isNew = await upstashSetNX(`impact:seen:${resumeHash}`, 180 * 86400);
+      const isNew = await upstashSetNX(`impact:seen:${resumeHash}`, 30 * 86400);
 
       if (isNew) {
         const ats = atsResult?.atsScore;
