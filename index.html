@@ -1272,7 +1272,7 @@ button{cursor:pointer;border:none;outline:none}
 /* Scrollable, height-constrained bullet list — long resumes stay navigable */
 .score-bullets-scroll{
   display:flex;flex-direction:column;gap:12px;
-  max-height:60vh;overflow-y:auto;scroll-behavior:smooth;scroll-padding-top:8px;
+  flex:1;min-height:0;overflow-y:auto;scroll-behavior:smooth;scroll-padding-top:8px;
   padding-right:4px;
 }
 .score-bullets-scroll::-webkit-scrollbar{width:4px}
@@ -2282,12 +2282,22 @@ body{line-height:1.5}
   display:grid;
   grid-template-columns:1fr 1fr;
   gap:24px;
-  align-items:stretch;  /* both columns equal height */
+  align-items:stretch;
+  height:calc(100vh - 200px);
+  min-height:500px;
+  max-height:900px;
 }
-@media(max-width:960px){.score-split{grid-template-columns:1fr}}
+@media(max-width:960px){.score-split{grid-template-columns:1fr;height:auto;max-height:none}}
 
-/* Left pane: bullet list */
-.score-left-pane{}
+/* Left pane: flex column so scroll area fills full height */
+.score-left-pane{
+  display:flex;flex-direction:column;min-height:0;
+  background:var(--card-bg);
+  border-radius:var(--r-lg);
+  border:1px solid var(--border);
+  box-shadow:var(--el-1);
+  padding:16px;
+}
 
 /* Right pane: matches left column height via grid stretch; scrolls independently */
 .score-right-pane{
@@ -5433,7 +5443,18 @@ function downloadResumeEdit() {
 // Uses window._resumeText (plain text) set via textContent — never binary data
 function populateResumePane() {
   const el = document.getElementById('resume-edit-area');
-  if (el && window._resumeText) el.textContent = window._resumeText;
+  if (!el) return;
+  const text = window._resumeText || '';
+  if (!text) return;
+  // Detect garbled PDF extraction: >35% non-printable-ASCII in non-whitespace chars
+  const nonWS = text.replace(/\s/g, '');
+  const nonAscii = (nonWS.match(/[^\x20-\x7E]/g) || []).length;
+  if (nonWS.length > 50 && nonAscii / nonWS.length > 0.35) {
+    el.style.cssText = 'display:flex;align-items:center;justify-content:center;color:var(--on-surface-v);font-size:13px;text-align:center;padding:24px;';
+    el.textContent = 'Resume text could not be displayed — this PDF uses a non-standard font encoding. The bullet analysis on the left is still accurate.';
+  } else {
+    el.textContent = text;
+  }
 }
 
 // ═══════════════════════════════════════════════════

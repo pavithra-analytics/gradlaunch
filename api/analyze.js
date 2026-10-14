@@ -1762,7 +1762,7 @@ module.exports = async function handler(req, res) {
         userContent: userContentB,
         tools:       TOOLS_B,
         fileId:      null,
-        maxTokens:   5000  // raised from 3200 — 3 full projects with 4-phase ai_prompts each need ~1800 tokens alone
+        maxTokens:   8000  // 3 tools × large JSON outputs; set_projects alone needs ~2500 tokens for 4-phase ai_prompts
       });
 
       return processStream(anthropicResB, (name, args) => emitToolCallB(name, args, res, role, marketData, detectedGaps));
