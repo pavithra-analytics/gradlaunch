@@ -2407,6 +2407,88 @@ body{line-height:1.5}
   font-weight:500;
   line-height:1.55;
 }
+
+/* ═══════════════════════════════════════════════════
+   VISUAL UPGRADE — dark sidebar, card depth, typography
+═══════════════════════════════════════════════════ */
+
+/* ── Dark navy sidebar ── */
+.sidebar {
+  background: #0c1929;
+  border-right-color: rgba(255,255,255,.06);
+}
+.dark .sidebar {
+  background: #070c14;
+  border-right-color: rgba(255,255,255,.04);
+}
+.sidebar-section-label {
+  color: rgba(255,255,255,.3);
+}
+.sidebar-btn {
+  color: rgba(255,255,255,.55);
+}
+.sidebar-btn:hover {
+  background: rgba(255,255,255,.07);
+  color: rgba(255,255,255,.9);
+}
+.sidebar-btn.on {
+  background: rgba(110,159,255,.18);
+  color: #fff;
+  font-weight: 700;
+}
+.dark .sidebar-btn.on {
+  background: rgba(110,159,255,.15);
+  color: #fff;
+}
+.sidebar-btn::before {
+  background: #6e9fff;
+}
+.dark .sidebar-btn.on::before { background: var(--primary-container); }
+.sidebar-divider {
+  background: rgba(255,255,255,.1);
+  opacity: 1;
+}
+/* Icon in active state gets a white tint */
+.sidebar-btn.on .material-symbols-outlined {
+  color: #6e9fff;
+}
+
+/* ── Card depth ── */
+.card, .sum-card, .ic-card, .cert-card, .proj-card,
+.finalize-hero, .gap-card, .score-right-pane {
+  box-shadow: 0 1px 4px rgba(0,0,0,.06), 0 0 0 1px rgba(0,0,0,.03);
+}
+.dark .card, .dark .sum-card, .dark .ic-card, .dark .cert-card,
+.dark .proj-card, .dark .finalize-hero, .dark .gap-card {
+  box-shadow: 0 2px 8px rgba(0,0,0,.25);
+}
+
+/* ── Score ring / big metric numbers ── */
+.smv {
+  font-size: 2.6rem;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+#profile-score-pct {
+  font-size: 2.8rem;
+  font-weight: 900;
+  letter-spacing: -0.05em;
+}
+
+/* ── Section headers — coloured left border ── */
+.section-title, .ic-section-title {
+  border-left: 3px solid var(--primary);
+  padding-left: 10px;
+  margin-left: -13px;
+}
+
+/* ── Tab panel top headings ── */
+.tab-panel > h2, .tab-panel > .panel-title {
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+}
 </style>
 </head>
 <body>
