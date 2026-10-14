@@ -176,6 +176,22 @@ button{cursor:pointer;border:none;outline:none}
   letter-spacing:-.4px;
 }
 .nav-right{display:flex;align-items:center;gap:8px}
+.nav-impact-btn{
+  display:inline-flex;align-items:center;gap:5px;
+  background:transparent;color:var(--on-surface-v);
+  border:1px solid var(--border);
+  border-radius:8px;font-size:12px;font-weight:600;
+  padding:6px 12px;cursor:pointer;text-decoration:none;
+  transition:background .15s,color .15s,border-color .15s;
+}
+.nav-impact-btn:hover{
+  background:var(--surface-container);
+  color:var(--on-surface);border-color:var(--outline-v);
+}
+.nav-impact-dot{
+  width:6px;height:6px;border-radius:50%;
+  background:#22c55e;flex-shrink:0;
+}
 .nav-badge{
   display:inline-flex;align-items:center;gap:6px;
   background:rgba(0,87,189,.08);color:var(--primary);
@@ -2410,6 +2426,9 @@ body{line-height:1.5}
     <div class="logo-name">GradLaunch</div>
   </a>
   <div class="nav-right">
+    <a class="nav-impact-btn" href="/impact" title="See live product impact stats">
+      <span class="nav-impact-dot"></span>Our Impact
+    </a>
     <span class="nav-badge">
       Free
     </span>
