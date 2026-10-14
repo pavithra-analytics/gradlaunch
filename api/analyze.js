@@ -7,7 +7,7 @@ const { roleCacheKey, upstashGet, upstashIncrBy, ROLES, SKILL_KEYWORDS } = requi
 // Set STREAM_A_MODEL and STREAM_B_MODEL in Vercel environment variables.
 // Fallbacks pin to last tested versions.
 const MODEL_A = process.env.STREAM_A_MODEL || 'claude-haiku-4-5';
-const MODEL_B = process.env.STREAM_B_MODEL || 'claude-sonnet-4-5';
+const MODEL_B = process.env.STREAM_B_MODEL || 'claude-sonnet-4-6';
 
 // ═══════════════════════════════════════════════════════
 // RATE LIMITER — 5 per IP per rolling hour
