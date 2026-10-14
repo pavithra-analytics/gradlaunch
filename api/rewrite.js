@@ -66,7 +66,14 @@ Original: "${bullet}"
 Problem: ${brutalHoney || 'Not relevant to the target role.'}
 ${kwHint}
 
-Write ONE replacement bullet under 25 words. Strong verb first. ${role}-relevant outcome. Use [X] placeholders only where real numbers are missing. Output ONLY the bullet. No quotes. No explanation.`
+GROUNDING RULES:
+Do not invent any company name, project name, technology, or context that does not appear in the original bullet. Keep the real tools and real context from the original. The only acceptable invented elements are [X], [Y], [Z] as placeholders for numbers that are genuinely absent from the original.
+
+VOICE RULES — must sound like a real person's achievement, not a template:
+Start with a strong action verb. No "leveraged", "utilized", "spearheaded". Use direct verbs: built, reduced, shipped, automated, designed, deployed, analysed, cut, increased.
+Do not use dashes or em-dashes anywhere in the bullet.
+
+Write ONE replacement bullet under 25 words. ${role}-relevant outcome. Output ONLY the bullet. No quotes. No explanation.`
     }]);
 
     const text = data?.content?.[0]?.text?.trim();

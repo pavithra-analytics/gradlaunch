@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GradLaunch Impact</title>
+  <meta name="description" content="Real numbers from real students. See how GradLaunch is helping graduates get interview-ready.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#07090f;
+      --surface:#0d1019;
+      --card:#131720;
+      --card-border:rgba(255,255,255,0.07);
+      --primary:#4a8fff;
+      --primary-glow:rgba(74,143,255,0.18);
+      --tertiary:#34d399;
+      --amber:#fbbf24;
+      --on-surface:#f0f2f7;
+      --on-surface-v:rgba(240,242,247,0.55);
+      --on-surface-vv:rgba(240,242,247,0.3);
+    }
+    body{
+      font-family:'Plus Jakarta Sans',system-ui,sans-serif;
+      background:var(--bg);
+      color:var(--on-surface);
+      min-height:100vh;
+      display:flex;
+      flex-direction:column;
+    }
+
+    /* ── NAV ── */
+    nav{
+      display:flex;align-items:center;justify-content:space-between;
+      padding:20px 40px;
+      border-bottom:1px solid var(--card-border);
+    }
+    .nav-logo{
+      font-size:18px;font-weight:900;letter-spacing:-0.02em;
+      color:var(--on-surface);
+      text-decoration:none;
+    }
+    .nav-logo span{color:var(--primary)}
+    .nav-cta{
+      display:inline-flex;align-items:center;gap:6px;
+      background:var(--primary);color:#fff;
+      font-size:13px;font-weight:700;
+      padding:9px 18px;border-radius:8px;
+      text-decoration:none;
+      transition:opacity .15s;
+    }
+    .nav-cta:hover{opacity:.88}
+
+    /* ── HERO ── */
+    .hero{
+      text-align:center;
+      padding:80px 24px 64px;
+      position:relative;
+    }
+    .hero-eyebrow{
+      display:inline-block;
+      font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;
+      color:var(--primary);background:var(--primary-glow);
+      padding:5px 14px;border-radius:99px;
+      margin-bottom:24px;
+    }
+    .hero-title{
+      font-size:clamp(36px,6vw,68px);
+      font-weight:900;letter-spacing:-0.03em;
+      line-height:1.05;
+      max-width:720px;margin:0 auto 20px;
+    }
+    .hero-title em{
+      font-style:normal;
+      background:linear-gradient(135deg,var(--primary),var(--tertiary));
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+      background-clip:text;
+    }
+    .hero-sub{
+      font-size:16px;color:var(--on-surface-v);
+      max-width:480px;margin:0 auto;
+      line-height:1.65;
+    }
+
+    /* ── STATS GRID ── */
+    .stats{
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(240px,1fr));
+      gap:2px;
+      max-width:960px;margin:0 auto;
+      padding:0 24px 80px;
+    }
+    .stat-card{
+      background:var(--card);
+      border:1px solid var(--card-border);
+      padding:40px 36px;
+      position:relative;
+      overflow:hidden;
+    }
+    .stat-card:first-child{border-radius:16px 0 0 16px}
+    .stat-card:last-child{border-radius:0 16px 16px 0}
+    @media(max-width:720px){
+      .stat-card:first-child,.stat-card:last-child{border-radius:0}
+      .stat-card:first-child{border-radius:16px 16px 0 0}
+      .stat-card:last-child{border-radius:0 0 16px 16px}
+    }
+    .stat-card::before{
+      content:'';
+      position:absolute;top:0;left:0;right:0;height:1px;
+      background:linear-gradient(90deg,transparent,var(--primary-glow),transparent);
+    }
+    .stat-glow{
+      position:absolute;width:160px;height:160px;
+      border-radius:50%;filter:blur(60px);opacity:.12;
+      pointer-events:none;
+    }
+    .stat-card:nth-child(1) .stat-glow{background:var(--primary);top:-40px;right:-40px}
+    .stat-card:nth-child(2) .stat-glow{background:var(--tertiary);top:-40px;right:-40px}
+    .stat-card:nth-child(3) .stat-glow{background:var(--amber);top:-40px;right:-40px}
+
+    .stat-label{
+      font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;
+      color:var(--on-surface-vv);
+      margin-bottom:16px;
+    }
+    .stat-value{
+      font-size:clamp(48px,7vw,72px);
+      font-weight:900;letter-spacing:-0.04em;
+      line-height:1;
+      margin-bottom:12px;
+    }
+    .stat-card:nth-child(1) .stat-value{color:var(--primary)}
+    .stat-card:nth-child(2) .stat-value{color:var(--tertiary)}
+    .stat-card:nth-child(3) .stat-value{color:var(--amber)}
+    .stat-desc{
+      font-size:13px;color:var(--on-surface-v);
+      line-height:1.55;
+    }
+    .stat-value.loading{
+      color:var(--on-surface-vv);
+      font-size:36px;
+      animation:pulse 1.4s ease-in-out infinite;
+    }
+    @keyframes pulse{0%,100%{opacity:.4}50%{opacity:.9}}
+
+    /* ── CONTEXT STRIP ── */
+    .context{
+      max-width:720px;margin:0 auto;
+      padding:0 24px 80px;
+      text-align:center;
+    }
+    .context-text{
+      font-size:14px;color:var(--on-surface-vv);
+      line-height:1.7;
+    }
+    .context-text strong{color:var(--on-surface-v)}
+
+    /* ── FOOTER ── */
+    footer{
+      margin-top:auto;
+      border-top:1px solid var(--card-border);
+      padding:24px 40px;
+      display:flex;align-items:center;justify-content:space-between;
+      font-size:12px;color:var(--on-surface-vv);
+    }
+    footer a{color:var(--on-surface-v);text-decoration:none}
+    footer a:hover{color:var(--on-surface)}
+  </style>
+</head>
+<body>
+
+  <nav>
+    <a class="nav-logo" href="/">Grad<span>Launch</span></a>
+    <a class="nav-cta" href="/">Analyse my resume →</a>
+  </nav>
+
+  <section class="hero">
+    <div class="hero-eyebrow">Live product impact</div>
+    <h1 class="hero-title">Helping graduates get<br><em>interview-ready</em></h1>
+    <p class="hero-sub">Real numbers from real students. Updated automatically as people use the product.</p>
+  </section>
+
+  <div class="stats">
+    <div class="stat-card">
+      <div class="stat-glow"></div>
+      <div class="stat-label">Resumes analysed</div>
+      <div class="stat-value loading" id="val-total">—</div>
+      <div class="stat-desc">Students who have run their resume through GradLaunch's ATS and match analysis.</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-glow"></div>
+      <div class="stat-label">Average ATS keyword match</div>
+      <div class="stat-value loading" id="val-ats">—</div>
+      <div class="stat-desc">Mean keyword coverage across all analysed resumes, measured against role-specific market data.</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-glow"></div>
+      <div class="stat-label">Reached 70 %+ match score</div>
+      <div class="stat-value loading" id="val-high">—</div>
+      <div class="stat-desc">Share of users whose resume scored above the 70% role-match threshold — the interview-ready benchmark.</div>
+    </div>
+  </div>
+
+  <div class="context">
+    <p class="context-text">
+      Stats are <strong>aggregate and anonymised</strong> — no resume text, no names, no identifiers are stored.
+      Numbers update automatically after each completed analysis.
+      The ATS score measures keyword coverage against scraped job-posting data for each target role.
+    </p>
+  </div>
+
+  <footer>
+    <span>© 2025 GradLaunch</span>
+    <a href="/">← Back to the app</a>
+  </footer>
+
+  <script>
+    async function loadStats() {
+      try {
+        const res  = await fetch('/api/impact');
+        const data = await res.json();
+
+        function animateCount(elId, target, suffix, duration) {
+          const el = document.getElementById(elId);
+          if (!el || target == null) { if (el) { el.textContent = '—'; el.classList.remove('loading'); } return; }
+          el.classList.remove('loading');
+          let start = null;
+          const step = ts => {
+            if (!start) start = ts;
+            const pct  = Math.min(1, (ts - start) / duration);
+            const ease = 1 - Math.pow(1 - pct, 3);
+            const cur  = Math.round(target * ease);
+            el.textContent = (cur >= 1000 ? (cur / 1000).toFixed(cur >= 10000 ? 0 : 1) + 'k' : cur) + (suffix || '');
+            if (pct < 1) requestAnimationFrame(step);
+            else el.textContent = data.totalDisplay || (String(target) + (suffix || ''));
+          };
+          requestAnimationFrame(step);
+        }
+
+        animateCount('val-total', data.total,        '',  1400);
+        animateCount('val-ats',   data.avgATS,        '%', 1200);
+        animateCount('val-high',  data.highMatchPct,  '%', 1000);
+
+        // Fix final display values from server-formatted strings
+        setTimeout(() => {
+          const t = document.getElementById('val-total');
+          const a = document.getElementById('val-ats');
+          const h = document.getElementById('val-high');
+          if (t) t.textContent = data.totalDisplay        || t.textContent;
+          if (a) a.textContent = data.avgATSDisplay       || a.textContent;
+          if (h) h.textContent = data.highMatchPctDisplay || h.textContent;
+        }, 1500);
+
+      } catch {
+        ['val-total','val-ats','val-high'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) { el.textContent = '—'; el.classList.remove('loading'); }
+        });
+      }
+    }
+    loadStats();
+  </script>
+</body>
+</html>

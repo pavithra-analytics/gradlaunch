@@ -1,10 +1,15 @@
 {
   "version": 2,
   "functions": {
-    "api/analyze.js": { "maxDuration": 60 },
-    "api/apify.js":   { "maxDuration": 10 },
-    "api/upload.js":  { "maxDuration": 30 },
-    "api/warmcache.js": { "maxDuration": 60 },
-    "api/rewrite.js": { "maxDuration": 20 }
-  }
+    "api/analyze.js":    { "maxDuration": 120 },
+    "api/apify.js":      { "maxDuration": 10 },
+    "api/upload.js":     { "maxDuration": 30 },
+    "api/warmcache.js":  { "maxDuration": 60 },
+    "api/rewrite.js":    { "maxDuration": 20 },
+    "api/coverletter.js":{ "maxDuration": 30 },
+    "api/impact.js":     { "maxDuration": 10 }
+  },
+  "rewrites": [
+    { "source": "/impact", "destination": "/impact.html" }
+  ]
 }

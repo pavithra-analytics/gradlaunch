@@ -705,6 +705,7 @@ button{cursor:pointer;border:none;outline:none}
    BOTTOM TAB BAR (results pages)
 ═══════════════════════════════════════════════════ */
 .tab-bar{
+  display:none;
   position:fixed;bottom:0;left:0;right:0;
   background:rgba(245,247,249,.92);
   backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
@@ -742,14 +743,66 @@ button{cursor:pointer;border:none;outline:none}
 }
 .tab-btn.hidden{display:none}
 
-/* Results content needs bottom padding for fixed tab bar */
+/* ═══════════════════════════════════════════════════
+   LEFT SIDEBAR NAVIGATION
+═══════════════════════════════════════════════════ */
+.results-layout{
+  display:flex;min-height:calc(100vh - 56px);
+  align-items:flex-start;
+}
+.sidebar{
+  width:200px;flex-shrink:0;
+  background:var(--card-bg);
+  border-right:1px solid var(--border);
+  display:flex;flex-direction:column;
+  padding:1.5rem 0.75rem 2rem;
+  position:sticky;top:56px;height:calc(100vh - 56px);
+  overflow-y:auto;
+}
+.dark .sidebar{
+  background:var(--card-bg);
+  border-right-color:rgba(255,255,255,.06);
+}
+.sidebar-section-label{
+  font-size:9px;font-weight:800;color:var(--text-4);
+  letter-spacing:.12em;text-transform:uppercase;
+  padding:0 0.5rem;margin:0 0 8px;
+}
+.sidebar-btn{
+  display:flex;align-items:center;gap:10px;
+  width:100%;padding:9px 12px;border:none;
+  background:transparent;color:var(--text-2);
+  font-size:13px;font-weight:600;
+  border-radius:10px;cursor:pointer;
+  transition:background .15s,color .15s;
+  text-align:left;margin-bottom:2px;
+}
+.sidebar-btn:hover{background:var(--surface-low);color:var(--primary)}
+.sidebar-btn.on{
+  background:rgba(0,87,189,.08);color:var(--primary);font-weight:700;
+}
+.dark .sidebar-btn.on{background:rgba(110,159,255,.1);color:var(--primary-container)}
+.sidebar-btn .material-symbols-outlined{font-size:18px;flex-shrink:0}
+.sidebar-divider{height:1px;background:var(--border);margin:10px 4px;opacity:.5}
+.results-main{
+  flex:1;min-width:0;overflow-x:hidden;
+}
+
+/* Results content — no bottom padding needed when sidebar visible */
 .tab-panel{
-  display:none;padding:2rem 3rem 6rem;
+  display:none;padding:2rem 3rem 4rem;
   max-width:1400px;margin:0 auto;width:100%;
 }
 .tab-panel.on{display:block}
-@media(max-width:1200px){.tab-panel{padding:1.75rem 2rem 6rem}}
-@media(max-width:768px){.tab-panel{padding:1.25rem 1.25rem 6rem}}
+@media(max-width:1200px){.tab-panel{padding:1.75rem 2rem 4rem}}
+
+/* On mobile: hide sidebar, show tab bar, restore bottom padding */
+@media(max-width:768px){
+  .results-layout{display:block}
+  .sidebar{display:none}
+  .tab-bar{display:flex}
+  .tab-panel{padding:1.25rem 1.25rem 6rem}
+}
 
 /* ═══════════════════════════════════════════════════
    SHARED RESULT COMPONENTS
@@ -1200,7 +1253,45 @@ button{cursor:pointer;border:none;outline:none}
   font-size:18px;font-weight:800;color:var(--on-surface);
   display:flex;align-items:center;gap:8px;margin-bottom:16px;
 }
-.score-bullets-scroll{display:flex;flex-direction:column;gap:12px}
+/* Scrollable, height-constrained bullet list — long resumes stay navigable */
+.score-bullets-scroll{
+  display:flex;flex-direction:column;gap:12px;
+  max-height:60vh;overflow-y:auto;scroll-behavior:smooth;scroll-padding-top:8px;
+  padding-right:4px;
+}
+.score-bullets-scroll::-webkit-scrollbar{width:4px}
+.score-bullets-scroll::-webkit-scrollbar-track{background:transparent}
+.score-bullets-scroll::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+
+/* Company jump-nav */
+.co-nav{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.co-nav-btn{
+  font-size:10px;font-weight:800;padding:4px 11px;border-radius:99px;
+  border:1.5px solid var(--border);background:var(--surface-low);
+  color:var(--on-surface-v);cursor:pointer;transition:all .15s;
+  text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;
+}
+.co-nav-btn:hover{border-color:var(--secondary);color:var(--secondary);background:rgba(70,71,211,.06)}
+
+/* Before label on flagged cards */
+.bullet-before-lbl{
+  font-size:9px;font-weight:800;color:var(--error);
+  text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px;opacity:.8;
+}
+
+/* After preview on flagged cards */
+.bullet-after-preview{
+  margin-top:8px;padding:8px 10px;
+  background:var(--green-light);border-left:2px solid var(--green);
+  border-radius:0 8px 8px 0;
+}
+.bullet-after-lbl{
+  font-size:9px;font-weight:800;color:var(--tertiary);
+  text-transform:uppercase;letter-spacing:.1em;margin-bottom:3px;
+}
+.bullet-after-text{font-size:12px;font-weight:600;color:#14532d;line-height:1.5}
+.dark .bullet-after-preview{background:rgba(0,105,71,.1)}
+.dark .bullet-after-text{color:#6ee7b7}
 
 /* Bullet item */
 .bullet-item{
@@ -1212,6 +1303,8 @@ button{cursor:pointer;border:none;outline:none}
 .bullet-item.red{border-left-color:var(--error);cursor:pointer}
 .bullet-item.red:hover{box-shadow:0 4px 20px rgba(179,27,37,.14)}
 .bullet-item.green{border-left-color:var(--tertiary)}
+/* Active/selected bullet — blue ring to show which one is open */
+.bullet-item.active{outline:2px solid var(--primary);outline-offset:-2px;background:rgba(0,87,189,.03)}
 .bullet-tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
 .btag{
   font-size:10px;font-weight:800;padding:2px 9px;border-radius:99px;
@@ -1331,6 +1424,34 @@ button{cursor:pointer;border:none;outline:none}
   font-size:12px;font-weight:800;background:var(--surface-low);color:var(--on-surface-v);transition:all .15s;
 }
 .dlg-close-btn:hover{background:var(--surface-container);border-color:var(--outline-v)}
+.dlg-adopt-btn{
+  flex:1;padding:10px 14px;border:none;border-radius:10px;
+  font-size:12px;font-weight:800;background:var(--secondary);color:#fff;
+  cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:6px;justify-content:center;
+}
+.dlg-adopt-btn:hover{filter:brightness(1.1);transform:translateY(-1px)}
+.dlg-adopt-btn:disabled{opacity:.45;cursor:default;transform:none;filter:none}
+.dlg-edit-area{
+  width:100%;min-height:72px;padding:10px 12px;box-sizing:border-box;
+  background:var(--green-light);border:1.5px solid var(--green);
+  border-radius:10px;font-size:12px;color:#14532d;
+  line-height:1.6;font-weight:600;font-family:inherit;resize:vertical;
+  outline:none;transition:border-color .15s,box-shadow .15s;margin-bottom:8px;
+}
+.dlg-edit-area:focus{border-color:var(--secondary);box-shadow:0 0 0 3px rgba(70,71,211,.12)}
+.dark .dlg-edit-area{background:rgba(0,105,71,.12);color:#6ee7b7;border-color:var(--green)}
+.bullet-item.adopted{border-left-color:var(--tertiary) !important;cursor:pointer !important}
+.bullet-item.adopted:hover{box-shadow:0 4px 16px rgba(0,105,71,.1) !important}
+.bullet-adopted-badge{
+  display:inline-flex;align-items:center;gap:4px;margin-top:8px;
+  font-size:11px;font-weight:700;color:var(--tertiary);
+}
+.dlg-section-label{
+  font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;
+  margin-bottom:6px;display:flex;align-items:center;gap:5px;
+}
+.dlg-section-label.before{color:var(--error)}
+.dlg-section-label.after{color:var(--tertiary)}
 
 @media(max-width:768px){
   .score-gauges{grid-template-columns:1fr}
@@ -1501,6 +1622,7 @@ button{cursor:pointer;border:none;outline:none}
 .dark .dlg,.dark .dlg-hdr{background:var(--card-bg)}
 .dark .dlg-orig{color:#fca5a5}
 .dark .dlg-rewrite{color:#6ee7b7}
+.dark .dlg-adopt-btn{background:var(--secondary);color:#fff}
 
 /* Project tab */
 .dark .sum-card,.dark .proj-intro,.dark .headline-roast,
@@ -1585,6 +1707,690 @@ button{cursor:pointer;border:none;outline:none}
   background:rgba(110,159,255,.12);
   border-color:rgba(110,159,255,.25);
 }
+
+/* ═══════════════════════════════════════════════════
+   FINALIZE TAB
+═══════════════════════════════════════════════════ */
+.finalize-hero{
+  background:linear-gradient(135deg,var(--primary),var(--secondary));
+  border-radius:20px;padding:2rem 2.5rem;color:#fff;
+  margin-bottom:1.5rem;position:relative;overflow:hidden;
+}
+.finalize-hero::before{
+  content:'';position:absolute;right:-40px;top:-40px;
+  width:220px;height:220px;border-radius:50%;
+  background:rgba(255,255,255,.06);
+}
+.finalize-hero-title{font-size:22px;font-weight:900;line-height:1.2;margin-bottom:6px}
+.finalize-hero-sub{font-size:13px;opacity:.85;font-weight:500}
+.finalize-metrics{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:12px;
+  margin-bottom:1.5rem;
+}
+@media(max-width:600px){.finalize-metrics{grid-template-columns:1fr 1fr}}
+.finalize-metric-card{
+  background:var(--card-bg);border-radius:16px;padding:1.25rem 1.25rem;
+  box-shadow:0 1px 4px rgba(44,47,49,.05);
+}
+.dark .finalize-metric-card{box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.finalize-metric-label{
+  font-size:10px;font-weight:800;color:var(--text-3);
+  text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;
+}
+.finalize-metric-value{
+  font-size:26px;font-weight:900;color:var(--on-surface);line-height:1;
+}
+.finalize-metric-delta{
+  font-size:11px;font-weight:700;margin-top:4px;
+}
+.delta-up{color:var(--tertiary)}
+.delta-same{color:var(--outline)}
+.blockers-section{
+  background:var(--surface-low);border-radius:20px;padding:1.5rem 1.75rem;
+  margin-bottom:1.5rem;
+}
+.blockers-title{
+  font-size:16px;font-weight:800;color:var(--on-surface);
+  display:flex;align-items:center;gap:8px;margin-bottom:14px;
+}
+.blocker-row{
+  display:flex;align-items:flex-start;gap:10px;
+  padding:10px 0;border-bottom:1px solid var(--border-soft);
+}
+.blocker-row:last-child{border-bottom:none}
+.blocker-icon{
+  width:32px;height:32px;border-radius:50%;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+}
+.blocker-label{font-size:13px;font-weight:700;color:var(--on-surface);margin-bottom:2px}
+.blocker-hint{font-size:12px;color:var(--on-surface-v);font-weight:500;line-height:1.4}
+
+/* Cover letter section */
+.cl-section{
+  background:var(--card-bg);border-radius:20px;padding:1.75rem 2rem;
+  box-shadow:0 1px 4px rgba(44,47,49,.05);margin-bottom:1.5rem;
+}
+.dark .cl-section{box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.cl-header{
+  display:flex;align-items:center;gap:10px;margin-bottom:6px;
+}
+.cl-title{font-size:17px;font-weight:800;color:var(--on-surface)}
+.cl-sub{font-size:12px;color:var(--on-surface-v);margin-bottom:1.25rem;font-weight:500}
+.cl-generate-btn{
+  display:inline-flex;align-items:center;gap:8px;
+  background:linear-gradient(135deg,var(--primary),var(--secondary));
+  color:#fff;font-size:13px;font-weight:800;
+  padding:10px 20px;border-radius:10px;border:none;cursor:pointer;
+  transition:opacity .15s;
+}
+.cl-generate-btn:hover{opacity:.9}
+.cl-generate-btn:disabled{opacity:.6;cursor:not-allowed}
+.cl-textarea{
+  width:100%;min-height:280px;margin-top:1.25rem;
+  border:1.5px solid var(--border);border-radius:12px;
+  padding:1rem 1.25rem;font-size:13px;font-weight:500;
+  color:var(--on-surface);background:var(--surface-low);
+  line-height:1.7;resize:vertical;outline:none;
+  transition:border-color .15s,background .15s;
+  font-family:inherit;
+}
+.cl-textarea:focus{border-color:var(--primary);background:var(--card-bg)}
+.dark .cl-textarea{background:var(--input-bg);border-color:var(--border);color:var(--on-surface)}
+.dark .cl-textarea:focus{background:var(--card-bg);border-color:var(--primary)}
+.cl-actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.cl-btn{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:8px 16px;border-radius:9px;font-size:12px;font-weight:700;
+  border:1.5px solid;cursor:pointer;transition:all .15s;
+}
+.cl-btn-copy{
+  background:transparent;border-color:var(--border);color:var(--on-surface-v);
+}
+.cl-btn-copy:hover{background:var(--surface-low);border-color:var(--outline)}
+.cl-btn-download{
+  background:var(--primary);border-color:var(--primary);color:#fff;
+}
+.cl-btn-download:hover{background:var(--primary-dim)}
+.cl-notice{
+  font-size:11px;color:var(--outline);font-weight:500;
+  margin-top:8px;display:flex;align-items:center;gap:5px;
+}
+
+/* ═══════════════════════════════════════════════════
+   PROMPT 10 — GLOBAL POLISH
+   4/8pt spacing · 3-weight typography · card tokens
+   CTA hierarchy · tab fade-in · readability
+═══════════════════════════════════════════════════ */
+
+/* ── Spacing + radius + elevation design tokens ── */
+:root{
+  --sp-1:4px;  --sp-2:8px;  --sp-3:12px; --sp-4:16px;
+  --sp-5:20px; --sp-6:24px; --sp-8:32px; --sp-10:40px;
+  --r-sm:10px; --r-md:14px; --r-lg:20px;
+  --el-1:0 1px 3px rgba(44,47,49,.06),0 4px 12px rgba(44,47,49,.03);
+  --el-2:0 2px 10px rgba(44,47,49,.08),0 8px 24px rgba(44,47,49,.04);
+  --el-3:0 8px 32px rgba(44,47,49,.12),0 2px 8px rgba(44,47,49,.05);
+}
+
+/* ── Typography: normalize to 3 weights (400/500/700) ── */
+
+/* 600 → 500  (medium emphasis body) */
+.detail-desc,.proj-just,.about-text,.li-box-body,.fhint,
+.stat-note,.cert-why-txt,.blocker-hint,.action-value,
+.dlg-verdict,.dlg-note,.quote-text,.score-gauge-sub,
+.cl-sub,.finalize-hero-sub,.feedback-sub,.rate-note,
+.cta-foot,.dz-sub,.hero-sub{font-weight:500}
+
+/* 800/900 → 700  (labels, eyebrows, headings) */
+.cl,.rcl,.detail-lbl,.ic-title,.ic-gen-lbl,.dz-title,
+.proj-title,.sg-title,.cert-name-txt,.stat-lbl,
+.li-box-lbl,.score-gauge-title,.score-diagnosis-badge,
+.finalize-metric-label,.cl-title,.blockers-title,
+.sidebar-section-label,.sk-name,.gap-sub-txt,
+.li-skills-label,.smet-lbl,.match-badge-label,
+.btag,.pill,.co-nav-btn,.action-chip,.flagged-badge,
+.bullet-before-lbl,.bullet-after-lbl,.dlg-section-label,
+.bullet-suggestion,.score-bullets-col h3,.score-action-col h3,
+.certs-section-head h3,.li-left h3,.feedback-h,.insights-title,
+.sg-badge,.proj-signal span{font-weight:700}
+
+/* Hero numbers keep visual weight via size; round down to 700 */
+.smv,.stat-val,.finalize-metric-value,.score-ring-pct,
+.score-gauge-label,.logo-name,.loading-brand-name{font-weight:700}
+
+/* Main headings: size gives hierarchy — weight 700 is enough */
+.hero h1{font-weight:700}
+
+/* ── Line-height normalization (~1.5) ── */
+body{line-height:1.5}
+.hero-sub,.li-box-body,.detail-desc,.about-text,.cl-textarea,
+.paste-box,.feedback-ta,.dlg-verdict,.dlg-orig,.dlg-rewrite,
+.bullet-text,.cert-why-txt,.blocker-hint,.prompt-box,
+.fhint,.stat-note{line-height:1.5}
+
+/* ── Card hierarchy: consistent border + radius + elevation ── */
+
+/* Base card token */
+.rcard,.card{
+  border:1px solid var(--border);
+  border-radius:var(--r-md);
+  box-shadow:var(--el-1);
+}
+.stat-card,.finalize-metric-card,.cert-card,.detail-card{
+  border:1px solid var(--border);
+  border-radius:var(--r-md);
+  box-shadow:var(--el-1);
+}
+.score-gauge-card{
+  border:1px solid var(--border);
+  border-radius:var(--r-lg);
+  box-shadow:var(--el-1);
+}
+.proj-card{
+  border-radius:var(--r-md);
+  box-shadow:var(--el-1);
+}
+.bullet-item{
+  border-radius:var(--r-md);
+  box-shadow:var(--el-1);
+}
+/* Section containers */
+.sg-card,.score-action-col,.blockers-section,.cl-section{
+  border:1px solid var(--border-soft);
+  border-radius:var(--r-lg);
+}
+.input-hero-right{
+  border:1px solid var(--border);
+  border-radius:var(--r-lg);
+}
+
+/* ── CTA hierarchy ── */
+/* Primary: full-width launch button */
+.cta-btn{
+  padding:14px 20px;
+  font-size:15px;
+  font-weight:700;
+  border-radius:var(--r-lg);
+  letter-spacing:0;
+}
+/* Primary in-section actions */
+.copy-btn,.cl-generate-btn,.feedback-btn,.cl-btn-download{
+  font-weight:700;
+  border-radius:var(--r-md);
+}
+/* Secondary actions */
+.copy-btn-sm,.proj-sel-btn,.cl-btn-copy,.dlg-close-btn{
+  font-weight:700;
+  border-radius:var(--r-sm);
+}
+/* Tertiary / inline */
+.cert-enroll,.li-copy-btn{font-weight:700}
+
+/* ── Section spacing (4/8pt grid) ── */
+.profile-hero    {margin-bottom:var(--sp-6)}
+.skills-gaps-grid{margin-bottom:var(--sp-6)}
+.li-new-card     {margin-bottom:var(--sp-6)}
+.certs-section   {margin-bottom:var(--sp-6)}
+.score-diagnosis {margin-bottom:var(--sp-6)}
+.score-gauges    {margin-bottom:var(--sp-8);gap:var(--sp-5)}
+.score-body      {gap:var(--sp-6)}
+.finalize-metrics{margin-bottom:var(--sp-5);gap:var(--sp-3)}
+.blockers-section{margin-bottom:var(--sp-5)}
+.cl-section      {margin-bottom:var(--sp-5)}
+.proj-cards      {margin-bottom:var(--sp-5);gap:var(--sp-3)}
+
+/* Tab panel padding on 4/8pt grid */
+.tab-panel{padding:var(--sp-6) var(--sp-10) var(--sp-10)}
+@media(max-width:1200px){.tab-panel{padding:var(--sp-5) var(--sp-6) var(--sp-10)}}
+@media(max-width:768px) {.tab-panel{padding:var(--sp-4) var(--sp-4) 6rem}}
+@media(max-width:480px) {.tab-panel{padding:var(--sp-3) var(--sp-3) 6rem}}
+
+/* ── Tab fade-in (prevent blank flash on switch) ── */
+.tab-panel.on{
+  animation:tab-appear .15s ease-out;
+}
+@keyframes tab-appear{
+  from{opacity:0;transform:translateY(4px)}
+  to  {opacity:1;transform:none}
+}
+
+/* ── Readability: bullets, rows, gaps ── */
+.score-bullets-scroll{gap:var(--sp-3);padding-right:var(--sp-2)}
+.bullet-item{padding:var(--sp-3) var(--sp-4)}
+.bullet-text{font-size:13px;line-height:1.6}
+.bullet-suggestion{margin-top:var(--sp-3)}
+.bullet-tags{margin-bottom:var(--sp-2)}
+.action-row{padding:var(--sp-3) 0}
+.blocker-row{padding:var(--sp-3) 0}
+.gap-item{padding:var(--sp-2) var(--sp-3);margin-bottom:var(--sp-2)}
+.sk-row{margin-bottom:var(--sp-4)}
+.cert-card{padding:var(--sp-3)}
+.rcard,.card{padding:var(--sp-3) var(--sp-4);margin-bottom:var(--sp-3)}
+.sg-card{padding:var(--sp-4)}
+
+/* ── Skeleton polish ── */
+.sk-line{height:12px;border-radius:6px}
+.sk-line-sm{height:10px;border-radius:6px}
+.sk-box{border-radius:var(--r-md)}
+
+/* ── Dark mode token corrections ── */
+.dark{
+  --el-1:0 1px 3px rgba(0,0,0,.25),0 4px 12px rgba(0,0,0,.15);
+  --el-2:0 2px 10px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.2);
+  --el-3:0 8px 32px rgba(0,0,0,.4),0 2px 8px rgba(0,0,0,.25);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   UI UPGRADE — World-class polish
+   Source: ui-ux-pro-max "career SaaS premium trustworthy data-dense"
+   Style: Data-Dense Dashboard · Priority: a11y → interaction → visual → type
+═══════════════════════════════════════════════════════════ */
+
+/* ── P1 ACCESSIBILITY: focus-visible rings (WCAG 2.4.7) ── */
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+/* Elements that already use box-shadow for focus — skip outline */
+.finput:focus-visible,
+.paste-box:focus-visible,
+.feedback-ta:focus-visible,
+.cl-textarea:focus-visible,
+.dlg-edit-area:focus-visible { outline: none; }
+
+/* ── P1 ACCESSIBILITY: cursor pointer on every clickable ── */
+.sidebar-btn,.tab-btn,.cert-enroll,.proj-sel-btn,.co-nav-btn,
+.copy-btn-sm,.copy-btn,.li-copy-btn,.feedback-btn,.cl-btn,
+.cl-generate-btn,.cta-btn:not(:disabled),.dlg-x,.frem,
+.bullet-item.red,.proj-card,.dark-btn,#back-btn,
+.jd-hd,.dz,.dz-large { cursor:pointer; }
+
+/* ── P1 ACCESSIBILITY: prefers-reduced-motion ── */
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{
+    animation-duration:.01ms!important;
+    animation-iteration-count:1!important;
+    transition-duration:.01ms!important;
+  }
+}
+
+/* ── P2 SIDEBAR: active left-edge indicator, refined spacing ── */
+.sidebar { width:220px; padding:1.5rem .875rem; }
+.sidebar-btn {
+  position:relative;
+  border-radius:10px;
+  padding:10px 12px;
+  font-size:13px;
+  letter-spacing:-.01em;
+  color:var(--text-3);
+  transition:background .15s,color .15s;
+  margin-bottom:2px;
+}
+/* Active left-edge accent bar */
+.sidebar-btn::before {
+  content:'';
+  position:absolute;
+  left:-.875rem;            /* flush to sidebar left padding */
+  top:50%;
+  transform:translateY(-50%) scaleY(0);
+  width:3px;
+  height:58%;
+  background:var(--primary);
+  border-radius:0 3px 3px 0;
+  transition:transform .25s cubic-bezier(.34,1.56,.64,1);
+}
+.sidebar-btn.on::before  { transform:translateY(-50%) scaleY(1); }
+.dark .sidebar-btn.on::before { background:var(--primary-container); }
+.sidebar-btn:hover        { color:var(--on-surface); background:var(--surface-low); }
+.sidebar-btn.on           { color:var(--primary); background:rgba(0,87,189,.08); font-weight:600; }
+.dark .sidebar-btn.on     { color:var(--primary-container); background:rgba(110,159,255,.1); }
+.sidebar-btn .material-symbols-outlined { font-size:18px; flex-shrink:0; line-height:1; }
+.sidebar-section-label    { font-size:10px; letter-spacing:.14em; padding:0 .5rem; }
+.sidebar-divider          { margin:8px 4px; opacity:.4; }
+
+/* ── P2 MOBILE TAB BAR: top-edge active indicator ── */
+.tab-btn { position:relative; transition:color .15s; }
+.tab-btn.on::before {
+  content:'';
+  position:absolute;
+  top:0; left:50%;
+  transform:translateX(-50%);
+  width:28px; height:3px;
+  background:var(--primary);
+  border-radius:0 0 4px 4px;
+}
+.dark .tab-btn.on::before { background:var(--primary-container); }
+
+/* ── P2 UPLOAD ZONE: icon lift animation on hover/drag ── */
+.dz-icon-lg {
+  transition:transform .3s cubic-bezier(.34,1.56,.64,1),
+             box-shadow .3s;
+}
+.dz-large:hover .dz-icon-lg,
+.dz-large.drag  .dz-icon-lg {
+  transform:scale(1.1) translateY(-4px);
+  box-shadow:0 14px 40px rgba(0,87,189,.45);
+}
+/* File-ok success pulse — needs position:relative for ::after */
+.file-ok {
+  border-radius:14px;
+  position:relative;
+  overflow:hidden;
+}
+.file-ok::after {
+  content:'';
+  position:absolute; inset:0;
+  border-radius:14px;
+  border:1.5px solid var(--green-border);
+  animation:ok-pulse 2.4s ease-in-out infinite;
+  pointer-events:none;
+}
+@keyframes ok-pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* ── P2 BULLET ITEMS: click affordance on red (touch-aware) ── */
+.bullet-item.red { transition:box-shadow .2s,border-left-color .2s; }
+.bullet-item.red .bullet-see-more {
+  opacity:0;
+  transform:translateY(3px);
+  transition:opacity .2s,transform .2s;
+}
+.bullet-item.red:hover .bullet-see-more { opacity:1; transform:none; }
+/* Always visible on touch devices */
+@media(hover:none){ .bullet-item.red .bullet-see-more { opacity:1; transform:none; } }
+/* Once adopted, keep the see-more visible but relabel to revert affordance */
+.bullet-item.adopted .bullet-see-more { opacity:1; transform:none; }
+
+/* ── P2 CERT ENROLL: always-visible bordered CTA ── */
+.cert-enroll {
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  font-size:11px;
+  font-weight:700;
+  color:var(--primary);
+  border:1.5px solid rgba(0,87,189,.2);
+  border-radius:8px;
+  padding:6px 10px;
+  background:rgba(0,87,189,.04);
+  width:fit-content;
+  transition:background .15s,border-color .15s,color .15s,gap .15s;
+}
+.cert-enroll:hover {
+  background:var(--primary);
+  color:var(--on-primary);
+  border-color:var(--primary);
+  gap:8px;
+}
+
+/* ── P3 SCORE HERO CARD: deeper, richer gradient ── */
+.score-hero-card {
+  background:linear-gradient(135deg,#062857 0%,#0a4898 60%,#0057bd 100%);
+}
+.dark .score-hero-card {
+  background:linear-gradient(135deg,#04101f 0%,#091b42 60%,#0a2d6b 100%);
+}
+.score-hero-text h2 { font-size:20px; font-weight:700; letter-spacing:-.3px; }
+.score-hero-text p  { font-style:normal; color:rgba(255,255,255,.8); }
+
+/* ── P3 BANNERS: consistent deep gradient across tabs ── */
+.proj-intro {
+  background:linear-gradient(135deg,#062857 0%,#0057bd 100%);
+}
+.dark .proj-intro {
+  background:linear-gradient(135deg,#04122a 0%,#0a2550 100%);
+}
+.score-diagnosis {
+  background:linear-gradient(135deg,#062857 0%,var(--primary) 100%);
+  box-shadow:0 4px 24px rgba(0,87,189,.18);
+}
+.dark .score-diagnosis {
+  background:linear-gradient(135deg,#04122a 0%,#0a2550 100%);
+  box-shadow:0 4px 24px rgba(0,0,0,.4);
+}
+.finalize-hero {
+  background:linear-gradient(135deg,#0a3d7a 0%,#3a3bc8 100%);
+}
+.dark .finalize-hero {
+  background:linear-gradient(135deg,#06213e 0%,#1d1e8a 100%);
+}
+.finalize-hero-title { font-size:22px; font-weight:700; letter-spacing:-.3px; }
+
+/* ── P3 VERDICT BAR: sticky positioning ── */
+.sum-card {
+  position:sticky;
+  top:56px;
+  z-index:50;
+  border-bottom:1px solid rgba(255,255,255,.08);
+}
+
+/* ── P3 DIALOG: backdrop blur + border + tighter spring ── */
+.dlg { border:1px solid var(--border); }
+.dlg-overlay {
+  background:rgba(0,0,0,.55);
+  backdrop-filter:blur(6px);
+  -webkit-backdrop-filter:blur(6px);
+}
+@keyframes dlg-in {
+  from { transform:scale(.94) translateY(12px); opacity:0; }
+  to   { transform:none; opacity:1; }
+}
+
+/* ── P3 LOADING: icon glow pulse ── */
+@keyframes loading-glow {
+  0%,100% { box-shadow:0 12px 40px rgba(0,87,189,.35); }
+  50%      { box-shadow:0 18px 56px rgba(0,87,189,.55),0 0 0 10px rgba(0,87,189,.07); }
+}
+.loading-icon {
+  animation:loading-float 3s ease-in-out infinite,
+            loading-glow  3s ease-in-out infinite;
+}
+/* Loading steps: slightly larger text */
+.lstep { font-size:13px; letter-spacing:-.01em; }
+
+/* ── P3 GAP BADGES: pill shape, legible font ── */
+.gap-badge {
+  width:auto;
+  min-width:0;
+  padding:0 8px;
+  height:22px;
+  border-radius:5px;
+  font-size:10px;
+  letter-spacing:.04em;
+  white-space:nowrap;
+}
+/* Gap item hover border */
+.gap-item {
+  border:1px solid transparent;
+  transition:background .2s,border-color .2s;
+}
+.gap-item:hover { border-color:var(--border-soft); }
+
+/* ── P3 LINKEDIN CARD: remove decorative icon rotation ── */
+.li-icon-box { transform:none; }
+
+/* ── P3 PROJ CARDS: overlay on hover ── */
+.proj-card { overflow:hidden; }
+.proj-card::after {
+  content:'';
+  position:absolute; inset:0;
+  border-radius:inherit;
+  background:linear-gradient(135deg,rgba(0,87,189,.04),transparent);
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .2s;
+}
+.proj-card:hover::after        { opacity:1; }
+.proj-card.selected::after     { opacity:1; background:linear-gradient(135deg,rgba(0,87,189,.06),transparent); }
+
+/* ── P3 CARD TRANSITIONS: unified timing ── */
+.cert-card,.proj-card,.stat-card,.score-gauge-card,.insight-card-v2,.finalize-metric-card {
+  transition:transform .2s cubic-bezier(.34,1.56,.64,1),
+             box-shadow .2s,
+             border-color .2s;
+}
+
+/* ── P3 SKILL/GAP CARDS: dark border ── */
+.dark .sg-card {
+  background:var(--surface-container);
+  border-color:rgba(255,255,255,.04);
+}
+
+/* ── P3 SKELETON: content-aware helpers ── */
+.skeleton { border-radius:8px; }
+/* Multi-line paragraph skeleton */
+.sk-paragraph { display:flex; flex-direction:column; gap:7px; }
+.sk-paragraph .skeleton { height:12px; border-radius:6px; }
+.sk-paragraph .skeleton:last-child { width:65%; }
+
+/* ── P4 TYPOGRAPHY: minimum sizes (body-visible text) ── */
+.gap-sub-txt    { font-size:11px; }
+.cert-provider  { font-size:11px; }
+.stat-note      { font-size:11px; }
+.proj-time      { font-size:11px; }
+.bullet-note    { font-size:11px; }
+/* Input placeholder: readable, lower weight */
+.finput::placeholder,
+.paste-box::placeholder { color:var(--text-4); font-weight:400; }
+
+/* ── P4 SCORE GAUGES: smooth tablet breakpoint ── */
+@media(max-width:900px) and (min-width:641px){
+  .score-gauges { gap:14px; }
+  .score-gauge-card { padding:1.5rem 1rem; }
+  .score-gauge-wrap,.score-gauge-svg { width:100px; height:100px; }
+  .score-gauge-label { font-size:18px; }
+}
+
+/* ── ISSUE 4: Resume Fix split-screen ── */
+.score-split{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:24px;
+  align-items:stretch;  /* both columns equal height */
+}
+@media(max-width:960px){.score-split{grid-template-columns:1fr}}
+
+/* Left pane: bullet list */
+.score-left-pane{}
+
+/* Right pane: matches left column height via grid stretch; scrolls independently */
+.score-right-pane{
+  min-height:500px;
+  background:var(--card-bg);
+  border-radius:var(--r-lg);
+  border:1px solid var(--border);
+  box-shadow:var(--el-1);
+  display:flex;
+  flex-direction:column;
+  overflow-y:auto;
+}
+.score-right-header{
+  display:flex;align-items:center;gap:8px;
+  padding:12px 16px;
+  border-bottom:1px solid var(--border);
+  font-size:13px;font-weight:700;color:var(--on-surface);
+  flex-shrink:0;
+}
+.score-right-header .material-symbols-outlined{font-size:16px;color:var(--primary)}
+.score-resume-ta{
+  flex:1;
+  height:0;        /* force flex to compute remaining height correctly */
+  min-height:0;
+  padding:12px 16px;
+  font-size:12px;font-weight:500;
+  color:var(--on-surface);
+  background:var(--surface-low);
+  line-height:1.7;
+  outline:none;
+  border:none;
+  border-bottom:1px solid var(--border);
+  font-family:inherit;
+  overflow-y:auto;
+  white-space:pre-wrap;
+  word-break:break-word;
+  cursor:default;
+  user-select:text;
+}
+.dark .score-resume-ta{background:var(--input-bg);color:var(--on-surface)}
+.score-resume-download{
+  display:flex;align-items:center;justify-content:center;gap:6px;
+  width:100%;padding:11px;
+  background:linear-gradient(135deg,var(--primary),var(--primary-container));
+  color:var(--on-primary);
+  font-size:12px;font-weight:700;
+  border:none;cursor:pointer;
+  transition:opacity .15s;
+  flex-shrink:0;
+}
+.score-resume-download:hover{opacity:.9}
+
+/* Right pane flash when bullet is clicked */
+.score-resume-ta.resume-highlight{
+  background:rgba(70,71,211,.06);
+  transition:background .3s;
+}
+
+/* Inline bullet detail (replaces modal for Resume Fix tab) */
+.bullet-inline-detail{
+  margin-top:10px;padding-top:10px;
+  border-top:1px solid var(--border-soft);
+}
+.bid-verdict{
+  font-size:12px;color:var(--on-surface-v);line-height:1.6;
+  font-weight:500;margin-bottom:10px;
+  background:var(--surface-low);border-radius:8px;padding:8px 10px;
+}
+.bid-textarea{
+  width:100%;min-height:64px;
+  padding:9px 12px;box-sizing:border-box;
+  background:var(--green-light);border:1.5px solid var(--green);
+  border-radius:8px;font-size:12px;color:#14532d;
+  line-height:1.6;font-weight:600;font-family:inherit;resize:vertical;
+  outline:none;transition:border-color .15s;margin-bottom:8px;
+}
+.dark .bid-textarea{background:rgba(0,105,71,.12);color:#6ee7b7;border-color:var(--green)}
+.bid-textarea:focus{border-color:var(--secondary)}
+.bid-actions{display:flex;gap:6px;flex-wrap:wrap}
+.bid-adopt{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:7px 14px;border:none;border-radius:8px;
+  background:var(--secondary);color:#fff;
+  font-size:11px;font-weight:700;cursor:pointer;transition:filter .15s;
+}
+.bid-adopt:hover{filter:brightness(1.1)}
+.bid-adopt:disabled{opacity:.45;cursor:default;filter:none}
+.bid-revert{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:7px 14px;border:1.5px solid var(--border);border-radius:8px;
+  background:var(--surface-low);color:var(--on-surface-v);
+  font-size:11px;font-weight:700;cursor:pointer;transition:all .15s;
+}
+.bid-revert:hover{background:var(--surface-container);border-color:var(--outline-v)}
+
+/* ── EMPTY STATES: guided, never blank ── */
+.empty-state {
+  text-align:center;
+  padding:3rem 1.5rem;
+}
+.empty-state-icon {
+  font-size:40px;
+  color:var(--outline-v);
+  margin-bottom:14px;
+  display:block;
+  font-variation-settings:'FILL' 0,'wght' 300;
+}
+.empty-state-title {
+  font-size:15px;
+  font-weight:700;
+  color:var(--on-surface);
+  margin-bottom:6px;
+}
+.empty-state-sub {
+  font-size:13px;
+  color:var(--on-surface-v);
+  font-weight:500;
+  line-height:1.55;
+}
 </style>
 </head>
 <body>
@@ -1607,7 +2413,7 @@ button{cursor:pointer;border:none;outline:none}
     <span class="nav-badge">
       Free
     </span>
-    <button class="dark-btn" id="dark-btn" onclick="toggleDark()" title="Toggle dark mode">🌙</button>
+    <button class="dark-btn" id="dark-btn" onclick="toggleDark()" title="Toggle dark mode" aria-label="Toggle dark mode">🌙</button>
     <button id="back-btn" onclick="goBack()">← Start over</button>
   </div>
 </nav>
@@ -1652,9 +2458,9 @@ button{cursor:pointer;border:none;outline:none}
             <span class="material-symbols-outlined" style="color:#fff;font-size:36px;font-variation-settings:'FILL' 1">cloud_upload</span>
           </div>
           <div class="dz-title" style="font-size:18px">Drop your resume here</div>
-          <div class="dz-sub">PDF only · Max 3MB</div>
+          <div class="dz-sub">PDF or DOCX · Max 3MB</div>
           <div class="dz-tip" style="margin-top:4px">LinkedIn: Profile → More → Save to PDF</div>
-          <input type="file" id="file-input" accept=".pdf" style="display:none" onchange="handleFile(this)"/>
+          <input type="file" id="file-input" accept=".pdf,.docx" style="display:none" onchange="handleFile(this)"/>
         </div>
 
         <div id="dz-processing" style="display:none">
@@ -1890,6 +2696,31 @@ button{cursor:pointer;border:none;outline:none}
 ═══════════════════════════════════════════════════ -->
 <div id="pg-results" class="page">
 
+<div class="results-layout">
+
+<!-- LEFT SIDEBAR NAV -->
+<nav class="sidebar" id="sidebar" aria-label="Main navigation">
+  <div class="sidebar-section-label">Analysis</div>
+  <button class="sidebar-btn on" id="s-profile" onclick="showTab('profile')" aria-current="page">
+    <span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1" aria-hidden="true">person</span>
+    Diagnosis
+  </button>
+  <button class="sidebar-btn" id="s-score" onclick="showTab('score')">
+    <span class="material-symbols-outlined" aria-hidden="true">query_stats</span>
+    Resume Fix
+  </button>
+  <button class="sidebar-btn" id="s-project" onclick="showTab('project')">
+    <span class="material-symbols-outlined" aria-hidden="true">rocket_launch</span>
+    Projects
+  </button>
+  <button class="sidebar-btn" id="s-finalize" onclick="showTab('finalize')">
+    <span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1" aria-hidden="true">check_circle</span>
+    Finalize
+  </button>
+</nav>
+
+<div class="results-main" role="main">
+
   <!-- TOP APP BAR — blue gradient, sticky -->
   <div class="sum-card">
     <div class="sum-inner">
@@ -1945,7 +2776,7 @@ button{cursor:pointer;border:none;outline:none}
           <div>
             <div class="stat-lbl">Keyword Match (ATS)</div>
             <div class="stat-val ats" id="profile-ats-val">—</div>
-            <div class="stat-note" id="profile-ats-note">How many top required keywords are in your resume</div>
+            <div class="stat-note" id="profile-ats-note">of top keywords found</div>
           </div>
           <div class="stat-icon-wrap">
             <span class="material-symbols-outlined" style="color:var(--secondary);font-size:28px;font-variation-settings:'FILL' 1">warning</span>
@@ -2128,16 +2959,17 @@ button{cursor:pointer;border:none;outline:none}
 
     <div class="ats-notice" id="ats-notice" style="display:none"></div>
 
-    <!-- 2-col: bullets left, action list right -->
-    <div class="score-body">
+    <!-- Split screen: bullets (left) + live resume text (right) -->
+    <div class="score-split">
 
-      <!-- Bullet list -->
-      <section class="score-bullets-col">
+      <!-- Left: bullet list -->
+      <section class="score-left-pane score-bullets-col">
         <h3>
           <span class="material-symbols-outlined" style="color:var(--secondary);font-variation-settings:'FILL' 1">description</span>
           Resume Analysis
           <span id="bullets-flagged-count" class="flagged-badge" style="display:none"></span>
         </h3>
+        <div class="co-nav" id="co-nav" style="display:none"></div>
         <div class="score-bullets-scroll" id="bullets-list">
           <div class="skeleton sk-box" style="height:100px;border-radius:14px"></div>
           <div class="skeleton sk-box" style="height:80px;border-radius:14px"></div>
@@ -2145,59 +2977,120 @@ button{cursor:pointer;border:none;outline:none}
         </div>
       </section>
 
-      <!-- Action list -->
-      <aside class="score-action-col" id="summary-card">
-        <h3>
-          <span class="material-symbols-outlined" style="color:var(--primary);font-variation-settings:'FILL' 1">checklist</span>
-          Your Action List
-        </h3>
-        <div class="action-list">
-          <div class="action-row">
-            <div class="skeleton" style="width:36px;height:36px;border-radius:50%;flex-shrink:0"></div>
-            <div style="flex:1"><div class="skeleton sk-line"></div><div class="skeleton sk-line-sm"></div></div>
-          </div>
-          <div class="action-row">
-            <div class="skeleton" style="width:36px;height:36px;border-radius:50%;flex-shrink:0"></div>
-            <div style="flex:1"><div class="skeleton sk-line"></div><div class="skeleton sk-line-sm"></div></div>
-          </div>
+      <!-- Right: live editable resume text -->
+      <div class="score-right-pane" id="score-right-pane">
+        <div class="score-right-header">
+          <span class="material-symbols-outlined">description</span>
+          Your Resume — click a flagged bullet to fix it
         </div>
-      </aside>
+        <div class="score-resume-ta" id="resume-edit-area"
+          aria-label="Your resume text" tabindex="0"></div>
+        <button class="score-resume-download" onclick="downloadResumeEdit()">
+          <span class="material-symbols-outlined" style="font-size:16px">download</span>
+          Download as .docx
+        </button>
+      </div>
 
     </div>
+
   </div>
 
-  <!-- BOTTOM TAB BAR — fixed, glassmorphism -->
-  <div class="tab-bar">
+  <!-- TAB 4 — FINALIZE -->
+  <div class="tab-panel" id="tab-finalize">
+
+    <!-- Hero -->
+    <div class="finalize-hero">
+      <div class="finalize-hero-title">Ready to Apply?</div>
+      <div class="finalize-hero-sub">Review your readiness, address blockers, then generate and download your cover letter.</div>
+    </div>
+
+    <!-- Remaining Blockers (Action List) -->
+    <aside class="score-action-col" id="summary-card">
+      <h3 style="font-size:18px;font-weight:800;color:var(--on-surface);display:flex;align-items:center;gap:8px;margin-bottom:20px">
+        <span class="material-symbols-outlined" style="color:var(--primary);font-variation-settings:'FILL' 1">checklist</span>
+        Remaining Blockers
+      </h3>
+      <div class="action-list">
+        <div class="action-row">
+          <div class="skeleton" style="width:36px;height:36px;border-radius:50%;flex-shrink:0"></div>
+          <div style="flex:1"><div class="skeleton sk-line"></div><div class="skeleton sk-line-sm"></div></div>
+        </div>
+        <div class="action-row">
+          <div class="skeleton" style="width:36px;height:36px;border-radius:50%;flex-shrink:0"></div>
+          <div style="flex:1"><div class="skeleton sk-line"></div><div class="skeleton sk-line-sm"></div></div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Cover Letter -->
+    <div class="cl-section">
+      <div class="cl-header">
+        <span class="material-symbols-outlined" style="color:var(--primary);font-variation-settings:'FILL' 1;font-size:22px">mail</span>
+        <div class="cl-title">Cover Letter</div>
+      </div>
+      <div class="cl-sub">Generated from your resume and target role. Edit freely, then download.</div>
+      <button class="cl-generate-btn" id="cl-generate-btn" onclick="generateCoverLetter()">
+        <span class="material-symbols-outlined" style="font-size:17px">auto_awesome</span>
+        Generate Cover Letter
+      </button>
+      <div id="cl-output" style="display:none">
+        <textarea class="cl-textarea" id="cl-textarea" placeholder="Your cover letter will appear here…" spellcheck="true"></textarea>
+        <div class="cl-actions">
+          <button class="cl-btn cl-btn-copy" onclick="copyCoverLetter(this)">
+            <span class="material-symbols-outlined" style="font-size:14px">content_copy</span>
+            Copy
+          </button>
+          <button class="cl-btn cl-btn-download" onclick="downloadCoverLetter()">
+            <span class="material-symbols-outlined" style="font-size:14px">download</span>
+            Download .txt
+          </button>
+        </div>
+        <div class="cl-notice">
+          <span class="material-symbols-outlined" style="font-size:13px">info</span>
+          Personalise with specific company details before sending.
+        </div>
+      </div>
+      <div id="cl-error" style="display:none;margin-top:12px;font-size:13px;color:var(--error);font-weight:600"></div>
+    </div>
+
+  </div>
+
+</div><!-- end results-main -->
+</div><!-- end results-layout -->
+
+  <!-- BOTTOM TAB BAR — mobile only, fixed, glassmorphism -->
+  <div class="tab-bar" role="navigation" aria-label="Tab navigation">
     <div class="tab-bar-inner">
       <button class="tab-btn on" id="t-profile" onclick="showTab('profile')">
         <span class="material-symbols-outlined ticon" style="font-variation-settings:'FILL' 1">person</span>
-        <span class="tab-pill">Profile</span>
+        <span class="tab-pill">Diagnosis</span>
+      </button>
+      <button class="tab-btn" id="t-score" onclick="showTab('score')">
+        <span class="material-symbols-outlined ticon">query_stats</span>
+        <span class="tab-pill">Resume Fix</span>
       </button>
       <button class="tab-btn" id="t-project" onclick="showTab('project')">
         <span class="material-symbols-outlined ticon">rocket_launch</span>
         <span class="tab-pill">Projects</span>
       </button>
-      <button class="tab-btn" id="t-score" onclick="showTab('score')">
-        <span class="material-symbols-outlined ticon">query_stats</span>
-        <span class="tab-pill">Resume Audit</span>
+      <button class="tab-btn" id="t-finalize" onclick="showTab('finalize')">
+        <span class="material-symbols-outlined ticon" style="font-variation-settings:'FILL' 1">check_circle</span>
+        <span class="tab-pill">Finalize</span>
       </button>
     </div>
   </div>
-
-</div>
-
 
 </div>
 
 <!-- ═══════════════════════════════════════════════════
      BULLET ROAST DIALOG
 ═══════════════════════════════════════════════════ -->
-<div class="dlg-overlay" id="dlg-overlay" onclick="closeDlg(event)">
-  <div class="dlg" onclick="event.stopPropagation()">
+<div class="dlg-overlay" id="dlg-overlay" onclick="closeDlg(event)" role="presentation">
+  <div class="dlg" onclick="event.stopPropagation()" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
     <div class="dlg-hdr">
       <div style="display:flex;align-items:center;gap:8px">
-        <span class="material-symbols-outlined" style="color:var(--error);font-size:18px;font-variation-settings:'FILL' 1">diagnosis</span>
-        <div class="dlg-hdr-title">What a recruiter actually thinks</div>
+        <span class="material-symbols-outlined" style="color:var(--error);font-size:18px;font-variation-settings:'FILL' 1" aria-hidden="true">diagnosis</span>
+        <div class="dlg-hdr-title" id="dlg-title">What a recruiter actually thinks</div>
       </div>
       <button class="dlg-x" onclick="closeDlg()">
         <span class="material-symbols-outlined" style="font-size:16px">close</span>
@@ -2226,10 +3119,33 @@ let resumeFileId    = null;
 let rawFile         = null; // retains the File object so we can re-upload after Start Over
 let currentRole     = '';
 let currentLocation = '';
+let currentJD       = '';
 let lvlTimer        = null;
 let abortCtrl       = null;
 let analysisData    = {};
+let sectionLoaded   = { linkedin: false, certifications: false, projects: false };
 let _currentEvent   = '';
+
+// ═══════════════════════════════════════════════════
+// CLIENT-SIDE NORMALIZE — mirrors server normalizeResumeText()
+// Applied to ALL browser fallback paths so text is identical
+// to what the server would produce.
+// ═══════════════════════════════════════════════════
+function normalizeResumeText(raw) {
+  if (!raw) return '';
+  return raw
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/\u00A0/g, ' ')
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2013\u2014]/g, '-')
+    .replace(/[\u2022\u2023\u25E6\u2043\u2219]/g, '- ')
+    .replace(/\t/g, ' ')
+    .replace(/[ ]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
 
 // ═══════════════════════════════════════════════════
 // DARK MODE
@@ -2276,6 +3192,7 @@ function resetUpload() {
   }
   document.getElementById('file-input').value = '';
   resumeText = '';
+  window._resumeText = '';
   rawFile    = null; // clear stored file
   showDZ('empty');
   setLaunchEnabled(false);
@@ -2303,11 +3220,11 @@ async function handleFile(input) {
   const name = file.name;
   const ext  = name.split('.').pop().toLowerCase();
 
-  if (ext !== 'pdf') {
-    return showFileErr(name, 'Please upload a PDF file. In LinkedIn: Profile → More → Save to PDF.');
+  if (ext !== 'pdf' && ext !== 'docx') {
+    return showFileErr(name, 'Please upload a PDF or DOCX file.');
   }
   if (file.size > 3 * 1024 * 1024)
-    return showFileErr(name, 'File too large. Please compress your PDF to under 3MB.');
+    return showFileErr(name, 'File too large. Please keep your resume under 3MB.');
 
   // Delete previous orphaned file
   if (resumeFileId) {
@@ -2320,7 +3237,7 @@ async function handleFile(input) {
   showDZ('processing');
 
   try {
-    // Try Files API first
+    // Upload to server — server handles text extraction for both PDF and DOCX
     const b64 = await readB64(file);
     const upRes = await fetch('/api/upload',{
       method:'POST', headers:{'Content-Type':'application/json'},
@@ -2328,40 +3245,151 @@ async function handleFile(input) {
     });
     const upData = await upRes.json().catch(()=>({fallback:true}));
 
-    if (!upData.fallback && upData.fileId) {
-      resumeFileId = upData.fileId;
-      resumeText   = '';
-      rawFile      = file; // retain for re-upload after Start Over
+    // Server extracted text (canonical pipeline) — always prefer this
+    // Store full text; truncation only applied when sending to Claude (not for ATS)
+    if (upData.resumeText && upData.resumeText.length > 0) {
+      resumeText = upData.resumeText;
+      window._resumeText = resumeText;
+    }
+
+    if (!upData.fallback) {
+      // Server succeeded
+      resumeFileId = upData.fileId || null; // null for DOCX (no Files API)
+      rawFile      = file;
+
+      // Validate we have usable text
+      const m = (resumeText || '').replace(/[^a-zA-Z0-9\s]/g,'').replace(/\s+/g,' ').trim();
+      if (m.length < 200 && !resumeFileId) {
+        // No fileId and no good text — can't proceed
+        if (ext === 'docx') return showFileErr(name, 'Could not extract enough text from this DOCX. Try saving as PDF and uploading again.');
+        return showFileErr(name, 'Resume appears too short. Please check the file.');
+      }
+
       showFileOk(name);
       return;
     }
 
-    // Fallback: browser PDF parsing
-    let text = '';
-    if (typeof pdfjsLib === 'undefined')
-      return showFileErr(name, 'PDF reader failed. Refresh and try again.');
-    const pdf = await pdfjsLib.getDocument({data: await readAB(file)}).promise;
-    const pages = [];
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const pg = await pdf.getPage(i);
-      const ct = await pg.getTextContent();
-      pages.push(ct.items.map(x=>x.str).join(' '));
-    }
-    text = pages.join('\n');
+    // Server fallback — try browser-side parsing
+    if (ext === 'pdf') {
+      let text = '';
+      if (typeof pdfjsLib === 'undefined')
+        return showFileErr(name, 'PDF reader failed. Refresh and try again.');
+      const pdf = await pdfjsLib.getDocument({data: await readAB(file)}).promise;
+      const pages = [];
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const pg = await pdf.getPage(i);
+        const ct = await pg.getTextContent();
+        pages.push(ct.items.map(x=>x.str).join(' '));
+      }
+      text = normalizeResumeText(pages.join('\n'));
 
-    const m = text.replace(/[^a-zA-Z0-9\s]/g,'').replace(/\s+/g,' ').trim();
-    if (m.length < 200) {
-      if (ext==='pdf') return showFileErr(name,'This PDF appears to be a scanned image. Save as a text-based PDF and try again.');
-      return showFileErr(name,'Resume appears too short. Please check the file.');
+      const m = text.replace(/[^a-zA-Z0-9\s]/g,'').replace(/\s+/g,' ').trim();
+      if (m.length < 200) {
+        return showFileErr(name,'This PDF appears to be a scanned image. Save as a text-based PDF and try again.');
+      }
+      resumeText   = text;
+      window._resumeText = resumeText;
+      resumeFileId = null;
+      rawFile      = file;
+      showFileOk(name);
+    } else if (ext === 'docx') {
+      // Browser-side DOCX fallback — extract text from the XML inside the ZIP
+      try {
+        const arrayBuf = await readAB(file);
+        const text = normalizeResumeText(await extractDOCXBrowser(arrayBuf));
+        const m = text.replace(/[^a-zA-Z0-9\s]/g,'').replace(/\s+/g,' ').trim();
+        if (m.length < 200) {
+          return showFileErr(name, 'Could not extract enough text from this DOCX. Try saving as PDF and uploading again.');
+        }
+        resumeText   = text;
+        window._resumeText = resumeText;
+        resumeFileId = null;
+        rawFile      = file;
+        showFileOk(name);
+      } catch (docxErr) {
+        return showFileErr(name, 'Could not read this DOCX file. Try saving as PDF and uploading again.');
+      }
     }
-    resumeText   = text.substring(0,4000);
-    resumeFileId = null;
-    rawFile      = file; // retain for re-upload after Start Over
-    showFileOk(name);
 
   } catch(e) {
     showFileErr(name,'Could not read this file. Try saving as PDF and uploading again.');
   }
+}
+
+// ── Browser-side DOCX text extraction (fallback only) ──
+// Uses the browser's native DecompressionStream API to inflate ZIP entries
+async function extractDOCXBrowser(arrayBuffer) {
+  const bytes = new Uint8Array(arrayBuffer);
+
+  // Find word/document.xml in the ZIP
+  let offset = 0;
+  while (offset < bytes.length - 4) {
+    if (bytes[offset] === 0x50 && bytes[offset+1] === 0x4B &&
+        bytes[offset+2] === 0x03 && bytes[offset+3] === 0x04) {
+      const compression = bytes[offset+8] | (bytes[offset+9] << 8);
+      const compSize    = bytes[offset+18] | (bytes[offset+19]<<8) | (bytes[offset+20]<<16) | (bytes[offset+21]<<24);
+      const nameLen     = bytes[offset+26] | (bytes[offset+27] << 8);
+      const extraLen    = bytes[offset+28] | (bytes[offset+29] << 8);
+      const nameBytes   = bytes.slice(offset+30, offset+30+nameLen);
+      const name        = new TextDecoder().decode(nameBytes);
+      const dataStart   = offset + 30 + nameLen + extraLen;
+      const dataEnd     = dataStart + compSize;
+
+      if (name === 'word/document.xml' && dataEnd <= bytes.length) {
+        const rawData = bytes.slice(dataStart, dataEnd);
+        let xml;
+        if (compression === 8) {
+          // Deflate — use DecompressionStream if available, else fallback
+          if (typeof DecompressionStream !== 'undefined') {
+            const ds = new DecompressionStream('deflate-raw');
+            const writer = ds.writable.getWriter();
+            writer.write(rawData);
+            writer.close();
+            const reader = ds.readable.getReader();
+            const chunks = [];
+            while (true) {
+              const {done, value} = await reader.read();
+              if (done) break;
+              chunks.push(value);
+            }
+            const total = chunks.reduce((s, c) => s + c.length, 0);
+            const merged = new Uint8Array(total);
+            let pos = 0;
+            for (const c of chunks) { merged.set(c, pos); pos += c.length; }
+            xml = new TextDecoder().decode(merged);
+          } else {
+            throw new Error('DecompressionStream not supported');
+          }
+        } else if (compression === 0) {
+          // STORED — raw bytes are the XML text, decode directly
+          xml = new TextDecoder().decode(rawData);
+        } else {
+          // Unknown compression (BZIP2, LZMA, etc.) — cannot decode as text
+          throw new Error(`Unsupported DOCX compression method ${compression}`);
+        }
+        // Sanity-check: decoded content must contain Word XML markup, not binary garbage
+        if (!xml || !xml.includes('<w:')) throw new Error('DOCX word/document.xml contains no Word XML markup');
+
+        // Parse XML same as server
+        return xml
+          .replace(/<\/w:p[^>]*>/gi, '\n')
+          .replace(/<w:tab\/>/gi, '\t')
+          .replace(/<w:br[^>]*\/>/gi, '\n')
+          .replace(/<[^>]+>/g, '')
+          .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+          .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+          .replace(/&#\d+;/g, '')
+          .replace(/[ \t]+/g, ' ')
+          .replace(/\n{3,}/g, '\n\n')
+          .trim();
+      }
+
+      offset = dataEnd;
+    } else {
+      offset++;
+    }
+  }
+  throw new Error('word/document.xml not found in DOCX');
 }
 
 // Drag and drop
@@ -2579,25 +3607,40 @@ async function launchAnalysis() {
       errBox.style.display = 'block';
       try {
         const name = rawFile.name;
+        const ext  = name.split('.').pop().toLowerCase();
         const b64  = await readB64(rawFile);
         const upRes  = await fetch('/api/upload', {
           method: 'POST', headers: {'Content-Type':'application/json'},
           body: JSON.stringify({ filename: name, data: b64 })
         });
         const upData = await upRes.json().catch(() => ({ fallback: true }));
+
+        // Server-extracted text always preferred (full text, no truncation)
+        if (upData.resumeText) {
+          resumeText = upData.resumeText;
+          window._resumeText = resumeText;
+        }
+
         if (!upData.fallback && upData.fileId) {
           resumeFileId = upData.fileId;
-        } else {
-          // Files API unavailable — re-extract text from rawFile
-          const ab  = await readAB(rawFile);
-          const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
-          const pages = [];
-          for (let i = 1; i <= pdf.numPages; i++) {
-            const pg = await pdf.getPage(i);
-            const ct = await pg.getTextContent();
-            pages.push(ct.items.map(x => x.str).join(' '));
+        } else if (!resumeText) {
+          // Fallback: browser-side extraction with normalization
+          if (ext === 'pdf') {
+            const ab  = await readAB(rawFile);
+            const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
+            const pages = [];
+            for (let i = 1; i <= pdf.numPages; i++) {
+              const pg = await pdf.getPage(i);
+              const ct = await pg.getTextContent();
+              pages.push(ct.items.map(x => x.str).join(' '));
+            }
+            resumeText = normalizeResumeText(pages.join('\n'));
+            window._resumeText = resumeText;
+          } else if (ext === 'docx') {
+            const ab = await readAB(rawFile);
+            resumeText = normalizeResumeText(await extractDOCXBrowser(ab));
+            window._resumeText = resumeText;
           }
-          resumeText = pages.join('\n').substring(0, 4000);
         }
         errBox.style.display = 'none';
       } catch {
@@ -2644,10 +3687,11 @@ async function launchAnalysis() {
     errBox.style.display='block'; return;
   }
 
-  currentRole=role; currentLocation=location;
+  currentRole=role; currentLocation=location; currentJD=jd;
   analysisData={}; _currentEvent='';
   bulletStore.clear(); bulletStoreIdx=0;
   resultReady = false; // I10: reset gate
+  sectionLoaded = { linkedin: false, certifications: false, projects: false };
 
   document.getElementById('bullets-list').innerHTML = '<div class="skeleton sk-box"></div>';
 
@@ -2699,8 +3743,13 @@ async function runStream({ role, location, jd, signal }) {
     location: location.substring(0,50),
     jd:       jd.substring(0,1200)
   };
+  // Always send resume text for deterministic ATS scoring
+  // Also send fileId when available (PDF) for rich Claude analysis
   if (resumeFileId) payload.fileId = resumeFileId;
-  else payload.resume = resumeText.substring(0,4000);
+  if (resumeText) {
+    payload.resume    = resumeText.substring(0,4000); // capped for Claude input
+    payload.resumeFull = resumeText;                   // full text for ATS scoring
+  }
 
   const res = await fetch('/api/analyze',{
     method:'POST', headers:{'Content-Type':'application/json'},
@@ -2773,6 +3822,15 @@ function handleSSE(name, data) {
 
     case 'verdict':
       renderVerdict(data);
+      if (!resultReady) {
+        resultReady = true;
+        stopLoading();
+        showPage('results');
+        document.getElementById('back-btn').style.display = 'block';
+        populateResumePane(); // ISSUE 3: fill right pane with resume text
+        // Replace Stream B skeletons with animated messages after Stream B launches (~2s)
+        setTimeout(showStreamBLoading, 2200);
+      }
       break;
 
     case 'skills':
@@ -2789,37 +3847,40 @@ function handleSSE(name, data) {
 
     case 'scores':
       renderScores(data);
-      // Stream A is done — show results immediately with Stream B sections in loading state
+      // Animate score meter bars (always, not gated on resultReady)
+      setTimeout(() => {
+        document.querySelectorAll('.sk-bar-fill').forEach(b => {
+          b.style.width = b.dataset.w + '%';
+        });
+      }, 200);
+      // Render action list with whatever data is available (bullets, gaps, ATS)
+      renderSummaryCard();
+      // Safety net: if verdict never fired (shouldn't happen), show results now
       if (!resultReady) {
         resultReady = true;
         stopLoading();
         showPage('results');
         document.getElementById('back-btn').style.display = 'block';
         showStreamBLoading();
-        setTimeout(() => {
-          document.querySelectorAll('.sk-bar-fill').forEach(b => {
-            b.style.width = b.dataset.w + '%';
-          });
-        }, 200);
       }
-      // Render action list now with whatever data is available (bullets, gaps, ATS)
-      // It will re-render at 'done' with certs and projects filled in
-      renderSummaryCard();
       break;
 
     case 'bullet_group': appendBulletGroup(data);       break;
     case 'jd_breakdown': renderJDBreakdown(data.jd_breakdown); break;
 
     case 'linkedin':
+      sectionLoaded.linkedin = true;
       renderLinkedIn(data);
       break;
 
     case 'certifications':
+      sectionLoaded.certifications = true;
       analysisData.certs = data.certifications;
       renderCerts(data.certifications);
       break;
 
     case 'projects':
+      sectionLoaded.projects = true;
       analysisData.projects = data.projects;
       renderProjects(data.projects);
       break;
@@ -2835,6 +3896,8 @@ function handleSSE(name, data) {
     case 'done':
       // Both streams complete — render summary card now that bullets/certs/projects are all populated
       renderSummaryCard();
+      // Show retry buttons for any Stream B sections that didn't load
+      showMissingSectionRetry();
       if (!resultReady) {
         // Safety net if scores event somehow didn't fire
         resultReady = true;
@@ -2900,12 +3963,14 @@ function goBack() {
 }
 
 function showTab(t) {
-  ['profile','project','score'].forEach(id=>{
+  ['profile','project','score','finalize'].forEach(id=>{
     document.getElementById('tab-'+id).classList.toggle('on', id===t);
     const b=document.getElementById('t-'+id);
     if(b) b.classList.toggle('on', id===t);
+    const s=document.getElementById('s-'+id);
+    if(s) s.classList.toggle('on', id===t);
   });
-  // Re-animate skill bars whenever Profile tab becomes active
+  // Re-animate skill bars whenever Diagnosis tab becomes active
   if (t === 'profile') {
     setTimeout(() => {
       document.querySelectorAll('.sk-bar-fill').forEach(b => {
@@ -2913,6 +3978,10 @@ function showTab(t) {
       });
     }, 80);
   }
+  // Populate resume pane whenever Resume Fix tab opens (ISSUE 3)
+  if (t === 'score') populateResumePane();
+  // Populate Finalize metrics when that tab opens
+  if (t === 'finalize') renderFinalizeMetrics();
 }
 
 // ═══════════════════════════════════════════════════
@@ -2924,6 +3993,14 @@ function togAcc(bodyId, arrId) {
   const open=body.classList.contains('open');
   body.classList.toggle('open',!open);
   if(arr) arr.classList.toggle('open',!open);
+}
+
+// ═══════════════════════════════════════════════════
+// SALARY HELPER — strip parenthetical explanations (ISSUE 5)
+// "  $75k – $145k (estimate)" → "$75k – $145k"
+// ═══════════════════════════════════════════════════
+function stripSalParen(s) {
+  return (s || '').replace(/\s*\(.*$/, '').trim();
 }
 
 // ═══════════════════════════════════════════════════
@@ -2940,12 +4017,16 @@ function renderVerdict(d) {
   document.getElementById('sum-title').textContent = d.verdict_headline || 'Analysis complete';
   document.getElementById('sum-desc').textContent  = d.verdict_sub || '';
 
-  const atsText = (d.ats_pass_rate || 0) < 60
-    ? `${d.ats_pass_rate||0}% of top keywords found. ${100-(d.ats_pass_rate||50)}% missing — fixable.`
-    : `${d.ats_pass_rate}% keyword coverage — ATS-friendly.`;
+  const atsRate = d.ats_pass_rate != null ? d.ats_pass_rate : null;
+  const atsText = atsRate == null
+    ? 'ATS data loading…'
+    : atsRate < 60
+      ? `${atsRate}% of top keywords found. ${100 - atsRate}% missing — fixable.`
+      : `${atsRate}% keyword coverage — ATS-friendly.`;
 
-  // Salary: use scraped posting median or Claude's range estimate
-  const salDisplay = sal.fromPostings || sal.range || '';
+  // Salary: confidence-gated display — suppress fake precision (ISSUE 5: strip parens)
+  const salDisplay = stripSalParen(sal.fromPostings || sal.range || '');
+  const salConf    = sal.confidence || 'estimate';
   const salText    = salDisplay;
 
   document.getElementById('sum-row').innerHTML =
@@ -2978,18 +4059,15 @@ function renderVerdict(d) {
   // Keyword Match (ATS) stat card
   const atsVal  = document.getElementById('profile-ats-val');
   const atsNote = document.getElementById('profile-ats-note');
-  if (atsVal)  atsVal.textContent  = (d.ats_pass_rate || '—') + (d.ats_pass_rate ? '%' : '');
-  if (atsNote) atsNote.textContent = (d.ats_pass_rate || 0) < 60
-    ? `of top keywords found. Add "${d.ats_missing_keyword || 'key terms'}" to improve.`
-    : `Strong keyword coverage for this role.`;
+  if (atsVal)  atsVal.textContent  = atsRate != null ? atsRate + '%' : '—';
+  // ISSUE 4: do not overwrite the static note — keep label clean
 
-  // Salary stat card — posting median or Claude's range estimate
+  // Salary stat card — show clean range only, no parenthetical (ISSUE 5)
   const salVal = document.getElementById('profile-sal-val');
   if (salVal) {
-    const display = sal.fromPostings || sal.range || 'Calculating…';
-    salVal.textContent = display;
-    const existingCtx = salVal.parentElement.querySelector('.sal-ctx');
-    if (existingCtx) existingCtx.remove();
+    salVal.textContent = salDisplay || '—';
+    // Remove any stale qualifier
+    salVal.parentElement.querySelectorAll('.sal-ctx').forEach(el => el.remove());
   }
 
   // Store ATS data for summary card
@@ -3000,6 +4078,11 @@ function renderVerdict(d) {
   analysisData.ats_needed          = d.ats_needed ?? null;
   analysisData.salary              = sal;
   // Salary rendered in stat card above via salVal
+
+  // Update the landing-page ATS insight bar with the real score so if the user
+  // navigates back to the home page they see their actual score, not the 80% demo.
+  const atsBar = document.getElementById('ic-ats-fill');
+  if (atsBar && d.ats_pass_rate != null) atsBar.style.width = d.ats_pass_rate + '%';
 }
 
 // salary-section kept as empty div for layout compatibility
@@ -3084,7 +4167,7 @@ function renderGaps(gaps) {
       <div class="gap-badge ${cls}">${lbl}</div>
       <div style="flex:1;min-width:0">
         <div class="gap-name-txt">${esc(g.skill)}</div>
-        <div class="gap-sub-txt">${sub}${g.how_often ? ' · ' + g.how_often + '% of postings' : ''}</div>
+        <div class="gap-sub-txt">${sub}${g._fromJD ? ' · Required by this job' : g.how_often ? ' · ' + g.how_often + '% of postings' : ''}</div>
       </div>
     </div>`;
   }).join('');
@@ -3120,9 +4203,10 @@ function renderLinkedIn(d) {
   const abEl = document.getElementById('li-ab-text');
   if (abEl) abEl.textContent = d.linkedin_about || '';
 
-  // Skills — cap at 5
+  // Skills — cap at 5; store for use in rewrites and finalize checklist
+  analysisData.linkedin_skills = d.linkedin_skills || [];
   const skEl = document.getElementById('li-skill-tags');
-  if (skEl) skEl.innerHTML = (d.linkedin_skills || [])
+  if (skEl) skEl.innerHTML = analysisData.linkedin_skills
     .slice(0, 5)
     .map(s => `<span class="li-skill-chip">${esc(s)}</span>`).join('');
 }
@@ -3131,32 +4215,64 @@ function renderLinkedIn(d) {
 // RENDER — CERTIFICATIONS (Tab 1)
 // 3 cards horizontal, Enroll Now links
 // ═══════════════════════════════════════════════════
+// Trim text to at most N sentences (split on '. ', '! ', '? ', trailing '.'/!/?')
+function trimToSentences(text, n) {
+  if (!text) return '';
+  // Split on sentence boundaries while keeping the punctuation
+  const parts = text.match(/[^.!?]+[.!?]+/g) || [text];
+  return parts.slice(0, n).join(' ').trim();
+}
+
+// Extract a URL from text that may contain one, returning { url, cleaned }
+function extractUrlFromText(text) {
+  const m = (text || '').match(/https?:\/\/[^\s·,)]+/);
+  if (!m) return { url: '', cleaned: text };
+  return { url: m[0], cleaned: text.replace(m[0], '').replace(/\s{2,}/g, ' ').trim() };
+}
+
 function renderCerts(certs) {
   const el = document.getElementById('certs-list');
   if (!certs || !certs.length) {
     el.innerHTML = '<div style="font-size:13px;color:var(--on-surface-v)">No certifications available.</div>';
     return;
   }
-  el.innerHTML = certs.map(c => `
-    <div class="cert-card">
+  el.innerHTML = certs.map(c => {
+    // Extract URL from full why text BEFORE trimming (URL may appear after sentence 2)
+    let enrollUrl = c.url || '';
+    let fullWhy = c.why || '';
+    if (!enrollUrl) {
+      const extracted = extractUrlFromText(fullWhy);
+      if (extracted.url) { enrollUrl = extracted.url; fullWhy = extracted.cleaned; }
+    }
+    // Also try www. URLs without protocol
+    if (!enrollUrl) {
+      const wwwM = fullWhy.match(/\b((?:www\.)[^\s·,)]+)/);
+      if (wwwM) { enrollUrl = 'https://' + wwwM[1]; fullWhy = fullWhy.replace(wwwM[0], '').replace(/\s{2,}/g,' ').trim(); }
+    }
+    // Now trim to 2 sentences
+    let why = trimToSentences(fullWhy, 2);
+
+    return `<div class="cert-card">
       <div>
         <div class="cert-icon-wrap">
           <span class="material-symbols-outlined" style="color:#fff;font-size:22px;font-variation-settings:'FILL' 1">workspace_premium</span>
         </div>
         <div class="cert-name-txt">${esc(c.name)}</div>
         <div class="cert-provider">${esc(c.provider)}</div>
-        <div class="cert-why-txt">${esc(c.why)}</div>
+        ${c.addressesGap ? `<div style="font-size:10px;color:var(--primary);font-weight:600;margin:4px 0 2px">Closes gap: ${esc(c.addressesGap)}</div>` : ''}
+        <div class="cert-why-txt">${esc(why)}</div>
         <div class="cert-meta-chips">
-          <span class="cert-meta-chip">${esc(c.cost)}</span>
-          <span class="cert-meta-chip">${esc(c.duration)}</span>
+          ${c.cost ? `<span class="cert-meta-chip">${esc(c.cost)}</span>` : ''}
+          ${c.duration ? `<span class="cert-meta-chip">${esc(c.duration)}</span>` : ''}
         </div>
       </div>
-      ${c.url ? `<a href="${c.url}" target="_blank" rel="noopener" class="cert-enroll">
-        Enroll Now <span class="material-symbols-outlined">arrow_forward</span>
-      </a>` : ''}
-    </div>`
-  ).join('');
-  // Note: showPage('results') intentionally removed — only 'done' event triggers that (I10)
+      ${enrollUrl ? `<a href="${esc(enrollUrl)}" target="_blank" rel="noopener"
+          class="copy-btn-sm cert-enroll"
+          style="display:inline-flex;align-items:center;gap:5px;text-decoration:none;margin-top:4px">
+          Enroll now →
+        </a>` : ''}
+    </div>`;
+  }).join('');
 }
 
 // ═══════════════════════════════════════════════════
@@ -3211,7 +4327,7 @@ function renderProjects(projects) {
             <span class="material-symbols-outlined" style="color:${colors[i]};font-size:28px">${icons[i]||'build'}</span>
             <div style="text-align:right">
               <div style="font-size:20px;font-weight:900;color:${colors[i]};line-height:1">${p.career_impact || p.market_signal}%</div>
-              <div style="font-size:9px;font-weight:800;color:var(--outline);text-transform:uppercase;letter-spacing:.08em;margin-top:1px">career impact</div>
+              <div style="font-size:9px;font-weight:800;color:var(--outline);text-transform:uppercase;letter-spacing:.08em;margin-top:1px">priority score</div>
             </div>
           </div>
           <div style="font-size:13px;font-weight:800;color:var(--on-surface);margin-bottom:6px;line-height:1.3">${esc(p.title)}</div>
@@ -3286,7 +4402,7 @@ function selProject(idx) {
         </div>
         <div>
           <div style="font-size:16px;font-weight:900;color:var(--on-surface);letter-spacing:-.2px">Project Blueprint: ${esc(p.title)}</div>
-          <div style="font-size:11px;font-weight:800;color:var(--primary);text-transform:uppercase;letter-spacing:.08em;margin-top:2px">Bridging your biggest gap</div>
+          <div style="font-size:11px;font-weight:800;color:var(--primary);text-transform:uppercase;letter-spacing:.08em;margin-top:2px">Ranked by gap severity · ATS impact · feasibility</div>
         </div>
       </div>
 
@@ -3301,6 +4417,13 @@ function selProject(idx) {
             <div style="display:flex;flex-wrap:wrap;gap:6px">
               ${(p.skills||[]).map(s=>`<span style="font-size:11px;font-weight:700;color:var(--secondary);background:rgba(70,71,211,.08);border:1px solid rgba(70,71,211,.15);border-radius:99px;padding:3px 10px">${esc(s)}</span>`).join('')}
             </div>
+            ${(p.ats_keywords && p.ats_keywords.length) ? `
+            <div style="margin-top:12px">
+              <div style="font-size:10px;font-weight:900;color:var(--outline);text-transform:uppercase;letter-spacing:.12em;margin-bottom:6px">ATS Keywords This Project Proves</div>
+              <div style="display:flex;flex-wrap:wrap;gap:6px">
+                ${p.ats_keywords.map(k=>`<span style="font-size:11px;font-weight:800;color:var(--primary);background:rgba(0,87,189,.08);border:1.5px solid rgba(0,87,189,.2);border-radius:6px;padding:3px 10px;letter-spacing:.02em">${esc(k)}</span>`).join('')}
+              </div>
+            </div>` : ''}
           </div>
           <div>
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
@@ -3371,13 +4494,13 @@ function renderScores(d) {
   if (analysisData.ats_missing_keyword) {
     const an = document.getElementById('ats-notice');
     an.style.display = 'block';
-    an.textContent = `Your resume matches ${analysisData.ats_pass_rate||50}% of the top keywords for this role. The biggest missing keyword is "${analysisData.ats_missing_keyword}". Adding it could push your keyword match to ${analysisData.ats_potential||75}%.`;
+    an.textContent = `Your resume matches ${analysisData.ats_pass_rate != null ? analysisData.ats_pass_rate : 50}% of the top keywords for this role. The biggest missing keyword is "${analysisData.ats_missing_keyword}". Adding it could push your keyword match to ${analysisData.ats_potential || Math.min(100, (analysisData.ats_pass_rate != null ? analysisData.ats_pass_rate : 50)+7)}%.`;
   }
 
   // Clear bullet skeleton
   const bl = document.getElementById('bullets-list');
   if (bl && bl.querySelector('.skeleton')) {
-    bl.innerHTML = `<div style="font-size:13px;color:var(--on-surface-v);padding:10px 0;font-weight:500">Analysing your bullets…</div>`;
+    bl.innerHTML = `<div class="bullet-pending" style="font-size:13px;color:var(--on-surface-v);padding:10px 0;font-weight:500">Analysing your bullets…</div>`;
   }
 }
 
@@ -3387,7 +4510,7 @@ function renderScores(d) {
 // ═══════════════════════════════════════════════════
 function appendBulletGroup(data) {
   const list = document.getElementById('bullets-list');
-  if (list.querySelector('.skeleton') || list.querySelector('[style*="Analysing"]')) {
+  if (list.querySelector('.skeleton') || list.querySelector('.bullet-pending')) {
     list.innerHTML = '';
   }
 
@@ -3407,27 +4530,33 @@ function appendBulletGroup(data) {
     }
 
     const idx = bulletStoreIdx++;
-    bulletStore.set(idx, { text: item.text, bh: item.brutal_honey, rw: item.rewrite, tags });
+    bulletStore.set(idx, { text: item.text, bh: item.brutal_honey, rw: item.rewrite, tags, atsKw: item.ats_keyword_introduced || '' });
 
     const suggestion = item.rewrite && /^<\s*REMOVE/i.test(item.rewrite.trim())
       ? `<div class="bullet-suggestion" style="color:var(--amber-text)">⚠ Consider removing — not relevant to target role</div>`
       : item.rewrite
-      ? `<div class="bullet-suggestion">Suggested: "${esc(item.rewrite.replace(/\[.*?\]/g,'…').substring(0,110))}${item.rewrite.length>110?'…':''}"</div>`
+      ? `<div class="bullet-after-preview">
+          <div class="bullet-after-lbl">After →</div>
+          <div class="bullet-after-text">${esc(item.rewrite.replace(/\[.*?\]/g,'…').substring(0,120))}${item.rewrite.length>120?'…':''}</div>
+        </div>`
       : '';
 
-    return `<div class="bullet-item red" onclick="openDlg(${idx})">
+    return `<div class="bullet-item red" data-bullet-idx="${idx}" onclick="toggleBulletDetail(${idx})">
       ${tagHtml ? `<div class="bullet-tags">${tagHtml}</div>` : ''}
+      <div class="bullet-before-lbl">Before</div>
       <p class="bullet-text">${esc(item.text)}</p>
       ${suggestion}
       <div class="bullet-see-more">
-        <span class="material-symbols-outlined" style="font-size:14px">arrow_forward</span>
-        See full analysis
+        <span class="material-symbols-outlined" style="font-size:14px">expand_more</span>
+        See analysis &amp; fix inline
       </div>
     </div>`;
   }).join('');
 
+  const coSlug = 'cog-' + (data.company||'').replace(/[^a-z0-9]/gi,'').toLowerCase().substring(0,20);
   const group = document.createElement('div');
   group.className = 'co-group';
+  group.id = coSlug;
   group.innerHTML = `<div class="co-lbl">
     <span class="material-symbols-outlined" style="font-size:14px;font-variation-settings:'FILL' 1">business</span>
     ${esc(data.company)}
@@ -3435,12 +4564,31 @@ function appendBulletGroup(data) {
   </div>${items}`;
   list.appendChild(group);
 
-  const redCount = list.querySelectorAll('.bullet-item.red').length;
+  // Build jump-nav button for this company
+  const nav = document.getElementById('co-nav');
+  if (nav && data.company) {
+    const btn = document.createElement('button');
+    btn.className = 'co-nav-btn';
+    btn.textContent = data.company;
+    btn.onclick = () => {
+      const el = document.getElementById(coSlug);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+    nav.appendChild(btn);
+    if (nav.children.length > 1) nav.style.display = 'flex';
+  }
+
+  const redCount = list.querySelectorAll('.bullet-item.red:not(.adopted)').length;
   const badge = document.getElementById('bullets-flagged-count');
   if (badge && redCount > 0) {
     badge.textContent = `${redCount} flagged`;
     badge.style.display = 'inline-flex';
   }
+
+  // Issue 5: re-sync the Finalize "Bullets to rewrite" counter after each group loads
+  // renderSummaryCard reads the DOM count, so it must be called AFTER bullets are in the DOM.
+  // Guard: only call if scores data is already available (summary card has been rendered).
+  if (analysisData.scores) renderSummaryCard();
 }
 
 // ═══════════════════════════════════════════════════
@@ -3476,11 +4624,94 @@ function showStreamBLoading() {
 }
 
 // ═══════════════════════════════════════════════════
+// PER-SECTION RETRY
+// ═══════════════════════════════════════════════════
+function showMissingSectionRetry() {
+  const SECTION_META = {
+    linkedin:       { container: 'li-hl-text',  label: 'LinkedIn section' },
+    certifications: { container: 'certs-list',  label: 'Certifications'   },
+    projects:       { container: 'proj-cards',  label: 'Projects'         }
+  };
+  for (const [section, meta] of Object.entries(SECTION_META)) {
+    if (sectionLoaded[section]) continue;
+    const el = document.getElementById(meta.container);
+    if (!el) continue;
+    el.innerHTML = `<div style="padding:16px;text-align:center;color:var(--on-surface-v);font-size:13px">
+      <div style="margin-bottom:10px">This section didn't load in time.</div>
+      <button onclick="retrySection('${section}')" style="font-size:12px;font-weight:700;padding:8px 18px;border-radius:10px;border:none;background:var(--primary);color:#fff;cursor:pointer">Retry ${meta.label}</button>
+    </div>`;
+  }
+}
+
+async function retrySection(section) {
+  const SECTION_META = {
+    linkedin:       { container: 'li-hl-text', loadingHtml: '<span style="font-size:12px;color:var(--on-surface-v);font-style:italic;animation:pulse 1.5s ease-in-out infinite">Retrying — writing your LinkedIn headline…</span>' },
+    certifications: { container: 'certs-list', loadingHtml: '<div class="skeleton sk-box" style="height:180px;border-radius:16px"></div><div class="skeleton sk-box" style="height:180px;border-radius:16px"></div>' },
+    projects:       { container: 'proj-cards', loadingHtml: '<div class="skeleton sk-box" style="height:120px;border-radius:16px"></div><div class="skeleton sk-box" style="height:120px;border-radius:16px"></div>' }
+  };
+  const meta = SECTION_META[section];
+  if (!meta) return;
+  const el = document.getElementById(meta.container);
+  if (el) el.innerHTML = meta.loadingHtml;
+
+  const payload = {
+    role:            currentRole,
+    location:        currentLocation,
+    jd:              currentJD,
+    resume:          resumeText ? resumeText.substring(0, 4000) : '',
+    resumeFull:      resumeText || '',
+    sectionOnly:     section,
+    confirmedSkills: analysisData.skills_present || [],
+    detectedGaps:    analysisData.gaps           || []
+  };
+
+  try {
+    const fetchRes = await fetch('/api/analyze', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(payload)
+    });
+    if (!fetchRes.ok) throw new Error('Retry request failed');
+    const reader  = fetchRes.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    let evtName = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for (const line of lines) {
+        if (line.startsWith('event: ')) { evtName = line.slice(7).trim(); continue; }
+        if (line.startsWith('data: ')) {
+          const raw = line.slice(6).trim();
+          if (!raw) continue;
+          try { handleSSE(evtName, JSON.parse(raw)); evtName = ''; } catch {}
+        }
+      }
+    }
+    // If section still didn't load, show error
+    if (!sectionLoaded[section]) {
+      if (el) el.innerHTML = `<div style="padding:16px;text-align:center;color:var(--on-surface-v);font-size:13px">
+        <div style="margin-bottom:10px">Retry failed.</div>
+        <button onclick="retrySection('${section}')" style="font-size:12px;font-weight:700;padding:8px 18px;border-radius:10px;border:none;background:var(--primary);color:#fff;cursor:pointer">Try again</button>
+      </div>`;
+    }
+  } catch (err) {
+    if (el) el.innerHTML = `<div style="padding:16px;text-align:center;color:var(--on-surface-v);font-size:13px">
+      <div style="margin-bottom:10px">Retry failed — ${esc(err.message || 'please try again')}.</div>
+      <button onclick="retrySection('${section}')" style="font-size:12px;font-weight:700;padding:8px 18px;border-radius:10px;border:none;background:var(--primary);color:#fff;cursor:pointer">Try again</button>
+    </div>`;
+  }
+}
+
+// ═══════════════════════════════════════════════════
 // RENDER — SUMMARY CARD (Action List)
 // ═══════════════════════════════════════════════════
 function renderSummaryCard() {
   const bullets  = document.getElementById('bullets-list');
-  const redCount = bullets ? bullets.querySelectorAll('.bullet-item.red').length : 0;
+  const redCount = bullets ? bullets.querySelectorAll('.bullet-item.red:not(.adopted)').length : 0;
   const topGap   = (analysisData.gaps&&analysisData.gaps[0])         ? analysisData.gaps[0].skill     : null;
   const topCert  = (analysisData.certs&&analysisData.certs[0])       ? analysisData.certs[0].name     : null;
   const topProj  = (analysisData.projects&&analysisData.projects[0]) ? analysisData.projects[0].title : null;
@@ -3488,46 +4719,61 @@ function renderSummaryCard() {
   const atsMissing = analysisData.ats_missing_list || [];
   const atsNeeded  = analysisData.ats_needed;
 
-  // ATS row: show keywords to add and the 75% target, not an inflated potential %
-  const atsRowContent = atsFrom >= 75
+  // ATS row: show keywords to add and the 80% target, not an inflated potential %
+  const atsRowContent = atsFrom >= 80
     ? `<div class="action-ats"><span class="action-ats-to" style="color:var(--tertiary)">${atsFrom}%</span><span class="action-ats-note" style="margin-left:4px">— above ATS threshold</span></div>`
     : atsMissing.length
     ? `<div style="margin-top:4px">
-        <div style="font-size:11px;color:var(--on-surface-v);font-weight:500;margin-bottom:4px">${atsFrom}% now · add these to reach 75%+:</div>
+        <div style="font-size:11px;color:var(--on-surface-v);font-weight:500;margin-bottom:4px">${atsFrom}% now · add these to reach 80%+:</div>
         <div style="display:flex;flex-wrap:wrap;gap:4px">${atsMissing.map(k=>`<span style="font-size:10px;font-weight:700;background:rgba(0,87,189,.08);color:var(--primary);border-radius:6px;padding:2px 7px">${esc(k)}</span>`).join('')}</div>
        </div>`
-    : `<div class="action-ats"><span class="action-ats-from">${atsFrom}%</span><span class="material-symbols-outlined" style="font-size:16px;color:var(--tertiary)">arrow_forward</span><span class="action-ats-to">75%<span class="action-ats-note"> target</span></span></div>`;
+    : `<div class="action-ats"><span class="action-ats-from">${atsFrom}%</span><span class="material-symbols-outlined" style="font-size:16px;color:var(--tertiary)">arrow_forward</span><span class="action-ats-to">80%<span class="action-ats-note"> target</span></span></div>`;
 
-  function row(iconBg, iconColor, icon, label, valueHtml) {
+  // Status badge: green check = done, amber circle = needs action
+  function statusBadge(done) {
+    return done
+      ? `<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:800;color:var(--tertiary);background:rgba(0,105,71,.08);border:1px solid rgba(0,105,71,.2);border-radius:99px;padding:2px 8px;margin-left:6px;vertical-align:middle">
+           <span class="material-symbols-outlined" style="font-size:11px;font-variation-settings:'FILL' 1">check_circle</span>Done
+         </span>`
+      : `<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:800;color:#92400e;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.35);border-radius:99px;padding:2px 8px;margin-left:6px;vertical-align:middle">
+           <span class="material-symbols-outlined" style="font-size:11px;font-variation-settings:'FILL' 1">pending</span>To do
+         </span>`;
+  }
+
+  function row(iconBg, iconColor, icon, label, valueHtml, done) {
     return `<div class="action-row">
       <div class="action-icon" style="background:${iconBg}">
         <span class="material-symbols-outlined" style="color:${iconColor};font-size:17px;font-variation-settings:'FILL' 1">${icon}</span>
       </div>
-      <div>
-        <div class="action-label">${label}</div>
+      <div style="min-width:0;flex:1">
+        <div class="action-label">${label}${done !== undefined ? statusBadge(done) : ''}</div>
         ${valueHtml}
       </div>
     </div>`;
   }
 
+  const bulletsDone = redCount === 0;
   document.getElementById('summary-card').innerHTML =
     `<h3 style="font-size:18px;font-weight:800;color:var(--on-surface);display:flex;align-items:center;gap:8px;margin-bottom:20px">
       <span class="material-symbols-outlined" style="color:var(--primary);font-variation-settings:'FILL' 1">checklist</span>
-      Your Action List
+      Pre-Application Checklist
     </h3>
     <div class="action-list">
       ${row('rgba(70,71,211,.1)','var(--secondary)','edit_note','Bullets to rewrite',
-        `<div class="action-value">Focus on outcome-based engineering verbs</div>
-         <div style="margin-top:6px;width:36px;height:36px;border-radius:50%;background:rgba(70,71,211,.1);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:900;color:var(--secondary)">${redCount}</div>`)}
+        bulletsDone
+          ? `<div class="action-value" style="color:var(--tertiary);font-weight:600">All bullets reviewed</div>`
+          : `<div class="action-value">Focus on outcome-based engineering verbs</div>
+             <div style="margin-top:6px;width:32px;height:32px;border-radius:50%;background:rgba(70,71,211,.1);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:var(--secondary)">${redCount}</div>`,
+        bulletsDone)}
       ${topGap ? row('rgba(0,87,189,.1)','var(--primary)','terminal','Top skill to close',
-        `<span class="action-chip">${esc(topGap)}</span>`) : ''}
+        `<span class="action-chip">${esc(topGap)}</span>`, false) : ''}
       ${topProj ? row('rgba(0,105,71,.1)','var(--tertiary)','architecture','Project to build',
-        `<div class="action-value">${esc(topProj)}</div>`) : ''}
+        `<div class="action-value">${esc(topProj)}</div>`, false) : ''}
       ${topCert ? row('var(--surface-container)','var(--outline)','card_membership','Cert to get',
-        `<div class="action-value">${esc(topCert)}</div>`) : ''}
-      ${row('rgba(0,87,189,.08)','var(--primary)','trending_up','ATS improvement', atsRowContent)}
+        `<div class="action-value">${esc(topCert)}</div>`, false) : ''}
+      ${row('rgba(0,87,189,.08)','var(--primary)','trending_up','ATS keywords', atsRowContent, atsFrom >= 80)}
       ${row('rgba(0,87,189,.08)','var(--primary)','account_circle','LinkedIn headline',
-        `<div class="action-value">Updated in Your Profile tab</div>`)}
+        `<div class="action-value">Updated in Your Profile tab</div>`, false)}
     </div>`;
 }
 
@@ -3549,9 +4795,9 @@ async function generateBulletRewrite(bulletText, brutalHoney, role) {
         bullet:          bulletText,
         role:            role || currentRole || 'this role',
         brutalHoney:     brutalHoney || '',
-        missingKeywords: analysisData.ats_missing_keyword
-          ? [analysisData.ats_missing_keyword]
-          : []
+        missingKeywords: (analysisData.gaps || []).slice(0, 5).map(g => g.skill).filter(Boolean).length
+          ? (analysisData.gaps || []).slice(0, 5).map(g => g.skill).filter(Boolean)
+          : analysisData.ats_missing_keyword ? [analysisData.ats_missing_keyword] : []
       })
     });
 
@@ -3560,19 +4806,25 @@ async function generateBulletRewrite(bulletText, brutalHoney, role) {
     const text = data?.rewrite?.trim();
 
     if (text && text.length > 10 && rwEl.isConnected) {
-      rwEl.textContent   = text;
+      rwEl.value         = text;
+      rwEl.disabled      = false;
       rwEl.style.fontStyle = 'normal';
       rwEl.style.opacity   = '1';
       if (copyBtn) {
         copyBtn.disabled = false;
-        copyBtn.onclick  = () => copyEl('dlg-rw-text', copyBtn);
       }
+      const adoptBtn = document.getElementById('dlg-adopt-btn');
+      if (adoptBtn) adoptBtn.disabled = false;
+      // Update section label
+      const afterLbl = document.querySelector('.dlg-section-label.after');
+      if (afterLbl) afterLbl.innerHTML = '<span class="material-symbols-outlined" style="font-size:13px">arrow_forward</span>After — edit, then adopt';
     } else {
       throw new Error('Empty rewrite');
     }
   } catch {
     if (rwEl && rwEl.isConnected) {
-      rwEl.textContent   = `Rewrite this bullet to show a specific ${currentRole || 'target role'} outcome — what decision did you enable or what metric did you move?`;
+      rwEl.value         = '';
+      rwEl.placeholder   = `Rewrite this bullet to show a specific ${currentRole || 'target role'} outcome — what decision did you enable or what metric did you move?`;
       rwEl.style.fontStyle = 'italic';
       rwEl.style.opacity   = '.8';
     }
@@ -3601,7 +4853,9 @@ function openDlg(idx) {
 
   document.getElementById('dlg-body').innerHTML =
     `<div style="margin-bottom:14px">
-      <div class="dlg-lbl">Your bullet</div>
+      <div class="dlg-section-label before">
+        <span class="material-symbols-outlined" style="font-size:13px">arrow_back</span>Before
+      </div>
       <div class="dlg-orig">${esc(d.text||'')}</div>
       ${tagHtml ? `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px">${tagHtml}</div>` : ''}
     </div>
@@ -3622,26 +4876,34 @@ function openDlg(idx) {
     </div>` :
     d.rw ? `
     <div>
-      <div class="dlg-lbl">What it should sound like</div>
-      <div class="dlg-rewrite" id="dlg-rw-text">${esc(d.rw)}</div>
-      <div class="dlg-note">Don't have exact numbers? "40% faster based on before/after testing" is real data. "Optimized" is not.</div>
+      <div class="dlg-section-label after">
+        <span class="material-symbols-outlined" style="font-size:13px">arrow_forward</span>After — edit, then adopt
+      </div>
+      <textarea class="dlg-edit-area" id="dlg-rw-text">${esc(d.rw)}</textarea>
+      <div class="dlg-note">Edit freely — numbers, context, tone. Click Adopt to replace your original bullet.</div>
       <div class="dlg-footer">
-        <button class="copy-btn" onclick="copyEl('dlg-rw-text',this)">
-          <span class="material-symbols-outlined" style="font-size:15px;vertical-align:middle;margin-right:4px">content_copy</span>Copy rewrite
+        <button class="dlg-adopt-btn" onclick="adoptRewrite(${idx})">
+          <span class="material-symbols-outlined" style="font-size:15px">check_circle</span>Adopt this rewrite
         </button>
-        <button class="dlg-close-btn" onclick="closeDlg()">Close</button>
+        <button class="copy-btn" id="dlg-copy-btn" onclick="copyEl('dlg-rw-text',this)" style="flex:.5">
+          <span class="material-symbols-outlined" style="font-size:15px;vertical-align:middle;margin-right:4px">content_copy</span>Copy
+        </button>
+        <button class="dlg-close-btn" onclick="closeDlg()">Skip</button>
       </div>
     </div>` :
     `<div>
-      <div class="dlg-lbl">What it should sound like</div>
-      <div id="dlg-rw-text" class="dlg-rewrite" style="font-style:italic;opacity:.7;font-size:12px">
-        Generating a ${esc(currentRole||'target role')}-relevant replacement…
+      <div class="dlg-section-label after">
+        <span class="material-symbols-outlined" style="font-size:13px">arrow_forward</span>After — generating…
       </div>
+      <textarea class="dlg-edit-area" id="dlg-rw-text" disabled placeholder="Generating a ${esc(currentRole||'target role')}-relevant replacement…" style="opacity:.7;font-style:italic"></textarea>
       <div class="dlg-footer">
-        <button class="copy-btn" id="dlg-copy-btn" disabled onclick="copyEl('dlg-rw-text',this)">
-          <span class="material-symbols-outlined" style="font-size:15px;vertical-align:middle;margin-right:4px">content_copy</span>Copy rewrite
+        <button class="dlg-adopt-btn" id="dlg-adopt-btn" disabled onclick="adoptRewrite(${idx})">
+          <span class="material-symbols-outlined" style="font-size:15px">check_circle</span>Adopt this rewrite
         </button>
-        <button class="dlg-close-btn" onclick="closeDlg()">Close</button>
+        <button class="copy-btn" id="dlg-copy-btn" disabled onclick="copyEl('dlg-rw-text',this)" style="flex:.5">
+          <span class="material-symbols-outlined" style="font-size:15px;vertical-align:middle;margin-right:4px">content_copy</span>Copy
+        </button>
+        <button class="dlg-close-btn" onclick="closeDlg()">Skip</button>
       </div>
     </div>`}`;
 
@@ -3661,11 +4923,424 @@ function closeDlg(e) {
 }
 
 // ═══════════════════════════════════════════════════
+// ADOPT REWRITE — applies suggested text to bullet card
+// ═══════════════════════════════════════════════════
+function adoptRewrite(idx) {
+  const d = bulletStore.get(idx);
+  if (!d) return;
+
+  const rwEl   = document.getElementById('dlg-rw-text');
+  const newText = rwEl ? (rwEl.tagName === 'TEXTAREA' ? rwEl.value : rwEl.textContent || '').trim() : '';
+  if (!newText || newText.length < 5) return;
+
+  // Update resumeText with the adopted version
+  if (resumeText && d.text) {
+    const escaped = d.text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    resumeText = resumeText.replace(new RegExp(escaped), newText);
+  }
+
+  // Update store
+  bulletStore.set(idx, Object.assign({}, d, { adopted: true, adoptedText: newText }));
+
+  // Update the card in the DOM
+  const card = document.querySelector(`[data-bullet-idx="${idx}"]`);
+  if (card) {
+    card.classList.remove('red', 'expanded', 'active');
+    card.classList.add('adopted');
+    const textEl = card.querySelector('.bullet-text');
+    if (textEl) textEl.textContent = newText;
+    card.querySelectorAll('.bullet-adopted-badge,.bullet-inline-detail').forEach(el => el.remove());
+    const badge = document.createElement('div');
+    badge.className = 'bullet-adopted-badge';
+    badge.innerHTML = '<span class="material-symbols-outlined" style="font-size:13px;vertical-align:middle;color:var(--tertiary)">check_circle</span> Adopted';
+    card.appendChild(badge);
+    // Restore see-more as revert affordance (card stays clickable)
+    const seeEl = card.querySelector('.bullet-see-more');
+    if (seeEl) seeEl.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px">undo</span>Click to revert';
+  }
+
+  // Recount flagged
+  const redCount = document.querySelectorAll('.bullet-item.red').length;
+  const flagBadge = document.getElementById('bullets-flagged-count');
+  if (flagBadge) {
+    if (redCount > 0) {
+      flagBadge.textContent = `${redCount} flagged`;
+    } else {
+      flagBadge.style.display = 'none';
+    }
+  }
+
+  // Close dialog
+  document.getElementById('dlg-overlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+// ═══════════════════════════════════════════════════
+// SCROLL RIGHT PANE — finds bullet text in resume div,
+// scrolls to it, and briefly highlights it.
+// ═══════════════════════════════════════════════════
+function scrollResumePaneToText(text) {
+  const el = document.getElementById('resume-edit-area');
+  if (!el || !text) return;
+  const content = el.textContent || '';
+  if (!content) return;
+  const needle = text.trim().substring(0, 80);
+  const idx = content.indexOf(needle);
+  if (idx < 0) return;
+
+  // Estimate scroll position from line number
+  const textBefore = content.substring(0, idx);
+  const linesAbove = (textBefore.match(/\n/g) || []).length;
+  const totalLines  = Math.max(1, (content.match(/\n/g) || []).length);
+  const lineH       = el.scrollHeight / totalLines;
+  el.scrollTop      = Math.max(0, (linesAbove - 2) * lineH);
+
+  // Visual flash
+  el.classList.add('resume-highlight');
+  setTimeout(() => el.classList.remove('resume-highlight'), 1200);
+}
+
+// ═══════════════════════════════════════════════════
+// INLINE BULLET DETAIL (split-screen Resume Fix)
+// Replaces modal for the Resume Fix tab.
+// ═══════════════════════════════════════════════════
+function toggleBulletDetail(idx) {
+  const card = document.querySelector(`[data-bullet-idx="${idx}"]`);
+  if (!card) return;
+  // Adopted bullets ARE still expandable — just show revert option inside
+
+  const isOpen = card.classList.contains('expanded');
+
+  // Collapse any other open bullet first; remove active from all
+  document.querySelectorAll('.bullet-item.expanded').forEach(c => {
+    if (c !== card) {
+      c.classList.remove('expanded', 'active');
+      const det = c.querySelector('.bullet-inline-detail');
+      if (det) det.remove();
+      const see = c.querySelector('.bullet-see-more .material-symbols-outlined');
+      if (see) see.textContent = 'expand_more';
+    }
+  });
+
+  if (isOpen) {
+    // Collapse this bullet and remove active highlight
+    card.classList.remove('expanded', 'active');
+    const det = card.querySelector('.bullet-inline-detail');
+    if (det) det.remove();
+    const see = card.querySelector('.bullet-see-more .material-symbols-outlined');
+    if (see) see.textContent = 'expand_more';
+  } else {
+    // Expand and mark as active (visible selected state)
+    card.classList.add('expanded', 'active');
+    const see = card.querySelector('.bullet-see-more .material-symbols-outlined');
+    if (see) see.textContent = 'expand_less';
+    renderBulletInlineDetail(idx, card);
+
+    // Scroll right pane to align with this bullet
+    const d = bulletStore.get(idx);
+    const scrollTarget = d && (d.adoptedText || d.text);
+    if (scrollTarget) scrollResumePaneToText(scrollTarget);
+  }
+}
+
+function renderBulletInlineDetail(idx, card) {
+  const d = bulletStore.get(idx);
+  if (!d) return;
+
+  const isRemove = d.rw && /^<\s*REMOVE/i.test(d.rw.trim());
+  const taId = `bid-ta-${idx}`;
+
+  const detEl = document.createElement('div');
+  detEl.className = 'bullet-inline-detail';
+  detEl.onclick = e => e.stopPropagation(); // prevent collapse when clicking inside
+
+  if (isRemove) {
+    detEl.innerHTML = `<div class="bid-verdict">${esc(d.bh || 'This bullet needs work.')}</div>
+      <div style="background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);border-radius:8px;padding:10px 12px;font-size:12px;font-weight:600;color:var(--on-surface)">
+        <span class="material-symbols-outlined" style="color:#d97706;font-size:16px;vertical-align:middle;margin-right:4px;font-variation-settings:'FILL' 1">info</span>
+        Consider removing — not relevant to target role.
+      </div>`;
+  } else {
+    const rwText = d.adopted ? (d.adoptedText || d.rw || '') : (d.rw || '');
+    const afterLblText = d.adopted
+      ? 'Adopted — edit if needed, then revert or re-adopt'
+      : 'After — edit freely, then adopt';
+    const atsKwBadge = d.atsKw
+      ? `<div style="display:inline-flex;align-items:center;gap:5px;margin-bottom:6px;background:rgba(0,87,189,.07);border:1px solid rgba(0,87,189,.18);border-radius:6px;padding:4px 10px;font-size:10px;font-weight:800;color:var(--primary)">
+           <span class="material-symbols-outlined" style="font-size:13px;font-variation-settings:'FILL' 1">label</span>
+           Introduces ATS keyword: ${esc(d.atsKw)}
+         </div>`
+      : '';
+    detEl.innerHTML = `<div class="bid-verdict">${esc(d.bh || 'This bullet needs work.')}</div>
+      ${atsKwBadge}
+      <div style="font-size:10px;font-weight:800;color:${d.adopted ? 'var(--tertiary)' : 'var(--secondary)'};text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px">${afterLblText}</div>
+      <textarea class="bid-textarea" id="${taId}">${esc(rwText)}</textarea>
+      <div class="bid-actions">
+        ${d.adopted
+          ? `<button class="bid-revert" id="bid-revert-${idx}" onclick="revertBulletInline(${idx})">
+               <span class="material-symbols-outlined" style="font-size:14px">undo</span>Revert
+             </button>`
+          : `<button class="bid-adopt" id="bid-adopt-${idx}" onclick="adoptRewriteInline(${idx})" ${rwText ? '' : 'disabled'}>
+               <span class="material-symbols-outlined" style="font-size:14px">check_circle</span>Adopt
+             </button>`
+        }
+      </div>`;
+
+    // If no rewrite yet, generate one via micro-call
+    if (!rwText) {
+      generateBulletRewriteInline(idx);
+    }
+  }
+
+  card.appendChild(detEl);
+}
+
+async function generateBulletRewriteInline(idx) {
+  const d = bulletStore.get(idx);
+  if (!d) return;
+  const ta = document.getElementById(`bid-ta-${idx}`);
+  const adoptBtn = document.getElementById(`bid-adopt-${idx}`);
+  if (ta) {
+    ta.placeholder = `Generating a ${esc(currentRole || 'target role')}-relevant replacement…`;
+    ta.style.fontStyle = 'italic';
+    ta.style.opacity   = '.7';
+  }
+
+  try {
+    const res = await fetch('/api/rewrite', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        bullet:          d.text,
+        role:            currentRole || 'this role',
+        brutalHoney:     d.bh || '',
+        missingKeywords: analysisData.ats_missing_keyword ? [analysisData.ats_missing_keyword] : []
+      })
+    });
+    if (!res.ok) throw new Error('Rewrite failed');
+    const data = await res.json();
+    const text = data?.rewrite?.trim();
+    if (text && text.length > 10 && ta && ta.isConnected) {
+      ta.value         = text;
+      ta.style.fontStyle = 'normal';
+      ta.style.opacity   = '1';
+      if (adoptBtn) adoptBtn.disabled = false;
+      // Update stored rewrite so it's available if detail is closed/reopened
+      bulletStore.set(idx, { ...d, rw: text });
+    } else throw new Error('Empty');
+  } catch {
+    if (ta && ta.isConnected) {
+      ta.placeholder = `Write a ${currentRole || 'role'}-relevant version showing a specific outcome.`;
+      ta.style.fontStyle = 'normal';
+      ta.style.opacity   = '1';
+      if (adoptBtn) adoptBtn.disabled = false;
+    }
+  }
+}
+
+function adoptRewriteInline(idx) {
+  const d = bulletStore.get(idx);
+  if (!d) return;
+
+  const taEl  = document.getElementById(`bid-ta-${idx}`);
+  const newText = taEl ? taEl.value.trim() : '';
+  if (!newText || newText.length < 5) return;
+
+  // The text to replace in resumeText: use current displayed text (original or previous adopted)
+  const replaceTarget = d.adoptedText || d.text;
+
+  // Update resumeText so download reflects the change
+  if (resumeText && replaceTarget) {
+    const escaped = replaceTarget.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    resumeText = resumeText.replace(new RegExp(escaped), newText);
+  }
+
+  // Sync to right-pane display
+  window._resumeText = resumeText;
+  const rta = document.getElementById('resume-edit-area');
+  if (rta) rta.textContent = window._resumeText;
+
+  // Update store: preserve original for revert, track adoptedText
+  const originalText = d.original || d.text;
+  bulletStore.set(idx, { ...d, rw: newText, adopted: true, original: originalText, adoptedText: newText });
+
+  // Mark card visually as adopted — keep clickable so user can revert
+  const card = document.querySelector(`[data-bullet-idx="${idx}"]`);
+  if (card) {
+    // Update displayed bullet text to adopted version
+    const textEl = card.querySelector('.bullet-text');
+    if (textEl) textEl.textContent = newText;
+
+    // Add adopted class (green border, still pointer cursor) and remove expanded
+    card.classList.add('adopted');
+    card.classList.remove('expanded', 'active');
+
+    // Remove inline detail; update badge
+    card.querySelectorAll('.bullet-adopted-badge').forEach(el => el.remove());
+    card.querySelectorAll('.bullet-inline-detail').forEach(el => el.remove());
+
+    // Adopted badge
+    const badge = document.createElement('div');
+    badge.className = 'bullet-adopted-badge';
+    badge.innerHTML = '<span class="material-symbols-outlined" style="font-size:13px;vertical-align:middle;color:var(--tertiary)">check_circle</span> Adopted';
+    card.appendChild(badge);
+
+    // Update see-more to revert affordance
+    const seeEl = card.querySelector('.bullet-see-more');
+    if (seeEl) {
+      seeEl.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px">undo</span>Click to revert';
+    }
+  }
+
+  // Recount flagged (adopted bullets no longer count as "to rewrite")
+  const redCount = document.querySelectorAll('.bullet-item.red:not(.adopted)').length;
+  const flagBadge = document.getElementById('bullets-flagged-count');
+  if (flagBadge) {
+    if (redCount > 0) { flagBadge.textContent = `${redCount} flagged`; }
+    else { flagBadge.style.display = 'none'; }
+  }
+
+  // Sync summary card counter
+  if (analysisData.scores) renderSummaryCard();
+  // Scroll resume pane to the adopted text
+  scrollResumePaneToText(newText);
+}
+
+function revertBulletInline(idx) {
+  const d = bulletStore.get(idx);
+  if (!d || !d.original) return;
+
+  // Revert resumeText — replace adoptedText back to original
+  if (resumeText && d.adoptedText) {
+    const escaped = d.adoptedText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    resumeText = resumeText.replace(new RegExp(escaped), d.original);
+  }
+
+  // Sync right pane
+  window._resumeText = resumeText;
+  const rta = document.getElementById('resume-edit-area');
+  if (rta) rta.textContent = window._resumeText;
+
+  // Restore store — clear adopted state, preserve original rw for potential re-adoption
+  bulletStore.set(idx, { ...d, adopted: false, adoptedText: null });
+
+  // Re-render card as red/expandable (collapsed)
+  const card = document.querySelector(`[data-bullet-idx="${idx}"]`);
+  if (card) {
+    card.classList.remove('adopted', 'expanded', 'active');
+    card.classList.add('red');
+    const textEl = card.querySelector('.bullet-text');
+    if (textEl) textEl.textContent = d.original;
+    card.querySelectorAll('.bullet-adopted-badge,.bullet-inline-detail').forEach(el => el.remove());
+
+    // Restore see-more affordance text
+    const seeEl = card.querySelector('.bullet-see-more');
+    if (seeEl) {
+      seeEl.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px">expand_more</span>See analysis &amp; fix inline';
+    } else {
+      const seeMore = document.createElement('div');
+      seeMore.className = 'bullet-see-more';
+      seeMore.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px">expand_more</span>See analysis &amp; fix inline';
+      card.appendChild(seeMore);
+    }
+  }
+
+  // Recount
+  const redCount = document.querySelectorAll('.bullet-item.red:not(.adopted)').length;
+  const flagBadge = document.getElementById('bullets-flagged-count');
+  if (flagBadge) {
+    if (redCount > 0) { flagBadge.textContent = `${redCount} flagged`; flagBadge.style.display = 'inline-flex'; }
+    else { flagBadge.style.display = 'none'; }
+  }
+
+  // Sync summary card counter
+  if (analysisData.scores) renderSummaryCard();
+  // Scroll resume pane to restored original
+  scrollResumePaneToText(d.original);
+}
+
+function downloadResumeEdit() {
+  // Read from window._resumeText — always plain text, never binary
+  const text = window._resumeText || '';
+  if (!text.trim()) return;
+
+  // DOCX generation — only runs here, never on page load or tab switch
+  function _crc32(buf) {
+    let c = 0xFFFFFFFF;
+    for (let i = 0; i < buf.length; i++) {
+      c ^= buf[i];
+      for (let j = 0; j < 8; j++) c = (c >>> 1) ^ (c & 1 ? 0xEDB88320 : 0);
+    }
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  }
+  function makeDocxBlob(t) {
+    const enc = new TextEncoder();
+    const paras = t.split('\n').map(line => {
+      const safe = line.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      return `<w:p><w:r><w:t xml:space="preserve">${safe}</w:t></w:r></w:p>`;
+    }).join('');
+    const files = [
+      { n:'[Content_Types].xml', d:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>' },
+      { n:'_rels/.rels',         d:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>' },
+      { n:'word/_rels/document.xml.rels', d:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>' },
+      { n:'word/document.xml',   d:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${paras}<w:sectPr/></w:body></w:document>` }
+    ];
+    const parts = [], cdirs = [];
+    let off = 0;
+    for (const f of files) {
+      const nb = enc.encode(f.n), db = enc.encode(f.d);
+      const crc = _crc32(db), sz = db.length;
+      const lh = new Uint8Array(30 + nb.length + sz);
+      const dv = new DataView(lh.buffer);
+      dv.setUint32(0,0x04034b50,true); dv.setUint16(4,20,true);
+      dv.setUint16(6,0,true); dv.setUint16(8,0,true);
+      dv.setUint16(10,0,true); dv.setUint16(12,0,true);
+      dv.setUint32(14,crc,true); dv.setUint32(18,sz,true); dv.setUint32(22,sz,true);
+      dv.setUint16(26,nb.length,true); dv.setUint16(28,0,true);
+      lh.set(nb,30); lh.set(db,30+nb.length);
+      const cd = new Uint8Array(46+nb.length);
+      const cv = new DataView(cd.buffer);
+      cv.setUint32(0,0x02014b50,true); cv.setUint16(4,20,true); cv.setUint16(6,20,true);
+      cv.setUint16(8,0,true); cv.setUint16(10,0,true); cv.setUint16(12,0,true); cv.setUint16(14,0,true);
+      cv.setUint32(16,crc,true); cv.setUint32(20,sz,true); cv.setUint32(24,sz,true);
+      cv.setUint16(28,nb.length,true); cv.setUint16(30,0,true); cv.setUint16(32,0,true);
+      cv.setUint16(34,0,true); cv.setUint16(36,0,true); cv.setUint32(38,0,true); cv.setUint32(42,off,true);
+      cd.set(nb,46);
+      parts.push(lh); cdirs.push(cd); off += lh.length;
+    }
+    const cdSz = cdirs.reduce((a,b)=>a+b.length,0);
+    const eocd = new Uint8Array(22);
+    const ev = new DataView(eocd.buffer);
+    ev.setUint32(0,0x06054b50,true); ev.setUint16(4,0,true); ev.setUint16(6,0,true);
+    ev.setUint16(8,files.length,true); ev.setUint16(10,files.length,true);
+    ev.setUint32(12,cdSz,true); ev.setUint32(16,off,true); ev.setUint16(20,0,true);
+    const all=[...parts,...cdirs,eocd], tot=all.reduce((a,b)=>a+b.length,0);
+    const out=new Uint8Array(tot); let p=0;
+    for(const x of all){out.set(x,p);p+=x.length;}
+    return new Blob([out],{type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
+  }
+
+  const blob = makeDocxBlob(text);
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = (currentRole || 'resume').replace(/[^a-z0-9]/gi, '_') + '_updated.docx';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// Populate resume right pane whenever results become visible
+// Uses window._resumeText (plain text) set via textContent — never binary data
+function populateResumePane() {
+  const el = document.getElementById('resume-edit-area');
+  if (el && window._resumeText) el.textContent = window._resumeText;
+}
+
+// ═══════════════════════════════════════════════════
 // COPY HELPERS
 // ═══════════════════════════════════════════════════
 function copyEl(elId, btn) {
   const el   = document.getElementById(elId);
-  const text = el ? (el.innerText || el.textContent || '') : '';
+  const text = el ? (el.tagName === 'TEXTAREA' ? el.value : (el.innerText || el.textContent || '')) : '';
   navigator.clipboard.writeText(text).catch(() => {
     const ta = document.createElement('textarea');
     ta.value = text; document.body.appendChild(ta); ta.select();
@@ -3716,7 +5391,7 @@ function cpInline(text, btn) {
   // Animate the ATS insight bar
   setTimeout(() => {
     const bar = document.getElementById('ic-ats-fill');
-    if (bar) bar.style.width = '75%';
+    if (bar) bar.style.width = '80%';
   }, 900);
 })();
 
@@ -3768,6 +5443,116 @@ async function submitFeedback() {
       btn.disabled         = false;
     }, 3000);
   }
+}
+
+// ═══════════════════════════════════════════════════
+// FINALIZE — Metrics + Cover Letter
+// ═══════════════════════════════════════════════════
+function renderFinalizeMetrics() {
+  const d = analysisData;
+  if (!d || d.ats_pass_rate == null) return;
+
+  const ats = d.ats_pass_rate || 0;
+  const bq  = Math.round((d.bullet_quality || 0) * 10);
+  const im  = Math.round((d.impact_metrics  || 0) * 10);
+
+  // Readiness: composite of ATS, bullet quality, impact
+  const ready = Math.round((ats * 0.4) + (bq * 0.35) + (im * 0.25));
+
+  function setMetric(valId, deltaId, val, note) {
+    const el = document.getElementById(valId);
+    const de = document.getElementById(deltaId);
+    if (el) el.textContent = val + '%';
+    if (de) {
+      de.textContent = note;
+      de.className = 'finalize-metric-delta ' + (val >= 80 ? 'delta-up' : 'delta-same');
+    }
+  }
+
+  setMetric('fin-ats-val',   'fin-ats-delta',   ats,   ats >= 80 ? 'ATS threshold met' : `${80 - ats}% below ATS target`);
+  setMetric('fin-bq-val',    'fin-bq-delta',    bq,    bq >= 70  ? 'Good bullet quality' : 'Bullets need strengthening');
+  setMetric('fin-ready-val', 'fin-ready-delta', ready, ready >= 70 ? 'Ready to apply' : 'Address blockers first');
+
+  // Show the metrics grid (hidden until data is ready)
+  const grid = document.getElementById('finalize-metrics-grid');
+  if (grid) grid.style.display = 'grid';
+}
+
+async function generateCoverLetter() {
+  const btn   = document.getElementById('cl-generate-btn');
+  const out   = document.getElementById('cl-output');
+  const ta    = document.getElementById('cl-textarea');
+  const errEl = document.getElementById('cl-error');
+
+  if (!btn || !ta) return;
+
+  // Guard: need some analysis data
+  if (!analysisData || !currentRole) {
+    if (errEl) { errEl.textContent = 'Please complete your resume analysis first.'; errEl.style.display='block'; }
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:17px;animation:spin .7s linear infinite">autorenew</span> Generating…';
+  if (errEl) errEl.style.display = 'none';
+
+  const skills   = (analysisData.skills || []).slice(0, 8).join(', ');
+  const gaps     = (analysisData.gaps   || []).slice(0, 4).map(g => g.skill || g).join(', ');
+  const jdHints  = currentJD ? currentJD.slice(0, 400) : '';
+  const location = currentLocation || '';
+
+  try {
+    const res = await fetch('/api/coverletter', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: currentRole, location, skills, gaps, jdHints })
+    });
+
+    if (!res.ok) throw new Error('Request failed');
+    const data = await res.json();
+    const text = data?.letter?.trim();
+
+    if (!text || text.length < 50) throw new Error('Empty response');
+
+    ta.value = text;
+    out.style.display = 'block';
+    btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:17px">auto_awesome</span> Regenerate';
+    btn.disabled  = false;
+  } catch(err) {
+    btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:17px">auto_awesome</span> Generate Cover Letter';
+    btn.disabled  = false;
+    if (errEl) {
+      errEl.textContent = 'Could not generate cover letter. Please try again.';
+      errEl.style.display = 'block';
+    }
+  }
+}
+
+function copyCoverLetter(btn) {
+  const ta = document.getElementById('cl-textarea');
+  if (!ta || !ta.value) return;
+  navigator.clipboard.writeText(ta.value).catch(() => {
+    const tmp = document.createElement('textarea');
+    tmp.value = ta.value; document.body.appendChild(tmp); tmp.select();
+    document.execCommand('copy'); document.body.removeChild(tmp);
+  });
+  if (btn) {
+    const orig = btn.innerHTML;
+    btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px">check</span> Copied!';
+    setTimeout(() => { btn.innerHTML = orig; }, 2500);
+  }
+}
+
+function downloadCoverLetter() {
+  const ta   = document.getElementById('cl-textarea');
+  if (!ta || !ta.value) return;
+  const name = (currentRole || 'cover-letter').toLowerCase().replace(/\s+/g,'-');
+  const blob = new Blob([ta.value], { type: 'text/plain' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = `${name}-cover-letter.txt`;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
 }
 
 // ═══════════════════════════════════════════════════

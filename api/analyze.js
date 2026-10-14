@@ -1,7 +1,7 @@
 'use strict';
 const https        = require('https');
 const { deleteFile }              = require('./upload');
-const { roleCacheKey, upstashGet, ROLES } = require('./warmcache');
+const { roleCacheKey, upstashGet, upstashIncrBy, ROLES, SKILL_KEYWORDS } = require('./warmcache');
 
 // ── Model strings from env vars — swap without code deploy ──
 // Set STREAM_A_MODEL and STREAM_B_MODEL in Vercel environment variables.
@@ -80,26 +80,31 @@ function extractRoleFromJD(jd) {
   const lines = jd.split('\n')
     .map(l => l.trim())
     .filter(Boolean)
-    .slice(0, 5);
+    .slice(0, 10); // scan more lines for better coverage
 
+  // Labelled patterns — high confidence
   const patterns = [
     /^(?:job\s+title|position|role|title)\s*[:]\s*(.+)$/i,
-    /^we(?:'re| are) hiring\s+(?:a\s+)?(.+)$/i,
-    /^(?:about the role|the role)\s*[:]\s*(.+)$/i,
+    /^we(?:'re| are) (?:hiring|looking for|seeking)\s+(?:a\s+|an\s+)?(.+)$/i,
+    /^(?:about the role|the role|the position)\s*[:]\s*(.+)$/i,
+    /^(?:open(?:ing)?|opportunity)\s*[:]\s*(.+)$/i,
+    /^(?:join .+ as)\s+(?:a\s+|an\s+)?(.+)$/i,
   ];
 
   for (const line of lines) {
     for (const pat of patterns) {
       const m = line.match(pat);
       if (m && m[1]) {
-        const matched = fuzzyMatchRole(m[1].trim());
-        if (matched) return { role: m[1].trim(), matched };
+        const cleaned = m[1].replace(/[–—\-]\s*Remote.*$/i, '').replace(/\s*\(.*$/, '').trim();
+        const matched = fuzzyMatchRole(cleaned);
+        if (matched) return { role: cleaned, matched };
       }
     }
   }
 
+  // Fallback: try each short line as a potential role title
   for (const line of lines) {
-    if (line.length > 4 && line.length < 80 && !/http|www|@/.test(line)) {
+    if (line.length > 4 && line.length < 80 && !/http|www|@|apply|deadline|posted/i.test(line)) {
       const matched = fuzzyMatchRole(line);
       if (matched) return { role: line, matched };
     }
@@ -109,6 +114,111 @@ function extractRoleFromJD(jd) {
 }
 
 // ═══════════════════════════════════════════════════════
+// JD REQUIREMENT EXTRACTION (deterministic, rule-based)
+//
+// Scans pasted JD text against the same SKILL_KEYWORDS used
+// by the warmcache scraper. Produces a stable list of
+// requirements regardless of Claude. When merged with market
+// data, this ensures JD mode feeds the same deterministic
+// pipeline as target-role mode.
+// ═══════════════════════════════════════════════════════
+function extractJDRequirements(jd) {
+  if (!jd || jd.trim().length < 50) return [];
+  const text = jd.toLowerCase();
+  const found = [];
+  const seen  = new Set();
+
+  for (const kw of SKILL_KEYWORDS) {
+    const needle = kw.trim().toLowerCase();
+    if (needle.length < 2) continue;
+    // Word-boundary-aware match for short keywords to avoid false positives
+    // e.g. "r " should not match inside "researcher"
+    if (needle.length <= 3) {
+      // Use word boundary regex for very short keywords
+      const re = new RegExp(`\\b${needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+      if (!re.test(jd)) continue;
+    } else {
+      if (!text.includes(needle)) continue;
+    }
+    if (seen.has(needle)) continue;
+    seen.add(needle);
+    found.push(needle);
+  }
+
+  return found;
+}
+
+// ═══════════════════════════════════════════════════════
+// JD CACHE — in-memory, keyed by normalized JD hash.
+// Avoids re-parsing the same JD on repeated runs within
+// the same serverless container lifetime. No external infra.
+// ═══════════════════════════════════════════════════════
+const jdCache = new Map();
+const JD_CACHE_MAX = 50; // cap to prevent memory growth
+
+function hashJD(jd) {
+  // Simple but deterministic hash — same JD text = same key
+  let h = 0;
+  for (let i = 0; i < jd.length; i++) {
+    h = ((h << 5) - h + jd.charCodeAt(i)) | 0;
+  }
+  return 'jd_' + h.toString(36);
+}
+
+function getCachedJDParse(jd) {
+  const key = hashJD(jd.trim().toLowerCase());
+  return jdCache.get(key) || null;
+}
+
+function setCachedJDParse(jd, result) {
+  const key = hashJD(jd.trim().toLowerCase());
+  if (jdCache.size >= JD_CACHE_MAX) {
+    // Evict oldest entry
+    const firstKey = jdCache.keys().next().value;
+    jdCache.delete(firstKey);
+  }
+  jdCache.set(key, result);
+}
+
+// Build a merged skill frequency list from market data + JD requirements.
+// Two-tier approach:
+//   Tier 1: skills in both JD and market data — ranked by real market pct
+//   Tier 2: JD-only skills (not in market data) — always ranked below Tier 1,
+//           ordered by appearance in JD. No fake market percentages.
+function mergeMarketAndJDSkills(marketSkillFreq, jdRequirements) {
+  if (!jdRequirements || !jdRequirements.length) return marketSkillFreq || [];
+
+  const merged = [];
+  const seen   = new Set();
+
+  // Tier 1: market data skills (authoritative frequencies)
+  if (marketSkillFreq && marketSkillFreq.length) {
+    for (const s of marketSkillFreq) {
+      merged.push({ ...s });
+      seen.add(s.skill.toLowerCase());
+    }
+  }
+
+  // Tier 2: JD-only requirements not in market data
+  // pct: 0 ensures they never outrank real market skills.
+  // _jdOrder preserves appearance order within Tier 2.
+  let jdOrder = 0;
+  for (const req of jdRequirements) {
+    if (seen.has(req)) continue;
+    seen.add(req);
+    merged.push({ skill: req, pct: 0, _fromJD: true, _jdOrder: jdOrder++ });
+  }
+
+  // Sort: Tier 1 by pct descending, then Tier 2 by JD appearance order
+  merged.sort((a, b) => {
+    if (a._fromJD && !b._fromJD) return 1;  // JD-only after market
+    if (!a._fromJD && b._fromJD) return -1;  // market before JD-only
+    if (a._fromJD && b._fromJD) return (a._jdOrder || 0) - (b._jdOrder || 0);
+    return b.pct - a.pct;
+  });
+  return merged;
+}
+
 // ═══════════════════════════════════════════════════════
 // SALARY — sourced from warmcache scrape when available.
 // Falls back to Claude's knowledge via prompt instruction.
@@ -146,14 +256,14 @@ function computeATS(resumeText, skillFreq) {
   const missing = top15.filter(s => !text.includes(s.skill.toLowerCase()));
 
   const atsScore     = Math.round((present.length / top15.length) * 100);
-  // Target 75% (industry ATS pass threshold) — show how many keywords needed
-  const TARGET       = 75;
+  // Target 80% (industry ATS pass threshold) — show how many keywords needed
+  const TARGET       = 80;
   const targetCount  = Math.ceil(top15.length * TARGET / 100); // = 12 for top15
   const needed       = Math.max(0, targetCount - present.length);
-  // atsPotential: what score would be after adding the needed keywords
-  const atsPotential = atsScore >= TARGET
-    ? Math.min(100, Math.round(((present.length + Math.min(3, missing.length)) / top15.length) * 100))
-    : TARGET; // always show 75 as the achievable target when below threshold
+  // atsPotential: actual score after adding the top missing keyword (1 keyword improvement).
+  // Derived from the resume's real keyword count — not hardcoded to TARGET.
+  // This makes the ATS notice ("adding it could push you to X%") resume-specific.
+  const atsPotential = Math.min(100, Math.round(((present.length + Math.min(1, missing.length)) / top15.length) * 100));
 
   return {
     atsScore,
@@ -162,6 +272,76 @@ function computeATS(resumeText, skillFreq) {
     missingTop: missing.slice(0, 5).map(s => s.skill),
     presentTop: present.slice(0, 8).map(s => s.skill)
   };
+}
+
+// ═══════════════════════════════════════════════════════
+// DETERMINISTIC SKILL & GAP DETECTION
+//
+// Scans resume text against market data to produce stable
+// present/missing skill lists. Same resume + same market data
+// = identical output every run. Claude receives these as
+// ground truth and must not override them.
+// ═══════════════════════════════════════════════════════
+function computeSkillsAndGaps(resumeText, skillFreq) {
+  if (!skillFreq || !skillFreq.length || !resumeText) {
+    return { present: [], missing: [], presentSet: new Set() };
+  }
+
+  const text = resumeText.toLowerCase();
+  // Use top 20 skills from market data for comprehensive coverage
+  const topSkills = skillFreq.slice(0, 20);
+
+  const present = [];
+  const missing = [];
+  const presentSet = new Set();
+
+  for (const s of topSkills) {
+    const skillLower = s.skill.toLowerCase();
+    if (text.includes(skillLower)) {
+      present.push({ skill: s.skill, pct: s.pct });
+      presentSet.add(skillLower);
+    } else {
+      const entry = { skill: s.skill, pct: s.pct };
+      if (s._fromJD) entry._fromJD = true;
+      missing.push(entry);
+    }
+  }
+
+  // Sort present by market frequency descending
+  present.sort((a, b) => b.pct - a.pct);
+  // Sort missing: market skills by pct descending, then JD-only skills last
+  // (JD-only already in appearance order from the merged list)
+  missing.sort((a, b) => {
+    if (a._fromJD && !b._fromJD) return 1;
+    if (!a._fromJD && b._fromJD) return -1;
+    return b.pct - a.pct;
+  });
+
+  return { present, missing, presentSet };
+}
+
+// Deterministic skill level assignment based on frequency of mentions in resume
+// Strong: 3+ mentions, Intermediate: 2, Basic: 1
+function computeSkillLevel(skillName, resumeText) {
+  const text = resumeText.toLowerCase();
+  const needle = skillName.toLowerCase();
+  let count = 0;
+  let idx = text.indexOf(needle);
+  while (idx !== -1) {
+    count++;
+    idx = text.indexOf(needle, idx + needle.length);
+  }
+  if (count >= 3) return 'Strong';
+  if (count >= 2) return 'Intermediate';
+  return 'Basic';
+}
+
+// Deterministic gap priority based on market frequency
+// >=60% of postings = Critical, >=35% = Important, else Nice to have
+function computeGapPriority(pct) {
+  if (pct >= 60) return 'Critical';
+  if (pct >= 35) return 'Important';
+  return 'Nice to have';
 }
 
 // Match score: weighted blend of ATS coverage + skills breadth
@@ -174,6 +354,46 @@ function computeMatchScore(atsScore, skillsFound, topSkillsRequired) {
   const raw = Math.round(atsScore * 0.7 + skillsCoverage * 0.3);
   return Math.min(95, Math.max(5, raw));
 }
+
+// ═══════════════════════════════════════════════════════
+// RESUME ANCHOR EXTRACTION
+// Extracts specific facts (companies, metrics) for grounding AI outputs.
+// Prevents generic LinkedIn/diagnosis content by giving Claude real anchors.
+// ═══════════════════════════════════════════════════════
+function extractResumeAnchors(resumeText) {
+  if (!resumeText) return { companies: [], metrics: [] };
+
+  const lines = resumeText.split('\n').map(l => l.trim()).filter(Boolean);
+  const datePattern = /\b(20\d{2}|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i;
+  const sectionHeaders = /^(experience|education|skills|projects|work history|summary|objective|certifications|awards|publications|interests|activities|languages)\s*$/i;
+
+  // Company/employer extraction: short lines (2-14 words) containing a year or month
+  // that don't look like section headers, bullet points, or pure date ranges
+  const companies = [];
+  for (const line of lines) {
+    if (line.startsWith('\u2022') || line.startsWith('-') || line.startsWith('*')) continue;
+    if (sectionHeaders.test(line)) continue;
+    const words = line.split(/\s+/);
+    if (words.length < 2 || words.length > 14) continue;
+    if (!datePattern.test(line)) continue;
+    // Extract first segment as company/employer name (before common separators)
+    const seg = line.split(/[\|–\u2014\u00b7\t]/)[0].trim();
+    if (seg.length >= 2 && seg.length <= 60 && !sectionHeaders.test(seg) && !/^\d/.test(seg)) {
+      companies.push(seg);
+    }
+  }
+
+  // Metrics extraction: numbers with business units (%, x, $, K, M)
+  const metricPattern = /\b(\d+(?:\.\d+)?%|\d+[xX]|\$\d+(?:[kmb]|k\+?|m\+?)?|\d{1,3}(?:,\d{3})+|\d+[km]\+?)\b/gi;
+  const rawMetrics = resumeText.match(metricPattern) || [];
+  const metrics = [...new Set(rawMetrics)].slice(0, 6);
+
+  return {
+    companies: [...new Set(companies)].slice(0, 4),
+    metrics
+  };
+}
+
 function httpsPost(hostname, path, headers, body) {
   return new Promise((resolve, reject) => {
     const data = JSON.stringify(body);
@@ -200,15 +420,29 @@ function httpsPost(hostname, path, headers, body) {
 function normalizeCerts(certPicks, certReasons) {
   if (!certPicks || !certPicks.length) return [];
   return certPicks.slice(0, 3).map(name => {
-    const raw      = certReasons?.[name] || '';
-    const parts    = raw.split('·').map(p => p.trim());
+    const raw   = certReasons?.[name] || '';
+    const parts = raw.split('·').map(p => p.trim());
     // Format: "Provider · Cost · Duration · URL · Why: ..."
     const provider = parts[0] || '';
     const cost     = parts[1] || '';
     const duration = parts[2] || '';
-    const url      = (parts[3] || '').startsWith('http') ? parts[3] : '';
-    const why      = parts.slice(url ? 4 : 3).join('·').replace(/^Why:\s*/i,'').trim()
-                  || raw || 'Closes your top gap for this role.';
+
+    // Primary: check structured position [3] for URL
+    const urlInPos3 = /^https?:\/\//.test(parts[3] || '');
+    // Fallback: scan the entire raw string for any https URL (handles Claude formatting variations)
+    const rawUrlMatch = !urlInPos3 ? (raw.match(/https?:\/\/[^\s·,)"'\]>]+/) || null) : null;
+    const url = urlInPos3 ? parts[3] : (rawUrlMatch ? rawUrlMatch[0] : '');
+
+    // Why text: everything after the URL part, stripping the URL if found via regex
+    const whyParts = urlInPos3 ? parts.slice(4) : parts.slice(3);
+    let why = whyParts.join(' · ').replace(/^Why:\s*/i, '').trim();
+    if (rawUrlMatch && why.includes(rawUrlMatch[0])) {
+      why = why.replace(rawUrlMatch[0], '').replace(/\s{2,}/g, ' ').trim();
+    }
+    why = why
+       || raw.replace(/https?:\/\/[^\s·,)"'\]>]+/g, '').replace(/·/g, ' ').replace(/\s{2,}/g, ' ').trim()
+       || 'Closes your top gap for this role.';
+
     return { name, provider, cost, duration, url, why };
   }).filter(c => c.name.length > 2);
 }
@@ -259,16 +493,16 @@ const TOOLS_A = [
   },
   {
     name: 'set_skills',
-    description: 'Set skills present in resume with market data relevance percentages.',
+    description: 'Set skills present in resume that are ALSO relevant to the target role. CRITICAL: Only include skills that (1) appear in the resume AND (2) appear in the market data top skills list for the target role. Do NOT include generic skills or skills from the resume that have no bearing on the target role. These are displayed as the user\'s "superpowers" for this specific role — every skill listed must be a genuine signal for a recruiter hiring for this role.',
     input_schema: {
       type: 'object',
       properties: {
-        skills_present:  { type: 'array',  items: { type: 'string' }, description: 'Up to 6 skills most relevant to target role found in the resume' },
+        skills_present:  { type: 'array',  items: { type: 'string' }, description: 'Up to 6 skills that are BOTH (a) found in the resume AND (b) present in the market data top skills for the target role. If a skill is in the resume but NOT in the market data for this role, exclude it. If fewer than 3 qualifying skills exist, list only those that qualify — never pad with irrelevant skills.' },
         skill_levels:    { type: 'object', additionalProperties: { type: 'string' }, description: 'Map skill to Strong, Intermediate, or Basic based on how the resume presents it' },
         skill_relevance: {
           type: 'object',
           additionalProperties: { type: 'number' },
-          description: 'Map skill to percentage 0-100 from market data showing how often this skill appears in target role postings. Use EXACT numbers from market data. This is posting frequency, NOT user proficiency. If SQL appears in 82% of postings, output 82. If skill not in market data, estimate conservatively with a max of 55.'
+          description: 'Map skill to percentage 0-100 from market data showing how often this skill appears in target role postings. Use EXACT numbers from market data. This is posting frequency, NOT user proficiency. If SQL appears in 82% of postings, output 82. If skill not in market data, output 0 (which will cause the skill to be filtered server-side).'
         }
       },
       required: ['skills_present','skill_levels','skill_relevance']
@@ -328,10 +562,11 @@ const TOOLS_A = [
               text:         { type: 'string' },
               status:       { type: 'string', enum: ['green','red'] },
               tags:         { type: 'array', items: { type: 'string', enum: ['Missing Metric','Passive Voice','No Impact Statement','Vague Action Verb','Strong','Impact Validated','Quantified'] } },
-              brutal_honey: { type: 'string', description: 'Red only. MAX 3 SENTENCES. No dashes. Sentence 1: why a recruiter skips this exact bullet. Sentence 2: what is salvageable. Sentence 3: direction for the rewrite. Human voice.' },
-              rewrite:      { type: 'string', description: 'Red only. ONE sentence under 25 words. Strong action verb first. Most relevant ATS keyword from market data. Use [X][Y][Z] only where numbers are genuinely missing. Self-check: strong verb? ATS keyword present? Under 25 words? Revise once if any check fails.' }
+              brutal_honey:           { type: 'string', description: 'Red only. MAX 3 SENTENCES. No dashes. Sentence 1: why a recruiter skips this exact bullet. Sentence 2: what is salvageable. Sentence 3: direction for the rewrite. Human voice.' },
+              rewrite:                { type: 'string', description: 'Red only. ONE sentence under 25 words. Strong action verb first. Most relevant ATS keyword from market data. Use [X][Y][Z] only where numbers are genuinely missing. Self-check: strong verb? ATS keyword present? Under 25 words? Revise once if any check fails.' },
+              ats_keyword_introduced: { type: 'string', description: 'Red only. The single ATS keyword from market data top skills that this rewrite introduces to the resume. Just the keyword, no explanation. Example: "Kubernetes" or "A/B Testing". Empty string if no keyword is being added.' }
             },
-            required: ['text','status','tags','brutal_honey','rewrite']
+            required: ['text','status','tags','brutal_honey','rewrite','ats_keyword_introduced']
           }
         }
       },
@@ -369,17 +604,17 @@ const TOOLS_A = [
 const TOOLS_B = [
   {
     name: 'set_linkedin',
-    description: 'Set LinkedIn optimization. Quality is everything here — this must not read like AI output.',
+    description: 'Set LinkedIn optimization for the TARGET ROLE. Quality is everything here — this must not read like AI output.',
     input_schema: {
       type: 'object',
       properties: {
         linkedin_headline: {
           type: 'string',
-          description: 'Format: [Core identity] | [Strongest specific tool or domain] | [What you deliver for the business]. Under 160 chars. Zero status language. Must name a specific tool or method from the resume. Example: Product Analyst | Mixpanel and SQL | Translating user behaviour into decisions that move revenue.'
+          description: 'Write this headline for the TARGET ROLE the candidate is applying to — not a summary of their past work. Format: [Target role identity] | [Named tool from resume most relevant to target role] | [What they deliver toward that target role]. Under 160 chars. ROLE-ALIGNMENT RULE: [Core identity] must name the TARGET ROLE (e.g. "Data Analyst", "Software Engineer"), not a generic label. [Named tool]: must be a specific real tool named in the resume text that ALSO appears in the top required skills for the target role from market data (e.g. Python, SQL, React — not "analytics" or "technology"). If the resume has no direct evidence for a top required skill, name the closest transferable tool and frame it toward the target role. [Concrete outcome]: the type of result relevant to the TARGET ROLE that this person is positioned to deliver, based on resume evidence. GROUNDING RULE: every skill or capability named must appear in BOTH the market data top skills for the target role AND somewhere in the resume. If a skill is in the resume but irrelevant to the target role, do not mention it. Never use "seeking", "open to", or any status phrase.'
         },
         linkedin_about: {
           type: 'string',
-          description: 'Exactly 3 sentences. SENTENCE 1: Name one specific thing you built or solved from this resume, include the tool you used and a result with a number if one exists. SENTENCE 2: The 2-3 skills most demanded for this role from market data, written as what you do well not a list. SENTENCE 3: What kind of problem you want to work on next, stated as a capability not a job title. FORBIDDEN OPENERS: I am a, As a, With X years, Passionate about, Dedicated professional, Results-driven. Must sound like a smart person wrote it themselves.'
+          description: 'Write this as a PITCH FOR THE TARGET ROLE, not a summary of past work. Maximum 3 sentences. MAXIMUM 80 WORDS TOTAL. SENTENCE 1: Start with a specific action at a named company from the resume — e.g. "At [Company], built [specific thing] using [tool] that [specific result or outcome]." Frame the action toward what the target role cares about. If no metric exists, name the tool and the scope. Do NOT start with "I am" or any forbidden opener. SENTENCE 2: Name the 2-3 skills most demanded for the TARGET ROLE from market data as active capabilities this person demonstrates — must be evidenced in the resume AND in the top required skills. If the resume lacks direct evidence for a top required skill, name the closest transferable skill and frame it toward the target role. SENTENCE 3: State the type of problem relevant to the TARGET ROLE this person wants to solve next, as a capability grounded in the resume — not a job title or aspiration. OMISSION RULE: if sentence 1 cannot be written without inventing content, reference the most specific real thing in the resume. If sentence 3 cannot be grounded, omit it. A shorter about with real content beats a padded one. FORBIDDEN OPENERS: I am a, As a, With X years, Passionate about, Dedicated, Results-driven, Looking for, Seeking. Sound like a smart person pitching themselves for this exact role — specific, grounded, direct.'
         },
         linkedin_skills: {
           type: 'array',
@@ -408,7 +643,7 @@ const TOOLS_B = [
         cert_reasons: {
           type: 'object',
           additionalProperties: { type: 'string' },
-          description: 'Map cert name to a single string: "Provider · Cost · Duration · URL · Why: one sentence on which gap it closes." Example: "AWS · $150 · 2-3 months · aws.amazon.com/certification · Java appears in 95% of SDE postings and this cert demonstrates backend system knowledge."'
+          description: 'Map cert name to a single string: "Provider · Cost · Duration · URL · Why: one sentence on which gap it closes." The why sentence MUST name the specific gap skill, its posting frequency from market data, and why this cert closes that gap for this candidate. Example: "AWS · $150 · 2-3 months · aws.amazon.com/certification · SQL appears in 95% of SDE postings and this resume shows no database experience — this cert demonstrates that gap is closed." FORBIDDEN in the why: "expands your knowledge", "builds your career", "demonstrates expertise in the field", "gives you a competitive edge", or any benefit that could apply to any candidate.'
         }
       },
       required: ['cert_picks','cert_reasons']
@@ -427,13 +662,14 @@ const TOOLS_B = [
             properties: {
               market_signal: { type: 'number', description: 'EXACT % from market data for the primary skill this project builds. Never invent a number.' },
               title:         { type: 'string', description: 'Specific title naming the actual tech and deliverable. Not Data Dashboard but Customer Churn Prediction Dashboard using Python and Streamlit.' },
-              justification: { type: 'string', description: 'One sentence referencing the exact market data % for the skill this builds and why it matters for this specific resume.' },
-              description:   { type: 'string', description: 'Two sentences. Sentence 1: name the specific free API or public dataset they will use. Sentence 2: name the exact tool stack and what the final deliverable looks like visually.' },
+              justification: { type: 'string', description: 'One sentence naming the specific gap skill, its EXACT market data posting frequency, and why this specific candidate needs it based on what their resume currently shows. Must be candidate-specific — a justification that applies to any candidate with this role is not acceptable. Example: "SQL appears in 82% of Data Analyst postings, and this resume shows no database work, making it the single most critical gap to close."' },
+              description:   { type: 'string', description: 'Two sentences. Sentence 1: name a specific, real, publicly accessible free API or public dataset that genuinely exists (e.g. Open Library API, NOAA Climate Data, Kaggle public datasets). Do not name fictional or paywalled sources. Sentence 2: name the exact tool stack consistent with skills shown in this resume or natural for the target role, and describe what the final deliverable looks like visually.' },
               skills:        { type: 'array', items: { type: 'string' }, description: '3-5 specific skills this project builds. Use exact market data skill names.' },
+              ats_keywords:  { type: 'array', items: { type: 'string' }, maxItems: 3, description: '2-3 ATS keywords (verbatim from market data top-10) that recruiters and hiring systems will find demonstrated by this project. Choose the highest-frequency missing skills this project directly proves.' },
               time_hours:    { type: 'number' },
               ai_prompt:     {
                 type: 'string',
-                description: 'A complete 3-phase AI prompt the student can paste into Claude or ChatGPT. Must follow this EXACT structure for ALL THREE projects: Start with Act as a senior [specific role matching tech stack]. We are building [exact project title] together from scratch using [specific free API or dataset] and [exact tool stack]. The final output will be [specific visual description of deliverable]. PHASE 1: Ask me 2 specific questions about what this should do and who will use it. Say next phase when ready. PHASE 2: Show me the exact folder structure, every file name, and every function as a stub with inputs and outputs. Get my approval before writing implementation code. Say next phase when ready. PHASE 3: Build one function at a time starting with data fetching. Show actual output after each function. Never move to the next function until the current one works. Under 220 words. No dashes. This exact quality and length is required for project 1, 2, AND 3.'
+                description: 'A complete 4-phase AI prompt the student can paste into Claude or ChatGPT. EXACT STRUCTURE REQUIRED for ALL THREE projects: Line 1: Act as a senior [specific role matching tech stack]. We are building [exact project title] together from scratch using [specific free API or dataset] and [exact tool stack]. The final output will be [specific visual description of deliverable]. PHASE 1 — PLAN: Ask me 3 targeted questions: what this will do, who will use it, and what the most important metric I want to show a recruiter is. Say ready to design when done. PHASE 2 — DESIGN: Show the exact folder structure, every file name, and every function as a stub with typed inputs and outputs. Get my approval before writing any implementation code. Say ready to build when done. PHASE 3 — BUILD: Implement one function at a time starting with data fetching. Show actual output after each function. Never advance until the current function works. PHASE 4 — RESUME VALUE: Once the project is complete, generate 2 resume bullets. Strong action verb first. Include [the top ATS keyword for this role]. Under 20 words each. Format: [Verb] [what you built] [metric placeholder]. Under 250 words total. No dashes. This exact structure and quality is required for project 1, 2, AND 3.'
               },
               bullets: {
                 type: 'array',
@@ -443,7 +679,7 @@ const TOOLS_B = [
                 description: 'Two resume bullets assuming project complete. Strong action verb. Metric placeholders [X] [Y] [Z]. Include the most in-demand ATS keyword for this role from market data. Under 20 words each.'
               }
             },
-            required: ['market_signal','title','justification','description','skills','time_hours','ai_prompt','bullets']
+            required: ['market_signal','title','justification','description','skills','ats_keywords','time_hours','ai_prompt','bullets']
           },
           minItems: 3,
           maxItems: 3
@@ -473,10 +709,19 @@ CRITICAL RULES:
 NEVER use dashes, em-dashes, or en-dashes in output text.
 NEVER use bullet points inside brutal_honey or verdict fields. Flowing sentences only.
 NEVER start with Additionally, Furthermore, Moreover, or Overall.
-NEVER use: results-driven, passionate about, seeking opportunities, team player, synergy, leveraged, utilized, or any visa language.
+NEVER use these words anywhere: results-driven, passionate about, seeking opportunities, team player, synergy, leveraged, utilized, spearheaded, deep dive, delve, impactful, value-add, game-changer, proven track record, thought leader, innovative, or any visa language.
+NEVER use these sentence patterns: "not only X but also Y", "not only X but X as well", "having said that", "that being said", "it is worth noting", "in today's competitive landscape", "moving forward", "in conclusion", "with that in mind".
+
+HUMAN VOICE — REQUIRED FOR ALL TEXT OUTPUTS:
+You are the brutally honest senior friend, not a feedback generator. When writing brutal_honey: sound like a real recruiter venting to a colleague after reading 200 resumes today — specific about this bullet, occasionally blunt, immediately useful. Not a coaching tip. Not a numbered list of observations.
+verdict_headline and headline_roast must sound like a specific person said them out loud in a meeting. Short, punchy, named to this resume. If it could be said about any resume in the pile, it is wrong. Rewrite it.
+
+REWRITE GROUNDING:
+rewrite must not invent any company name, project name, technology, or context that does not appear in the original bullet text. Preserve the real tools and real context. The only invented placeholders allowed are [X], [Y], [Z] — and only for numbers that are genuinely absent from the original bullet.
 
 MARKET DATA IS LAW:
 skill_relevance: The server will override your values using the actual scraped data. Still output your best estimate using the EXACT percentages listed — it helps validation. If SQL appears at 82% in the data, output 82 for SQL. Never output a value higher than what the market data shows for that skill.
+set_skills skills_present: ONLY include skills that BOTH appear in the resume AND appear in the market data top skills list for the target role. These are shown as the user's "superpowers" for this specific role — a skill not in the market data for this role has no place here, even if the user is expert at it. If Python is not in the market data for a role, do not list it in set_skills.
 set_gaps how_often: EXACT % from market data. Only name skills that appear in the market data list. Do NOT invent skill name variations like "Advanced SQL" if the market data shows "sql". Use the exact skill name from the market data.
 set_gaps skills: ONLY use skill names that appear verbatim in the market data list provided. If a skill is not in the market data list, do not include it as a gap.
 set_gaps count: ALWAYS output exactly 5 gaps. If fewer than 5 critical gaps exist, add Important or Nice to have items to reach exactly 5. Never output fewer than 5.
@@ -493,8 +738,8 @@ impact_metrics: score based on whether the quantified results are the type this 
 Example: a beautifully written analytics bullet on an SDE resume scores 2-3/10 on both metrics, not 8/10.
 
 VERDICT QUALITY:
-verdict_headline must name something SPECIFIC from this resume. A company, a tool, a number, a gap. If you could apply the same sentence to a different resume without changing a word, rewrite it.
-brutal_honey: MAXIMUM 3 SENTENCES. No dashes. Sentence 1: why a recruiter skips this exact bullet. Sentence 2: what is salvageable. Sentence 3: direction for the rewrite. Nothing more.
+verdict_headline must name something SPECIFIC from this resume. A company, a tool, a number, a gap. If you could apply the same sentence to a different resume without changing a word, rewrite it. GROUNDING CHECK: does it name a real company from this resume, OR a specific gap by exact skill name, OR a specific metric from the resume? If none of these, name the most unusual or differentiating aspect of this person's experience. Generic phrases like "strong potential but gaps remain" are forbidden.
+brutal_honey: MAXIMUM 3 SENTENCES. No dashes. Sentence 1: quote or directly reference the specific verb or claim from this exact bullet — not a generic observation like "this bullet lacks impact." Sentence 2: what is salvageable from the bullet text itself. Sentence 3: one concrete direction for the rewrite. Nothing more.
 rewrite: ONE sentence under 25 words. Strong verb first. Most relevant ATS keyword from market data. [X][Y][Z] only where numbers are genuinely missing. Self-check before outputting: strong verb? keyword? under 25 words? Revise once if any check fails.
 NEVER output <REMOVE>, <DELETE>, or any meta-instruction as the rewrite value. If a bullet is completely irrelevant to the target role and cannot be salvaged, set rewrite to null and explain in brutal_honey why the bullet should be removed or replaced with a role-relevant one.
 
@@ -522,15 +767,38 @@ You may ONLY reference facts that appear explicitly in the resume text or job de
 - Only mention projects that are described in the resume
 - Only mention tools, technologies, or skills that appear in the resume
 - Only use numbers or metrics that appear in the resume
-- If the resume does not contain enough specific detail for a sentence, write a more general capability statement instead
 - NEVER invent a project, achievement, company, or metric that is not in the resume
-- If you find yourself writing something specific that you cannot point to in the resume text, replace it with a general statement about skills or direction
+- If you find yourself writing something specific that you cannot point to in the resume text, omit that sentence entirely — do not substitute a generic claim
 
-LINKEDIN ABOUT RULE: Every sentence in linkedin_about must be directly traceable to content in the RESUME TEXT provided. If you cannot cite the source in the resume, do not write it.
+OMIT RATHER THAN INVENT — CRITICAL:
+When the resume lacks enough evidence to write a grounded sentence, omit the sentence. This applies everywhere:
+linkedin_about: if you cannot write three sentences each traceable to real resume content, write two strong grounded sentences instead. Two sentences that are specific and real beat three sentences where one is generic or invented. Never pad to meet a count.
+cert_reasons why: must name the specific gap skill by name, its approximate posting frequency from market data, and how this exact certification closes that specific gap. Forbidden: phrases like "expands your knowledge", "builds your career", "demonstrates your expertise", "gives you an edge". If you cannot write a specific one-sentence why, the cert is wrong.
+project.justification: must name the gap skill, its posting frequency from the market data, and why this specific candidate's resume is missing it. A justification that could apply to any candidate targeting this role is not grounded. Rewrite it until it is candidate-specific.
+project.description: only name real, publicly accessible free APIs or datasets that genuinely exist. The tool stack in sentence 2 must be consistent with the tools shown in this resume or the natural tools for the target role.
+
+LINKEDIN ABOUT RULE: Every sentence in linkedin_about must be directly traceable to content in the RESUME TEXT provided. Before writing each sentence, locate the specific line in the resume that supports it. If no line supports it, that sentence does not belong. If you cannot cite the source in the resume, do not write it.
+
+QUALITY GATE — NON-NEGOTIABLE:
+Before finalising linkedin_about, check each sentence: "Could this sentence appear on a different person's resume without changing a word?" If yes, rewrite it. Every sentence must anchor to at least one of: (a) a company name from this resume, (b) a specific tool + action from this resume, (c) a metric from this resume, or (d) a specific type of problem this person has demonstrably worked on. If the resume lacks metrics, name the tool and the context. Generic phrases like "passionate about data" or "experienced in analytics" are forbidden.
+
+ANTI-AI LANGUAGE — BANNED IN ALL TEXT OUTPUTS:
+You can spot AI-generated writing instantly. Do not produce it. Specific banned words and phrases:
+Words: spearheaded, leveraged, utilized, delve, deep dive, impactful, value-add, game-changer, thought leader, innovative, passionate, dedicated, results-driven, well-versed, seasoned, dynamic, motivated.
+Sentence patterns: "not only X but also Y", "not only X but X as well", "having said that", "that being said", "it is worth noting", "in today's competitive landscape", "moving forward", "in conclusion", "with that in mind", "I bring X years of", "as someone who", "with a passion for".
+Three-sentence about rhythm: vary sentence length. A short sentence after a longer one creates momentum. If all three sentences are identical in length and structure, they were generated. Short. Punch. Then explain.
+
+HEADLINE SPECIFICITY AND ROLE-ALIGNMENT — CRITICAL:
+The headline and about section MUST be written for the TARGET ROLE the user searched, not as a reflection of past work. A Data Science candidate targeting a Software Engineer role must write a headline and about that position them as an SDE candidate.
+The [Core identity] segment must name the TARGET ROLE, not just a summary of what they have done. The [Specific tool or domain] segment must name a real tool from the resume that ALSO appears in the top required skills for the target role in market data. If no tool in the resume matches the target role's top skills, name the closest transferable tool and frame it toward the target role. The [What you deliver] segment must describe outcomes relevant to the TARGET ROLE that this person is positioned to deliver based on resume evidence.
+GROUNDING RULE — EVERY SKILL IN THE HEADLINE MUST: (1) appear in the top required skills for the target role from market data, AND (2) be evidenced somewhere in the resume (directly or as a transferable skill). A skill that is strong in the resume but irrelevant to the target role must NOT appear in the headline or about section.
+If the resume has no direct evidence for a required skill, name the closest transferable skill and frame it toward the target role (e.g. if they have Excel but the role needs SQL, write "data querying" or name the specific Excel feature used analytically).
+A headline that reflects the resume without pitching for the target role is wrong. Rewrite it until it serves as a pitch for that exact role.
 
 FORBIDDEN OUTPUTS — if you produce any of these, stop and rewrite before outputting:
 LinkedIn About openers: I am a, As a, With X years of experience, Passionate about, Dedicated professional, Results-driven, Dynamic, Innovative, Looking for
 Any sentence that could apply to a different person's resume without changing a word
+linkedin_headline that does not name at least one specific tool from the resume in the middle segment
 Project ai_prompt fields that are vague, short, or do not name specific tools and free datasets
 linkedin_skills that include skills already prominent in the resume
 
@@ -560,6 +828,12 @@ Only suggest a project if its primary skill appears in 25% or more of postings i
 PROJECT QUALITY RULE — CRITICAL:
 All 3 projects must have identical depth and length in ai_prompt. If you find yourself writing a shorter or vaguer ai_prompt for project 2 or 3, stop and bring it up to match project 1 quality. All three students are paying equal attention. Treat all 3 projects as equally important. The ai_prompt for project 3 must be as complete and copy-pasteable as project 1.
 
+PROJECT PHASES — CRITICAL:
+Each ai_prompt must explicitly cover all 4 phases in order: PHASE 1 — PLAN (ask 3 questions about goals, users, and target recruiter metric), PHASE 2 — DESIGN (full folder structure and function stubs with typed inputs/outputs), PHASE 3 — BUILD (one function at a time, show output before advancing), PHASE 4 — RESUME VALUE (generate 2 ATS-optimized bullets using the top missing keyword for this role). No phase can be omitted.
+
+ATS KEYWORDS — CRITICAL:
+ats_keywords must contain 2-3 verbatim strings from the market data top-10 that this project directly demonstrates. These are the exact strings ATS systems match. Never list a skill that is already present in the resume. Never list a skill not in the market data top-10.
+
 OUTPUT CONCISENESS — CRITICAL FOR SPEED:
 linkedin_about: MAXIMUM 80 WORDS. Three focused sentences only. No padding. Every word must earn its place.
 cert_reasons: ONE sentence per cert maximum. Format: "Provider · Cost · Duration · URL · Why: one sentence."
@@ -584,15 +858,16 @@ function buildMarketDataBlock(marketData, matchedRole) {
     .map(s => `  ${s.skill}: ${s.pct}%`)
     .join('\n');
 
+  const salaryConf = marketData.salaryData?.confidence || 'low';
   const salaryLine = marketData.salaryData
-    ? `Salary from postings: ${marketData.salaryData.median} (${marketData.salaryData.note})`
+    ? `Salary from postings (NATIONAL, not location-specific): ${marketData.salaryData.median} (${marketData.salaryData.note}, confidence: ${salaryConf})`
     : null;
 
   const age = marketData.scrapedAt
     ? Math.round((Date.now() - new Date(marketData.scrapedAt).getTime()) / (1000 * 60 * 60 * 24))
     : null;
 
-  return `MARKET DATA: Based on ${marketData.totalJobs || 40} real LinkedIn postings for ${matchedRole}${age !== null ? ` scraped ${age} days ago` : ''}:
+  return `MARKET DATA: Based on ${marketData.totalJobs || 40} real LinkedIn postings for ${matchedRole} (United States, national)${age !== null ? ` scraped ${age} days ago` : ''}:
 Skill frequencies (% of real postings containing this skill):
 ${skillLines}
 
@@ -609,37 +884,87 @@ cert_picks must address skills high on this list that are missing from the resum
 // ═══════════════════════════════════════════════════════
 // ANALYSIS PROMPTS
 // ═══════════════════════════════════════════════════════
-function buildAnalysisPromptA(role, locationStr, jd, hasJD, sal, marketDataBlock, atsFactLine) {
+function buildAnalysisPromptA(role, locationStr, jd, hasJD, sal, marketDataBlock, atsFactLine, serverSkills, anchors) {
   const salaryCtx = sal._fromPostings
-    ? `Salary from real postings: ${sal._fromPostings}${sal._postingNote ? ` (${sal._postingNote})` : ''}. Use this as the basis for the salary range in set_verdict.`
-    : `No salary data available from postings. In set_verdict, provide your best salary range estimate for a ${role} in ${locationStr} based on your training knowledge. Format as entry–senior range (e.g. $65k – $140k). Be role-specific and realistic.`;
+    ? `Salary from real postings: ${sal._fromPostings} (${sal._confidence === 'high' ? 'high confidence' : 'moderate confidence'}, ${sal._postingNote || ''}). Use this as the basis for the salary range in set_verdict.`
+    : sal._weakPostingData
+      ? `Limited salary data from postings (only 1-2 listings): ${sal._weakPostingData}. This is too few data points to trust. Provide a broader salary range estimate for a ${role} based on your training knowledge. Format as a wide range (e.g. $65k – $140k). Do NOT present the weak posting data as precise truth.`
+      : `No salary data available from postings. In set_verdict, provide your best salary range estimate for a ${role} based on your training knowledge. Format as entry–senior range (e.g. $65k – $140k). Mark it as an estimate. Be role-specific and realistic.`;
+
+  // Inject server-detected skills and gaps so Claude uses them for writing context
+  let skillFactLine = '';
+  if (serverSkills && serverSkills.present.length > 0) {
+    const presentList = serverSkills.present.slice(0, 6).map(s => `${s.skill} (${s.pct}%)`).join(', ');
+    const missingList = serverSkills.missing.slice(0, 5).map(s => `${s.skill} (${s.pct}%)`).join(', ');
+    skillFactLine = `PRE-COMPUTED SKILLS DETECTED IN RESUME: ${presentList}
+PRE-COMPUTED SKILL GAPS (missing from resume, sorted by market frequency): ${missingList}
+USE THESE EXACT SKILLS in set_skills (skills_present) and set_gaps. The server controls skill selection, relevance %, and gap priority. Your role is to provide skill_levels assessment and how_to_fix suggestions for each gap. Include how_to_fix for ALL 5 gaps listed above.`;
+  }
+
+  // Resume anchors: specific companies and metrics extracted server-side
+  // These ground verdict_headline in real resume content, not generic observations
+  let anchorLine = '';
+  if (anchors) {
+    const parts = [];
+    if (anchors.companies && anchors.companies.length > 0) {
+      parts.push(`Employers/companies found in resume: ${anchors.companies.join(', ')}`);
+    }
+    if (anchors.metrics && anchors.metrics.length > 0) {
+      parts.push(`Metrics found in resume: ${anchors.metrics.join(', ')}`);
+    }
+    if (parts.length > 0) {
+      anchorLine = `RESUME ANCHORS (server-extracted):\n${parts.join('\n')}\nverdict_headline MUST reference one of these companies, one of these metrics, OR name the most critical gap by exact skill name. Never write a generic verdict.\n`;
+    }
+  }
 
   return `Analyze this resume for a ${role} role${locationStr !== 'Nationwide USA' ? ` in ${locationStr}` : ''}.
 
 ${marketDataBlock}
 
-${atsFactLine ? atsFactLine + '\n' : ''}${salaryCtx}
+${atsFactLine ? atsFactLine + '\n' : ''}${skillFactLine ? skillFactLine + '\n' : ''}${anchorLine}${salaryCtx}
 
 ${hasJD ? `JOB DESCRIPTION:\n${jd}\n\nSince a JD was provided, also call set_jd_breakdown.` : ''}
 
 Call ALL tools in order. Never stop after set_verdict. Every output must reference actual content from this specific resume.`;
 }
 
-function buildAnalysisPromptB(role, locationStr, jd, hasJD, sal, marketDataBlock, resumeText, confirmedSkills) {
+function buildAnalysisPromptB(role, locationStr, jd, hasJD, sal, marketDataBlock, resumeText, confirmedSkills, detectedGaps, anchors) {
   // confirmedSkills comes from Stream A's set_skills output — use these as ground truth
   // for what's already in the resume so Sonnet never recommends adding a skill they have
   const skillsNote = confirmedSkills && confirmedSkills.length
     ? `\nCONFIRMED SKILLS ALREADY IN RESUME (from resume analysis — do NOT recommend adding these to LinkedIn):\n${confirmedSkills.join(', ')}\n`
     : '';
 
+  // Inject detected gaps so certification and project recommendations must address them
+  const gapsNote = detectedGaps && detectedGaps.length
+    ? `\nDETECTED SKILL GAPS (missing from resume, sorted by market frequency):\n${detectedGaps.map(g => `- ${g.skill} (${g.pct}% of postings)`).join('\n')}\nCertification recommendations MUST address skills from this gap list. Do NOT recommend certs for skills already confirmed in the resume.\n`
+    : '';
+
+  // Resume anchors: server-extracted companies and metrics for LinkedIn grounding
+  // These are the specific facts linkedin_about and linkedin_headline MUST reference
+  let anchorsNote = '';
+  if (anchors) {
+    const anchorParts = [];
+    if (anchors.companies && anchors.companies.length > 0) {
+      anchorParts.push(`Companies/employers from this resume: ${anchors.companies.join(', ')}`);
+    }
+    if (anchors.metrics && anchors.metrics.length > 0) {
+      anchorParts.push(`Metrics found in this resume: ${anchors.metrics.join(', ')}`);
+    }
+    if (anchorParts.length > 0) {
+      anchorsNote = `\nRESUME ANCHORS — REQUIRED for linkedin_about and linkedin_headline:\n${anchorParts.join('\n')}\nlinkedin_about sentence 1 MUST name at least one of these companies OR one of these metrics. linkedin_headline middle segment MUST name a real tool found in the RESUME TEXT. If no metric is available, name the specific tool and the context in which it was used at one of the listed companies.\n`;
+    }
+  }
+
   return `Write LinkedIn optimization, certifications, and project suggestions for a ${role} candidate.
 
 ${marketDataBlock}
-${skillsNote}
+${skillsNote}${gapsNote}${anchorsNote}
 ${resumeText ? `RESUME TEXT:\n${resumeText}\n` : ''}
 ${hasJD ? `JOB DESCRIPTION:\n${jd}\n` : ''}
+HARD GROUNDING RULE FOR linkedin_about AND linkedin_headline: Every company name, employer, job title, tool, technology, and quantified achievement you write MUST appear verbatim in the RESUME TEXT above. Before writing each sentence, locate the specific words in the RESUME TEXT. If a company name, role, or metric is not in the RESUME TEXT, do NOT write it — not even to make the copy sound better. Do not use your training knowledge about the person. Only use what is in the RESUME TEXT.
 Call ALL tools: set_linkedin, set_certifications, set_projects.
-Every LinkedIn sentence must reference something specific from this resume. Every cert must close a real gap from market data. Every project ai_prompt must be complete and copy-pasteable. All 3 project ai_prompts must have identical depth.`;
+Every LinkedIn sentence must reference something specific from this resume — use the RESUME ANCHORS above as your primary grounding points. linkedin_about sentence 1 must name a company or metric from the anchors list. Every cert must close a real gap from the DETECTED SKILL GAPS list above. Every project ai_prompt must cover all 4 phases (PLAN, DESIGN, BUILD, RESUME VALUE) and be complete enough to paste directly into Claude or ChatGPT. All 3 project ai_prompts must have identical depth. Every project ats_keywords must name 2-3 verbatim market-data top-10 skills this project demonstrates.`;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -675,18 +1000,23 @@ function lookupSkillPct(skillName, skillFreq) {
   return null; // below threshold — trust Claude
 }
 
-function emitToolCallA(name, args, res, sal, role, marketData, atsResult) {
-  const skillFreq = marketData?.skillFreq || [];
+function emitToolCallA(name, args, res, sal, role, marketData, atsResult, serverSkills) {
+  const skillFreq = marketData?._mergedSkillFreq || marketData?.skillFreq || [];
   switch (name) {
     case 'set_verdict': {
       // Use server-computed ATS if available — overrides Claude's calculation
       const atsPass    = atsResult?.atsScore    !== null ? atsResult.atsScore    : clamp(args.ats_pass_rate, 0, 100);
       const atsPot     = atsResult?.atsPotential !== null ? atsResult.atsPotential : clamp(args.ats_potential, 0, 100);
       const atsMissing = atsResult?.missingTop?.[0] || args.ats_missing_keyword || '';
-      // Match score: use server formula if ATS is available, else trust Claude
+      // Match score: use server formula — deterministic
+      const presentCount = serverSkills ? serverSkills.present.length : ((args.skills_present || []).length || 3);
+      const topSkillsN = Math.max(1, Math.min(15, skillFreq.length));
       const matchScore = atsResult?.atsScore !== null
-        ? computeMatchScore(atsResult.atsScore, (args.skills_present || []).length || 3, 10)
+        ? computeMatchScore(atsResult.atsScore, presentCount, topSkillsN)
         : clamp(args.match_score, 0, 100);
+      // Salary confidence-gated: only show precise range when confidence is medium+
+      const salaryConfidence = sal._confidence || (sal._fromPostings ? 'medium' : 'estimate');
+      const salaryRange = sal._fromPostings || args.salary_range || null;
       sendEvent(res, 'verdict', {
         match_score:         matchScore,
         verdict_headline:    args.verdict_headline || `${role} resume analyzed.`,
@@ -697,76 +1027,151 @@ function emitToolCallA(name, args, res, sal, role, marketData, atsResult) {
         ats_missing_list:    atsResult?.missingTop?.slice(0, 3) || [],
         ats_needed:          atsResult?.needed ?? null,
         salary: {
-          range:        args.salary_range       || sal._fromPostings || null,
-          fromPostings: sal._fromPostings        || null
+          range:        salaryRange,
+          fromPostings: sal._fromPostings || null,
+          confidence:   salaryConfidence
         }
       });
       break;
     }
 
     case 'set_skills': {
-      const skills   = (args.skills_present || []).slice(0, 6);
-      const levels   = args.skill_levels || {};
-      // Store for set_gaps to reference (exclude confirmed skills from gap list)
-      emitToolCallA._lastSkills = skills;
-      // Server-side relevance: only override when scrape confidence ≥ threshold
-      const relevance = {};
-      for (const s of skills) {
-        const scraped = lookupSkillPct(s, skillFreq);
-        if (scraped !== null) {
-          // Scrape has high confidence (≥30%) — use it
-          relevance[s] = scraped;
-        } else {
-          // Below threshold or not in scrape — trust Claude's estimate
-          const claudeVal = (args.skill_relevance || {})[s];
-          relevance[s] = (claudeVal > 0 && claudeVal <= 100) ? Math.min(claudeVal, 85) : 0;
+      // DETERMINISTIC SKILL LIST:
+      // When server-side skill detection is available, use it as ground truth
+      // for skill names and relevance %. Claude's skill_levels are replaced
+      // with deterministic mention-count levels. Claude only identifies skills
+      // — the server decides relevance and level.
+      if (serverSkills && serverSkills.present.length > 0) {
+        let topPresent = serverSkills.present.slice(0, 6);
+
+        // Supplement with Claude's skills if server found fewer than 5
+        if (topPresent.length < 5) {
+          const serverNames = new Set(topPresent.map(s => s.skill.toLowerCase().trim()));
+          const claudeExtra = (args.skills_present || [])
+            .filter(s => s && !serverNames.has(s.toLowerCase().trim()))
+            .slice(0, 6 - topPresent.length)
+            .map(s => ({ skill: s, pct: Math.min((args.skill_relevance || {})[s] || 0, 85) }));
+          topPresent = [...topPresent, ...claudeExtra];
         }
+
+        const skills     = topPresent.map(s => s.skill);
+        const levels     = {};
+        const relevance  = {};
+        for (const s of topPresent) {
+          levels[s.skill]    = computeSkillLevel(s.skill, serverSkills._resumeText || '');
+          relevance[s.skill] = s.pct; // exact market data %
+        }
+        emitToolCallA._lastSkills = skills;
+        sendEvent(res, 'skills', {
+          skills_present:  skills,
+          skill_levels:    levels,
+          skill_relevance: relevance
+        });
+      } else {
+        // Fallback: no market data — use Claude's output with server overrides
+        const skills   = (args.skills_present || []).slice(0, 6);
+        const levels   = args.skill_levels || {};
+        emitToolCallA._lastSkills = skills;
+        const relevance = {};
+        for (const s of skills) {
+          const scraped = lookupSkillPct(s, skillFreq);
+          if (scraped !== null) {
+            relevance[s] = scraped;
+          } else {
+            const claudeVal = (args.skill_relevance || {})[s];
+            relevance[s] = (claudeVal > 0 && claudeVal <= 100) ? Math.min(claudeVal, 85) : 0;
+          }
+        }
+        sendEvent(res, 'skills', {
+          skills_present:  skills,
+          skill_levels:    levels,
+          skill_relevance: relevance
+        });
       }
-      sendEvent(res, 'skills', {
-        skills_present:  skills,
-        skill_levels:    levels,
-        skill_relevance: relevance
-      });
       break;
     }
 
     case 'set_gaps': {
-      // Build set of confirmed skills to exclude — if a skill is in your superpowers,
-      // it cannot also be a gap (fixes SQL appearing in both sections)
-      const confirmedSkills = new Set(
-        (args.skills_present || emitToolCallA._lastSkills || [])
-          .map(s => s.toLowerCase().trim())
-      );
+      // DETERMINISTIC GAP LIST:
+      // When server-side detection is available, use missing skills from market data
+      // as the authoritative gap list. Priority is computed from market frequency.
+      // Claude provides how_to_fix text (writing), but the gap selection and ranking
+      // are deterministic.
+      if (serverSkills && serverSkills.missing.length > 0) {
+        let serverGaps = serverSkills.missing.slice(0, 5);
 
-      const claudeGaps = (args.gaps || []).slice(0, 7).map(g => {
-        let skillName = g.skill || '';
-        // Normalise name against market data if we have a high-confidence match
-        if (skillFreq.length) {
-          const scraped = lookupSkillPct(skillName, skillFreq);
-          if (scraped === null) {
-            const lower = skillName.toLowerCase();
-            const base  = skillFreq.find(s =>
-              lower.includes(s.skill) || s.skill.includes(lower.split(' ')[0])
-            );
-            if (base && base.pct >= SCRAPE_CONFIDENCE_THRESHOLD) skillName = base.skill;
+        // Build a lookup of Claude's how_to_fix suggestions keyed by lowercase skill
+        const claudeFixes = {};
+        for (const g of (args.gaps || [])) {
+          if (g.skill && g.how_to_fix) {
+            claudeFixes[g.skill.toLowerCase().trim()] = g.how_to_fix;
           }
         }
-        const marketPct = lookupSkillPct(skillName, skillFreq);
-        return {
-          skill:      skillName,
-          priority:   ['Critical','Important','Nice to have'].includes(g.priority) ? g.priority : 'Important',
-          how_often:  marketPct !== null ? marketPct : clamp(g.how_often || 0, 0, 100),
-          how_to_fix: g.how_to_fix || ''
-        };
-      })
-      // Exclude skills the user already has in their resume
-      .filter(g => !confirmedSkills.has(g.skill.toLowerCase().trim()))
-      // Sort by frequency descending — highest % gaps shown first
-      .sort((a, b) => b.how_often - a.how_often)
-      .slice(0, 5);
 
-      emitToolCallA._lastGaps = claudeGaps;
-      sendEvent(res, 'gaps', { gaps: claudeGaps });
+        // Supplement with Claude's gaps if server found fewer than 5
+        if (serverGaps.length < 5) {
+          const serverGapNames = new Set(serverGaps.map(g => g.skill.toLowerCase().trim()));
+          const presentNames   = new Set((serverSkills.present || []).map(s => s.skill.toLowerCase().trim()));
+          const claudeSupp = (args.gaps || [])
+            .filter(g => g.skill
+              && !serverGapNames.has(g.skill.toLowerCase().trim())
+              && !presentNames.has(g.skill.toLowerCase().trim()))
+            .slice(0, 5 - serverGaps.length)
+            .map(g => ({
+              skill:      g.skill,
+              pct:        0,
+              _fromJD:    true,
+              how_to_fix: g.how_to_fix || ''
+            }));
+          serverGaps = [...serverGaps, ...claudeSupp];
+        }
+
+        const gaps = serverGaps.map(g => {
+          const isJDOnly = !!g._fromJD;
+          return {
+            skill:      g.skill,
+            priority:   isJDOnly ? 'Important' : computeGapPriority(g.pct),
+            how_often:  isJDOnly ? 0 : g.pct,
+            how_to_fix: claudeFixes[g.skill.toLowerCase()] || claudeFixes[g.skill] || '',
+            _fromJD:    isJDOnly || undefined
+          };
+        });
+
+        emitToolCallA._lastGaps = gaps;
+        sendEvent(res, 'gaps', { gaps });
+      } else {
+        // Fallback: no market data — use Claude's gaps with server overrides
+        const confirmedSkills = new Set(
+          (args.skills_present || emitToolCallA._lastSkills || [])
+            .map(s => s.toLowerCase().trim())
+        );
+        const claudeGaps = (args.gaps || []).slice(0, 7).map(g => {
+          let skillName = g.skill || '';
+          if (skillFreq.length) {
+            const scraped = lookupSkillPct(skillName, skillFreq);
+            if (scraped === null) {
+              const lower = skillName.toLowerCase();
+              const base  = skillFreq.find(s =>
+                lower.includes(s.skill) || s.skill.includes(lower.split(' ')[0])
+              );
+              if (base && base.pct >= SCRAPE_CONFIDENCE_THRESHOLD) skillName = base.skill;
+            }
+          }
+          const marketPct = lookupSkillPct(skillName, skillFreq);
+          return {
+            skill:      skillName,
+            priority:   ['Critical','Important','Nice to have'].includes(g.priority) ? g.priority : 'Important',
+            how_often:  marketPct !== null ? marketPct : clamp(g.how_often || 0, 0, 100),
+            how_to_fix: g.how_to_fix || ''
+          };
+        })
+        .filter(g => !confirmedSkills.has(g.skill.toLowerCase().trim()))
+        .sort((a, b) => b.how_often - a.how_often)
+        .slice(0, 5);
+
+        emitToolCallA._lastGaps = claudeGaps;
+        sendEvent(res, 'gaps', { gaps: claudeGaps });
+      }
       break;
     }
 
@@ -814,8 +1219,9 @@ function emitToolCallA(name, args, res, sal, role, marketData, atsResult) {
   }
 }
 
-function emitToolCallB(name, args, res, role, marketData) {
-  const skillFreq = marketData?.skillFreq || [];
+function emitToolCallB(name, args, res, role, marketData, detectedGaps) {
+  detectedGaps = detectedGaps || [];
+  const skillFreq = marketData?._mergedSkillFreq || marketData?.skillFreq || [];
   switch (name) {
     case 'set_linkedin':
       sendEvent(res, 'linkedin', {
@@ -824,37 +1230,84 @@ function emitToolCallB(name, args, res, role, marketData) {
         linkedin_skills:   (args.linkedin_skills || []).slice(0, 5)
       });
       break;
-    case 'set_certifications':
-      sendEvent(res, 'certifications', {
-        certifications: normalizeCerts(args.cert_picks, args.cert_reasons)
-      });
+    case 'set_certifications': {
+      const certs = normalizeCerts(args.cert_picks, args.cert_reasons);
+      // Tag each cert with the gap skill it addresses (if detectable from reason text)
+      const gapSkills = (marketData?._mergedSkillFreq || marketData?.skillFreq || [])
+        .slice(0, 20).map(s => s.skill.toLowerCase());
+      for (const cert of certs) {
+        const whyLower = (cert.why || '').toLowerCase();
+        const matched = gapSkills.find(s => whyLower.includes(s));
+        if (matched) cert.addressesGap = matched;
+      }
+      sendEvent(res, 'certifications', { certifications: certs });
       break;
+    }
     case 'set_projects': {
+      // Composite ranking: weights skill-gap severity, ATS impact, hiring relevance,
+      // resume value, and practical feasibility so a low-frequency signal like 13%
+      // does not outrank a more actionable, feasible project.
+      function projectCompositeScore(signal, primarySkill, timeHours) {
+        // Linear signal: all recommended projects address real gaps, so scale linearly
+        const normalizedSignal = clamp(signal, 0, 100) / 100;
+
+        // Gap severity: rank within the detected gap list drives importance.
+        // High baseline (0.75) because ALL recommended projects address role gaps —
+        // a project outside the explicit gap list is still valuable if it has high signal.
+        const needle = primarySkill.toLowerCase().trim();
+        const gapIdx = detectedGaps.findIndex(g => {
+          const s = (g.skill || g || '').toLowerCase();
+          return s === needle || s.includes(needle) || needle.includes(s);
+        });
+        // Top-3 gap: critical; top-5: high; not in gap list: solid baseline
+        const gapSeverity = gapIdx < 0 ? 0.75 : gapIdx < 3 ? 1.0 : 0.88;
+
+        // Practical feasibility: prefer projects completable in a weekend
+        const feasibility = timeHours <= 8 ? 1.0 : timeHours <= 16 ? 0.85 : 0.65;
+
+        // Base 0.40 guarantees recommended projects start at a meaningful score.
+        // Variable factors add differentiation: gap severity most important, then
+        // hiring-signal relevance, then feasibility.
+        return 0.40 + 0.20 * normalizedSignal + 0.25 * gapSeverity + 0.15 * feasibility;
+      }
+
       let projects = (args.projects || []).map(p => {
         // Override with scrape when confidence >= threshold; trust Claude otherwise
         // This fixes 10% everywhere for product roles where scrape lacks verbatim terms
         const primarySkill = (p.skills || [])[0] || p.title || '';
         const scrapedSignal = lookupSkillPct(primarySkill, skillFreq);
+        // When scrape lookup fails, use the matching detectedGap's pct (real market data)
+        // so each project gets a distinct signal based on which gap it closes.
+        // This prevents identical composite scores when Claude sends market_signal: 0.
+        const needle = primarySkill.toLowerCase().trim();
+        const matchedGap = needle ? detectedGaps.find(g => {
+          const s = (g.skill || '').toLowerCase().trim();
+          return s === needle || s.includes(needle) || needle.includes(s);
+        }) : null;
         const signal = scrapedSignal !== null
           ? scrapedSignal
-          : clamp(p.market_signal || 0, 0, 100);
+          : clamp(matchedGap ? matchedGap.pct : (p.market_signal || 0), 0, 100);
+
+        const composite = projectCompositeScore(signal, primarySkill, p.time_hours || 8);
 
         return {
-          market_signal: signal,
-          title:         p.title         || '',
-          justification: p.justification || '',
-          description:   p.description   || '',
-          skills:        p.skills        || [],
-          time_hours:    p.time_hours    || 8,
-          ai_prompt:     p.ai_prompt     || '',
-          bullets:       (p.bullets || []).slice(0, 2)
+          market_signal:   signal,
+          composite_score: composite,
+          title:           p.title         || '',
+          justification:   p.justification || '',
+          description:     p.description   || '',
+          skills:          p.skills        || [],
+          ats_keywords:    (p.ats_keywords || []).slice(0, 3),
+          time_hours:      p.time_hours    || 8,
+          ai_prompt:       p.ai_prompt     || '',
+          bullets:         (p.bullets || []).slice(0, 2)
         };
       });
 
-      // Sort by real signal descending
-      projects.sort((a, b) => b.market_signal - a.market_signal);
+      // Sort by composite score descending — prevents low-frequency signals from dominating
+      projects.sort((a, b) => b.composite_score - a.composite_score);
 
-      // Floor: if 3+ projects above 20%, drop those below
+      // Floor: if 3+ projects above 20% signal, drop those below signal floor
       const SIGNAL_FLOOR = 20;
       const aboveFloor = projects.filter(p => p.market_signal >= SIGNAL_FLOOR);
       if (aboveFloor.length >= 3) {
@@ -862,13 +1315,14 @@ function emitToolCallB(name, args, res, role, marketData) {
         const dropped = (args.projects || []).length - aboveFloor.length;
         if (dropped > 0) console.log(`Projects: dropped ${dropped} below ${SIGNAL_FLOOR}% floor`);
       } else {
-        console.log(`Projects: fewer than 3 above ${SIGNAL_FLOOR}%, keeping top 3 by signal`);
+        console.log(`Projects: fewer than 3 above ${SIGNAL_FLOOR}%, keeping top 3 by composite`);
       }
 
-      // Projects are now constrained by prompt to top missing high-freq skills.
-      // Use market_signal directly — it reflects real posting frequency.
-      // No artificial inflation needed since the prompt guarantees relevance.
-      projects = projects.map(p => ({ ...p, career_impact: p.market_signal }));
+      // career_impact: composite score as 0-100 for UI priority display
+      projects = projects.map(p => ({
+        ...p,
+        career_impact: Math.round(p.composite_score * 100)
+      }));
 
       sendEvent(res, 'projects', { projects: projects.slice(0, 3) });
       break;
@@ -940,7 +1394,7 @@ function processStream(anthropicRes, emitFn) {
 // ═══════════════════════════════════════════════════════
 // MAKE ANTHROPIC STREAMING REQUEST
 // ═══════════════════════════════════════════════════════
-function makeStreamRequest({ apiKey, model, system, userContent, tools, fileId, maxTokens }) {
+function makeStreamRequest({ apiKey, model, system, userContent, tools, fileId, maxTokens, toolChoice }) {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({
       model,
@@ -948,7 +1402,7 @@ function makeStreamRequest({ apiKey, model, system, userContent, tools, fileId, 
       system,
       messages: [{ role: 'user', content: userContent }],
       tools,
-      tool_choice: { type: 'any' },
+      tool_choice: toolChoice || { type: 'any' },
       stream: true
     });
 
@@ -966,7 +1420,7 @@ function makeStreamRequest({ apiKey, model, system, userContent, tools, fileId, 
         'anthropic-beta':    betaHeaders.join(','),
         'Content-Length':    Buffer.byteLength(body)
       },
-      timeout: 55000
+      timeout: 90000  // 90s — Stream B with Sonnet + 5000 tokens can take 60-80s
     };
 
     const req = https.request(opts, anthropicRes => {
@@ -1018,25 +1472,56 @@ module.exports = async function handler(req, res) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return res.status(500).json({ error: 'API key not configured.' });
 
-  const body     = req.body || {};
-  const fileId   = body.fileId   || null;
-  const resume   = (body.resume  || '').substring(0, 4000);
-  const location = (body.location|| '').substring(0, 50);
-  const jd       = (body.jd      || '').substring(0, 1200);
+  const body       = req.body || {};
+  const fileId     = body.fileId   || null;
+  const resume     = (body.resume  || '').substring(0, 4000);     // capped for Claude input
+  const resumeFull = body.resumeFull || body.resume || '';         // full text for ATS scoring
+  const location   = (body.location|| '').substring(0, 50);
+  const jd         = (body.jd      || '').substring(0, 1200);
   const hasJD    = jd.trim().length > 50;
+
+  // Per-section retry: skips Stream A and runs only the requested Stream B section
+  const SECTION_TOOLS = { linkedin: 'set_linkedin', certifications: 'set_certifications', projects: 'set_projects' };
+  const sectionOnly = (body.sectionOnly && SECTION_TOOLS[body.sectionOnly]) ? body.sectionOnly : null;
 
   // Role: explicit or extracted from JD
   let role         = (body.role || '').substring(0, 80).trim();
   let roleFromJD   = false;
   let detectedRole = null;
+  let jdRequirements = [];
 
-  if (!role && hasJD) {
-    const extracted = extractRoleFromJD(jd);
-    if (extracted) {
-      role         = extracted.role;
-      roleFromJD   = true;
-      detectedRole = extracted.matched;
-      console.log(`Role extracted from JD: "${role}" matched to "${detectedRole}"`);
+  // ── JD parsing: check cache first, then extract ──
+  if (hasJD) {
+    const cached = getCachedJDParse(jd);
+    if (cached) {
+      if (!role && cached.role) {
+        role         = cached.role;
+        roleFromJD   = true;
+        detectedRole = cached.matched;
+      }
+      jdRequirements = cached.requirements || [];
+      console.log(`JD cache hit: role="${cached.role}", ${jdRequirements.length} requirements`);
+    } else {
+      // Extract role deterministically (rule-based, no LLM)
+      if (!role) {
+        const extracted = extractRoleFromJD(jd);
+        if (extracted) {
+          role         = extracted.role;
+          roleFromJD   = true;
+          detectedRole = extracted.matched;
+          console.log(`Role extracted from JD: "${role}" matched to "${detectedRole}"`);
+        }
+      }
+      // Extract skill requirements deterministically
+      jdRequirements = extractJDRequirements(jd);
+      console.log(`JD requirements extracted: ${jdRequirements.length} skills`);
+
+      // Cache the parse result
+      setCachedJDParse(jd, {
+        role:         roleFromJD ? role : null,
+        matched:      detectedRole,
+        requirements: jdRequirements
+      });
     }
   }
 
@@ -1075,36 +1560,75 @@ module.exports = async function handler(req, res) {
   }
 
   // Salary — scraped posting data when available, otherwise Claude estimates from training
+  // Confidence-gated: low-confidence scraped data is suppressed to avoid fake precision
   const sal = {};
   if (marketData?.salaryData) {
-    sal._fromPostings = marketData.salaryData.median;
-    sal._postingNote  = marketData.salaryData.note;
+    const salConf = marketData.salaryData.confidence || 'low';
+    if (salConf !== 'low') {
+      // Medium or high confidence — show scraped data
+      sal._fromPostings = marketData.salaryData.median;
+      sal._postingNote  = marketData.salaryData.note;
+      sal._confidence   = salConf;
+    } else {
+      // Low confidence (1-2 postings) — don't present as precise truth
+      // Let Claude estimate instead, which is labeled as an estimate
+      sal._weakPostingData = marketData.salaryData.median;
+      sal._confidence      = 'low';
+    }
   }
 
   const marketDataBlock = buildMarketDataBlock(marketData, matchedRole || role);
   const systemPromptA   = buildSystemPromptA();
   const systemPromptB   = buildSystemPromptB();
 
+  // ── Merge market data with JD requirements ──
+  // When a JD is pasted, its extracted requirements are merged with market
+  // data skills. This ensures JD-specific skills (not in the top 20 market
+  // data) still feed into deterministic ATS and skill detection.
+  const baseSkillFreq   = marketData?.skillFreq || [];
+  const mergedSkillFreq = hasJD && jdRequirements.length > 0
+    ? mergeMarketAndJDSkills(baseSkillFreq, jdRequirements)
+    : baseSkillFreq;
+
+  // Attach merged list to marketData so emitters use JD-enriched skills
+  // for lookups without changing every function signature
+  if (marketData) {
+    marketData._mergedSkillFreq = mergedSkillFreq;
+  } else if (mergedSkillFreq.length > 0) {
+    // JD-only mode with no market data: create a minimal marketData object
+    marketData  = { skillFreq: mergedSkillFreq, _mergedSkillFreq: mergedSkillFreq };
+    hasLiveData = false; // still no live scraped data, but we have JD signals
+  }
+
   // ── Server-side ATS + match score ──
-  // Computed once from resume text + scraped data.
+  // Computed once from resume text + merged skill list.
   // Injected into both prompts so Claude uses this number,
   // not its own calculation — eliminates run-to-run variance.
-  const resumeForATS = resume || ''; // text-based resumes only; file-based get null
-  const atsResult = computeATS(resumeForATS, marketData?.skillFreq || []);
+  const resumeForATS = resumeFull || resume || '';
+  const atsResult = computeATS(resumeForATS, mergedSkillFreq);
   const serverATS  = atsResult.atsScore;
   const serverPotential = atsResult.atsPotential;
   const topMissing = atsResult.missingTop;
   const topPresent = atsResult.presentTop;
 
-  // For file-based uploads we don't have resume text server-side —
-  // fall back to letting Claude calculate (acceptable, only affects file uploads)
   const hasServerATS = serverATS !== null;
   const atsFactLine  = hasServerATS
     ? `PRE-COMPUTED ATS KEYWORD MATCH: ${serverATS}% (${topPresent.length} of 15 top keywords found: ${topPresent.join(', ')}). Top missing: ${topMissing.slice(0,3).join(', ')}. Potential after adding top 3 missing: ${serverPotential}%. USE THESE EXACT NUMBERS in set_verdict (ats_pass_rate=${serverATS}, ats_potential=${serverPotential}, ats_missing_keyword="${topMissing[0]||''}"). DO NOT recalculate.`
     : '';
 
+  // ── Deterministic skill & gap detection ──
+  // Computed once from resume text + merged skills. Fed to emitters so
+  // skills_present, skill_relevance, gaps, and gap priorities are stable.
+  // In JD mode, JD-extracted requirements are included so gaps reflect
+  // the specific job, not just general market data.
+  const serverSkills = computeSkillsAndGaps(resumeForATS, mergedSkillFreq);
+  serverSkills._resumeText = resumeForATS; // attached for skill level computation
+
+  // Resume anchors: server-extracted for grounding both prompts in real resume content
+  const resumeAnchors = extractResumeAnchors(resumeForATS);
+
   // Stream A user content — includes file or resume text
-  const promptA    = buildAnalysisPromptA(role, locationStr, jd, hasJD, sal, marketDataBlock, atsFactLine);
+  const promptA    = buildAnalysisPromptA(role, locationStr, jd, hasJD, sal, marketDataBlock, atsFactLine, serverSkills, resumeAnchors);
   const userContentA = fileId
     ? [
         { type: 'document', source: { type: 'file', file_id: fileId } },
@@ -1112,8 +1636,10 @@ module.exports = async function handler(req, res) {
       ]
     : promptA + `\n\nRESUME TEXT:\n${resume}`;
 
-  // Stream B user content built dynamically after Stream A emits set_skills
-  const resumeForB = resume || '';
+  // Stream B user content built dynamically after Stream A emits set_skills.
+  // Use the full resume text (not the 4000-char truncated version) so company names
+  // and experience details in the lower half of longer resumes are available for grounding.
+  const resumeForB = (resumeFull || resume || '').substring(0, 6000);
 
   // SSE headers
   res.setHeader('Content-Type',      'text/event-stream');
@@ -1132,6 +1658,44 @@ module.exports = async function handler(req, res) {
     detectedRole:  detectedRole  || null,
     totalJobs:     marketData?.totalJobs || null
   });
+
+  // ── Per-section retry fast-path ──
+  // When sectionOnly is set, skip Stream A entirely and run just the requested Stream B tool.
+  // confirmedSkills and detectedGaps are passed from the frontend (captured from the original run).
+  if (sectionOnly) {
+    const targetTool = SECTION_TOOLS[sectionOnly];
+    const confirmedSkills = Array.isArray(body.confirmedSkills) ? body.confirmedSkills : [];
+    const rawGaps = Array.isArray(body.detectedGaps) ? body.detectedGaps.slice(0, 5) : [];
+    const retryGaps = rawGaps.map(g => ({
+      skill: g.skill || String(g),
+      pct:   typeof g.how_often === 'number' ? g.how_often : (g.pct || 0)
+    }));
+    const retryResumeAnchors = extractResumeAnchors(resumeFull || resume || '');
+    const userContentB = buildAnalysisPromptB(
+      role, locationStr, jd, hasJD, sal, marketDataBlock,
+      (resumeFull || resume || '').substring(0, 6000), confirmedSkills, retryGaps, retryResumeAnchors
+    );
+    try {
+      const anthropicResB = await makeStreamRequest({
+        apiKey,
+        model:       MODEL_B,
+        system:      systemPromptB,
+        userContent: userContentB,
+        tools:       TOOLS_B,
+        toolChoice:  { type: 'tool', name: targetTool },
+        maxTokens:   targetTool === 'set_projects' ? 3500 : 1800
+      });
+      await processStream(anthropicResB, (name, args) =>
+        emitToolCallB(name, args, res, role, marketData, retryGaps)
+      );
+      sendEvent(res, 'done', { complete: true });
+    } catch (err) {
+      console.error('Section retry error:', err.message);
+      sendEvent(res, 'error', { message: err.message || 'Retry failed. Please try again.' });
+    }
+    res.end();
+    return;
+  }
 
   let fileDeleted = false;
   const cleanupFile = async () => {
@@ -1154,9 +1718,12 @@ module.exports = async function handler(req, res) {
   let streamASkills = []; // populated when set_skills fires
 
   const emitA = (name, args) => {
-    emitToolCallA(name, args, res, sal, role, marketData, atsResult);
+    emitToolCallA(name, args, res, sal, role, marketData, atsResult, serverSkills);
     if (name === 'set_skills') {
-      streamASkills = (args.skills_present || []).slice(0, 6);
+      // Use server-detected skills when available for Stream B context
+      streamASkills = serverSkills.present.length > 0
+        ? serverSkills.present.slice(0, 6).map(s => s.skill)
+        : (args.skills_present || []).slice(0, 6);
     }
   };
 
@@ -1169,7 +1736,7 @@ module.exports = async function handler(req, res) {
       userContent: userContentA,
       tools:       TOOLS_A,
       fileId,
-      maxTokens:   8000
+      maxTokens:   4000
     });
 
     const streamAPromise = processStream(anthropicResA, emitA);
@@ -1177,13 +1744,15 @@ module.exports = async function handler(req, res) {
     // Launch Stream B after 4s — Stream A typically emits set_skills by T+5s
     // so we use whatever skills are available at launch time
     const launchStreamB = async () => {
-      await new Promise(r => setTimeout(r, 4000));
+      await new Promise(r => setTimeout(r, 2000));
 
       // Use skills captured so far (may be empty if set_skills hasn't fired yet —
       // in that case Stream B gets no confirmed skills, acceptable tradeoff for speed)
+      // Pass server-detected gaps so certs and projects target real skill gaps
+      const detectedGaps = serverSkills?.missing?.slice(0, 5) || [];
       const userContentB = buildAnalysisPromptB(
         role, locationStr, jd, hasJD, sal, marketDataBlock,
-        resumeForB, streamASkills
+        resumeForB, streamASkills, detectedGaps, resumeAnchors
       );
 
       const anthropicResB = await makeStreamRequest({
@@ -1193,15 +1762,36 @@ module.exports = async function handler(req, res) {
         userContent: userContentB,
         tools:       TOOLS_B,
         fileId:      null,
-        maxTokens:   2200  // tightened — concise prompts + smaller cert schema = sufficient
+        maxTokens:   5000  // raised from 3200 — 3 full projects with 4-phase ai_prompts each need ~1800 tokens alone
       });
 
-      return processStream(anthropicResB, (name, args) => emitToolCallB(name, args, res, role, marketData));
+      return processStream(anthropicResB, (name, args) => emitToolCallB(name, args, res, role, marketData, detectedGaps));
     };
 
     await Promise.all([streamAPromise, launchStreamB()]);
 
     await cleanupFile();
+
+    // Record aggregate stats — fire-and-forget, never delays the response
+    (async () => {
+      try {
+        const ats = atsResult?.atsScore;
+        const presentCount = serverSkills?.present?.length || 0;
+        const topN  = Math.max(1, Math.min(15, mergedSkillFreq.length));
+        const match = ats != null
+          ? Math.round(Math.min(95, Math.max(5, 0.7 * ats + 0.3 * (presentCount / topN) * 100)))
+          : null;
+        const ps = [
+          upstashIncrBy('impact:total', 1),
+          ats != null ? upstashIncrBy('impact:ats_sum', ats)   : Promise.resolve(),
+          ats != null ? upstashIncrBy('impact:ats_count', 1)   : Promise.resolve(),
+          match != null ? upstashIncrBy('impact:match_count', 1) : Promise.resolve(),
+          (match != null && match >= 70) ? upstashIncrBy('impact:high_match', 1) : Promise.resolve(),
+        ];
+        await Promise.all(ps);
+      } catch { /* never block the response */ }
+    })();
+
     sendEvent(res, 'done', { complete: true });
     res.end();
 
