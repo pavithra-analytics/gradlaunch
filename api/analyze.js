@@ -1746,26 +1746,41 @@ module.exports = async function handler(req, res) {
     const launchStreamB = async () => {
       await new Promise(r => setTimeout(r, 2000));
 
-      // Use skills captured so far (may be empty if set_skills hasn't fired yet —
-      // in that case Stream B gets no confirmed skills, acceptable tradeoff for speed)
-      // Pass server-detected gaps so certs and projects target real skill gaps
       const detectedGaps = serverSkills?.missing?.slice(0, 5) || [];
       const userContentB = buildAnalysisPromptB(
         role, locationStr, jd, hasJD, sal, marketDataBlock,
         resumeForB, streamASkills, detectedGaps, resumeAnchors
       );
 
-      const anthropicResB = await makeStreamRequest({
-        apiKey,
-        model:       MODEL_B,
-        system:      systemPromptB,
-        userContent: userContentB,
-        tools:       TOOLS_B,
-        fileId:      null,
-        maxTokens:   8000  // 3 tools × large JSON outputs; set_projects alone needs ~2500 tokens for 4-phase ai_prompts
-      });
+      // Three parallel forced-tool requests so each section always fires independently.
+      // tool_choice:{type:'any'} on sonnet-4-6 calls exactly one tool then stops,
+      // meaning set_certifications and set_projects were silently skipped.
+      const SECTION_REQUESTS = [
+        { toolName: 'set_linkedin',       maxTokens: 1200 },
+        { toolName: 'set_certifications', maxTokens: 1800 },
+        { toolName: 'set_projects',       maxTokens: 4500 },
+      ];
 
-      return processStream(anthropicResB, (name, args) => emitToolCallB(name, args, res, role, marketData, detectedGaps));
+      await Promise.all(SECTION_REQUESTS.map(async ({ toolName, maxTokens }) => {
+        try {
+          const anthropicRes = await makeStreamRequest({
+            apiKey,
+            model:       MODEL_B,
+            system:      systemPromptB,
+            userContent: userContentB,
+            tools:       TOOLS_B,
+            toolChoice:  { type: 'tool', name: toolName },
+            fileId:      null,
+            maxTokens,
+          });
+          await processStream(anthropicRes, (name, args) =>
+            emitToolCallB(name, args, res, role, marketData, detectedGaps)
+          );
+        } catch (err) {
+          console.error(`Stream B ${toolName} error:`, err.message);
+          // non-fatal — other sections still complete
+        }
+      }));
     };
 
     await Promise.all([streamAPromise, launchStreamB()]);
