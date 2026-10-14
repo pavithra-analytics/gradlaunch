@@ -5443,18 +5443,7 @@ function downloadResumeEdit() {
 // Uses window._resumeText (plain text) set via textContent — never binary data
 function populateResumePane() {
   const el = document.getElementById('resume-edit-area');
-  if (!el) return;
-  const text = window._resumeText || '';
-  if (!text) return;
-  // Detect garbled PDF extraction: >35% non-printable-ASCII in non-whitespace chars
-  const nonWS = text.replace(/\s/g, '');
-  const nonAscii = (nonWS.match(/[^\x20-\x7E]/g) || []).length;
-  if (nonWS.length > 50 && nonAscii / nonWS.length > 0.35) {
-    el.style.cssText = 'display:flex;align-items:center;justify-content:center;color:var(--on-surface-v);font-size:13px;text-align:center;padding:24px;';
-    el.textContent = 'Resume text could not be displayed — this PDF uses a non-standard font encoding. The bullet analysis on the left is still accurate.';
-  } else {
-    el.textContent = text;
-  }
+  if (el && window._resumeText) el.textContent = window._resumeText;
 }
 
 // ═══════════════════════════════════════════════════
