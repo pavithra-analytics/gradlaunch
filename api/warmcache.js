@@ -548,7 +548,7 @@ async function upstashSetNX(key, ttlSeconds) {
     const token = process.env.UPSTASH_REDIS_REST_TOKEN;
     if (!url || !token) return true; // fail open so counters still increment
     const r = await httpGet(
-      `${url}/set/${encodeURIComponent(key)}/1?NX=true&EX=${ttlSeconds}`,
+      `${url}/set/${encodeURIComponent(key)}/1/NX/EX/${ttlSeconds}`,
       { Authorization: `Bearer ${token}` }
     );
     // Upstash returns {"result":"OK"} on new key, {"result":null} if already set

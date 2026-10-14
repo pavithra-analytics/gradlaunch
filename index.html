@@ -5443,7 +5443,32 @@ function downloadResumeEdit() {
 // Uses window._resumeText (plain text) set via textContent — never binary data
 function populateResumePane() {
   const el = document.getElementById('resume-edit-area');
-  if (el && window._resumeText) el.textContent = window._resumeText;
+  if (!el || !window._resumeText) return;
+
+  const text  = window._resumeText;
+  const nonWS = text.replace(/\s/g, '');
+  const nonAsciiRatio = nonWS.length > 50
+    ? (nonWS.match(/[^\x20-\x7E]/g) || []).length / nonWS.length
+    : 0;
+
+  if (nonAsciiRatio > 0.35) {
+    // PDF uses embedded/custom font encoding — extracted text is unreadable.
+    // The analysis on the left is still accurate (Claude read the original PDF).
+    // Show a helpful notice rather than unusable garbled characters.
+    el.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;text-align:center;';
+    el.innerHTML = `
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--amber,#d97706)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+      </svg>
+      <div style="font-weight:700;font-size:14px;color:var(--on-surface)">PDF font encoding not supported</div>
+      <div style="font-size:13px;color:var(--on-surface-v);line-height:1.6;max-width:280px">
+        This PDF uses embedded fonts that can't be extracted as text. Your analysis on the left is fully accurate — Claude read the original PDF directly.<br><br>
+        To use the <strong>adopt &amp; download</strong> feature, re-upload your resume as a <strong>.docx</strong> or <strong>.txt</strong> file.
+      </div>`;
+  } else {
+    el.style.cssText = '';
+    el.textContent = text;
+  }
 }
 
 // ═══════════════════════════════════════════════════
