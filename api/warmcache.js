@@ -229,12 +229,12 @@ function extractSkillFrequencies(items) {
 // ═══════════════════════════════════════════════════════
 // HTTP HELPERS
 // ═══════════════════════════════════════════════════════
-function httpGet(url, headers = {}) {
+function httpGet(url, headers = {}, timeoutMs = 15000) {
   return new Promise((resolve, reject) => {
     const u = new URL(url);
     const req = https.request({
       hostname: u.hostname, path: u.pathname + u.search,
-      method: 'GET', headers, timeout: 15000
+      method: 'GET', headers, timeout: timeoutMs
     }, res => {
       let raw = '';
       res.on('data', c => raw += c);
@@ -284,7 +284,8 @@ async function upstashGet(key) {
     if (!url || !token) return null;
     const res = await httpGet(
       `${url}/get/${encodeURIComponent(key)}`,
-      { Authorization: `Bearer ${token}` }
+      { Authorization: `Bearer ${token}` },
+      3000
     );
     if (res?.result != null) {
       return typeof res.result === 'string' ? JSON.parse(res.result) : res.result;
@@ -301,7 +302,8 @@ async function upstashSet(key, value) {
     const encoded = encodeURIComponent(JSON.stringify(value));
     await httpGet(
       `${url}/set/${encodeURIComponent(key)}/${encoded}?EX=${UPSTASH_TTL}`,
-      { Authorization: `Bearer ${token}` }
+      { Authorization: `Bearer ${token}` },
+      3000
     );
     return true;
   } catch { return false; }
@@ -534,7 +536,8 @@ async function upstashIncrBy(key, by) {
     const cmd = Number.isInteger(by) ? 'incrby' : 'incrbyfloat';
     const r = await httpGet(
       `${url}/${cmd}/${encodeURIComponent(key)}/${by}`,
-      { Authorization: `Bearer ${token}` }
+      { Authorization: `Bearer ${token}` },
+      3000
     );
     return r?.result ?? null;
   } catch { return null; }
@@ -549,7 +552,8 @@ async function upstashSetNX(key, ttlSeconds) {
     if (!url || !token) return true; // fail open so counters still increment
     const r = await httpGet(
       `${url}/set/${encodeURIComponent(key)}/1/NX/EX/${ttlSeconds}`,
-      { Authorization: `Bearer ${token}` }
+      { Authorization: `Bearer ${token}` },
+      3000
     );
     // Upstash returns {"result":"OK"} on new key, {"result":null} if already set
     return r?.result === 'OK';

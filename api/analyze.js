@@ -1807,32 +1807,37 @@ module.exports = async function handler(req, res) {
 
     await cleanupFile();
 
-    // Record aggregate stats — deduplicated by resume hash so uploading the
-    // same resume repeatedly counts as 1. A meaningfully edited resume has a
-    // different hash and counts again. TTL = 180 days.
-    try {
-      const resumeHash = crypto
-        .createHash('sha256')
-        .update(resumeForATS || '')
-        .digest('hex');
-      const isNew = await upstashSetNX(`impact:seen:${resumeHash}`, 30 * 86400);
+    // Record aggregate stats — deduplicated by resume hash.
+    // Raced against a 1.5s deadline so a slow/unreachable Upstash never
+    // delays the 'done' event for the user.
+    await Promise.race([
+      (async () => {
+        try {
+          const resumeHash = crypto
+            .createHash('sha256')
+            .update(resumeForATS || '')
+            .digest('hex');
+          const isNew = await upstashSetNX(`impact:seen:${resumeHash}`, 30 * 86400);
 
-      if (isNew) {
-        const ats = atsResult?.atsScore;
-        const presentCount = serverSkills?.present?.length || 0;
-        const topN  = Math.max(1, Math.min(15, mergedSkillFreq.length));
-        const match = ats != null
-          ? Math.round(Math.min(95, Math.max(5, 0.7 * ats + 0.3 * (presentCount / topN) * 100)))
-          : null;
-        await Promise.all([
-          upstashIncrBy('impact:total', 1),
-          ats != null ? upstashIncrBy('impact:ats_sum', ats)   : Promise.resolve(),
-          ats != null ? upstashIncrBy('impact:ats_count', 1)   : Promise.resolve(),
-          match != null ? upstashIncrBy('impact:match_count', 1) : Promise.resolve(),
-          (match != null && match >= 70) ? upstashIncrBy('impact:high_match', 1) : Promise.resolve(),
-        ]);
-      }
-    } catch { /* never block the response */ }
+          if (isNew) {
+            const ats = atsResult?.atsScore;
+            const presentCount = serverSkills?.present?.length || 0;
+            const topN  = Math.max(1, Math.min(15, mergedSkillFreq.length));
+            const match = ats != null
+              ? Math.round(Math.min(95, Math.max(5, 0.7 * ats + 0.3 * (presentCount / topN) * 100)))
+              : null;
+            await Promise.all([
+              upstashIncrBy('impact:total', 1),
+              ats != null ? upstashIncrBy('impact:ats_sum', ats)   : Promise.resolve(),
+              ats != null ? upstashIncrBy('impact:ats_count', 1)   : Promise.resolve(),
+              match != null ? upstashIncrBy('impact:match_count', 1) : Promise.resolve(),
+              (match != null && match >= 70) ? upstashIncrBy('impact:high_match', 1) : Promise.resolve(),
+            ]);
+          }
+        } catch { /* never block the response */ }
+      })(),
+      new Promise(resolve => setTimeout(resolve, 1500)),
+    ]);
 
     sendEvent(res, 'done', { complete: true });
     res.end();
