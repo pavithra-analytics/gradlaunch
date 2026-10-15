@@ -1384,6 +1384,22 @@ function processStream(anthropicRes, emitFn) {
           }
           continue;
         }
+
+        if (type === 'message_delta' && event.delta?.stop_reason === 'max_tokens') {
+          const incomplete = Object.values(toolBuffers).find(b => !b.complete);
+          console.error(`Stream max_tokens hit — tool=${incomplete?.name || 'unknown'}, args_len=${incomplete?.args?.length || 0}`);
+          continue;
+        }
+
+        // API-level error events (overloaded, rate limit, etc.) — reject so the
+        // per-section catch can log and mark the section as failed, not silently drop
+        if (type === 'error') {
+          const msg = event.error?.message || 'API stream error';
+          console.error(`Anthropic stream error event: ${msg}`);
+          anthropicRes.destroy();
+          reject(new Error(msg));
+          return;
+        }
       }
     });
 
@@ -1691,7 +1707,7 @@ module.exports = async function handler(req, res) {
         userContent: userContentB,
         tools:       TOOLS_B,
         toolChoice:  { type: 'tool', name: targetTool },
-        maxTokens:   targetTool === 'set_projects' ? 3500 : 1800
+        maxTokens:   targetTool === 'set_projects' ? 6000 : (targetTool === 'set_certifications' ? 2500 : 2000)
       });
       await processStream(anthropicResB, (name, args) =>
         emitToolCallB(name, args, res, role, marketData, retryGaps)
@@ -1776,9 +1792,9 @@ module.exports = async function handler(req, res) {
       // tool_choice:{type:'any'} on sonnet-4-6 calls exactly one tool then stops,
       // meaning set_certifications and set_projects were silently skipped.
       const SECTION_REQUESTS = [
-        { toolName: 'set_linkedin',       maxTokens: 1200 },
-        { toolName: 'set_certifications', maxTokens: 1800 },
-        { toolName: 'set_projects',       maxTokens: 4000 },
+        { toolName: 'set_linkedin',       maxTokens: 2000 },
+        { toolName: 'set_certifications', maxTokens: 2500 },
+        { toolName: 'set_projects',       maxTokens: 6000 },
       ];
 
       await Promise.all(SECTION_REQUESTS.map(async ({ toolName, maxTokens }) => {
