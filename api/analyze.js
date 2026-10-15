@@ -1845,6 +1845,7 @@ module.exports = async function handler(req, res) {
       message: 'Analysis took longer than expected. Your partial results are below — re-run for complete results.'
     });
     sendEvent(res, 'error', { message: err.message || 'Analysis failed. Please try again.' });
+    sendEvent(res, 'done', { complete: false });
     res.end();
   }
 };

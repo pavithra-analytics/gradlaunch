@@ -3849,7 +3849,7 @@ async function launchAnalysis() {
         }
       }
     }
-  }, 60000);
+  }, 100000);
 
   try {
     await runStream({ role, location, jd, signal });
@@ -4056,8 +4056,18 @@ function handleSSE(name, data) {
       }
       break;
 
-    case 'error':
-      throw new Error(data.message || 'Analysis error');
+    case 'error': {
+      const msg = data.message || 'Analysis failed. Please try again.';
+      if (!resultReady) {
+        // No results shown yet — go back to input page with error message
+        stopLoading();
+        showPage('input');
+        document.getElementById('back-btn').style.display = 'none';
+        showErrorState(msg);
+      }
+      // If resultReady (partial results already visible), stay on results page
+      break;
+    }
   }
 }
 
