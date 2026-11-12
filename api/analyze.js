@@ -1465,11 +1465,23 @@ function makeStreamRequest({ apiKey, model, system, userContent, tools, fileId, 
 // MAIN HANDLER
 // ═══════════════════════════════════════════════════════
 module.exports = async function handler(req, res) {
+  const T0 = Date.now();
   res.setHeader('Access-Control-Allow-Origin',  '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS, GET');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST')   return res.status(405).json({ error: 'Method not allowed' });
+
+  // Health check — quick verify that the function is alive and API key exists
+  if (req.method === 'GET') {
+    const hasKey = !!process.env.ANTHROPIC_API_KEY;
+    return res.status(200).json({
+      ok: hasKey,
+      models: { a: MODEL_A, b: MODEL_B },
+      uptime: process.uptime().toFixed(0) + 's'
+    });
+  }
+
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim()
     || req.socket?.remoteAddress || 'unknown';
@@ -1672,6 +1684,8 @@ module.exports = async function handler(req, res) {
   res.setHeader('X-RateLimit-Remaining', rateAfter.remaining);
   if (rateAfter.resetAt) res.setHeader('X-RateLimit-Reset', rateAfter.resetAt);
 
+  console.log(`[T+${Date.now()-T0}ms] metadata ready, role=${matchedRole||role}, liveData=${hasLiveData}`);
+
   sendEvent(res, 'metadata', {
     rateRemaining: rateAfter.remaining,
     rateResetAt:   rateAfter.resetAt || null,
@@ -1753,6 +1767,7 @@ module.exports = async function handler(req, res) {
 
   try {
     // Launch Stream A immediately
+    console.log(`[T+${Date.now()-T0}ms] launching Stream A (${MODEL_A})`);
     const anthropicResA = await makeStreamRequest({
       apiKey,
       model:       MODEL_A,
@@ -1763,10 +1778,11 @@ module.exports = async function handler(req, res) {
       maxTokens:   4000
     });
 
-    const streamAPromise = processStream(anthropicResA, emitA);
+    console.log(`[T+${Date.now()-T0}ms] Stream A connected (HTTP 200)`);
+    const streamAPromise = processStream(anthropicResA, emitA).then(() => {
+      console.log(`[T+${Date.now()-T0}ms] Stream A complete`);
+    });
 
-    // Launch Stream B after 4s — Stream A typically emits set_skills by T+5s
-    // so we use whatever skills are available at launch time
     const launchStreamB = async () => {
       // No delay — server-detected skills (serverSkills.present) are used as fallback
       // and are equivalent quality to waiting for Stream A's set_skills event.
@@ -1798,6 +1814,7 @@ module.exports = async function handler(req, res) {
       ];
 
       await Promise.all(SECTION_REQUESTS.map(async ({ toolName, maxTokens }) => {
+        const t0 = Date.now();
         try {
           const toolSchema = TOOLS_B.filter(t => t.name === toolName);
           const anthropicRes = await makeStreamRequest({
@@ -1813,8 +1830,9 @@ module.exports = async function handler(req, res) {
           await processStream(anthropicRes, (name, args) =>
             emitToolCallB(name, args, res, role, marketData, detectedGaps)
           );
+          console.log(`[T+${Date.now()-T0}ms] Stream B ${toolName} done (${Date.now()-t0}ms)`);
         } catch (err) {
-          console.error(`Stream B ${toolName} error:`, err.message);
+          console.error(`[T+${Date.now()-T0}ms] Stream B ${toolName} FAILED (${Date.now()-t0}ms):`, err.message);
           // non-fatal — other sections still complete
         }
       }));
@@ -1831,6 +1849,7 @@ module.exports = async function handler(req, res) {
       sendEvent(res, 'error', { message: streamAResult.reason?.message || 'Analysis failed.' });
     }
 
+    console.log(`[T+${Date.now()-T0}ms] all streams settled, sending done`);
     sendEvent(res, 'done', { complete: streamAResult.status === 'fulfilled' });
     res.end();
 
