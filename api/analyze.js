@@ -466,6 +466,7 @@ function clamp(val, min, max) {
 // SSE HELPER
 // ═══════════════════════════════════════════════════════
 function sendEvent(res, eventName, data) {
+  if (res.writableEnded || res.finished) return;
   try { res.write(`event: ${eventName}\ndata: ${JSON.stringify(data)}\n\n`); }
   catch { /* client disconnected */ }
 }
@@ -1391,12 +1392,10 @@ function processStream(anthropicRes, emitFn) {
           continue;
         }
 
-        // API-level error events (overloaded, rate limit, etc.) — reject so the
-        // per-section catch can log and mark the section as failed, not silently drop
+        // API-level error events (overloaded, rate limit, etc.)
         if (type === 'error') {
           const msg = event.error?.message || 'API stream error';
-          console.error(`Anthropic stream error event: ${msg}`);
-          anthropicRes.destroy();
+          console.error(`Anthropic stream error: ${event.error?.type || 'unknown'} — ${msg}`);
           reject(new Error(msg));
           return;
         }
@@ -1700,12 +1699,13 @@ module.exports = async function handler(req, res) {
       (resumeFull || resume || '').substring(0, 6000), confirmedSkills, retryGaps, retryResumeAnchors
     );
     try {
+      const toolSchema = TOOLS_B.filter(t => t.name === targetTool);
       const anthropicResB = await makeStreamRequest({
         apiKey,
         model:       MODEL_B,
         system:      systemPromptB,
         userContent: userContentB,
-        tools:       TOOLS_B,
+        tools:       toolSchema,
         toolChoice:  { type: 'tool', name: targetTool },
         maxTokens:   targetTool === 'set_projects' ? 6000 : (targetTool === 'set_certifications' ? 2500 : 2000)
       });
@@ -1799,12 +1799,13 @@ module.exports = async function handler(req, res) {
 
       await Promise.all(SECTION_REQUESTS.map(async ({ toolName, maxTokens }) => {
         try {
+          const toolSchema = TOOLS_B.filter(t => t.name === toolName);
           const anthropicRes = await makeStreamRequest({
             apiKey,
             model:       MODEL_B,
             system:      systemPromptB,
             userContent: userContentB,
-            tools:       TOOLS_B,
+            tools:       toolSchema,
             toolChoice:  { type: 'tool', name: toolName },
             fileId:      streamBFileId,
             maxTokens,
@@ -1819,16 +1820,21 @@ module.exports = async function handler(req, res) {
       }));
     };
 
-    await Promise.all([streamAPromise, launchStreamB()]);
+    // allSettled: if Stream A rejects (API error), Stream B still finishes
+    // instead of writing to an already-ended response
+    const [streamAResult] = await Promise.allSettled([streamAPromise, launchStreamB()]);
 
     await cleanupFile();
 
-    sendEvent(res, 'done', { complete: true });
+    if (streamAResult.status === 'rejected') {
+      console.error('Stream A failed:', streamAResult.reason?.message);
+      sendEvent(res, 'error', { message: streamAResult.reason?.message || 'Analysis failed.' });
+    }
+
+    sendEvent(res, 'done', { complete: streamAResult.status === 'fulfilled' });
     res.end();
 
     // Best-effort impact stats — fire-and-forget, never delays the response.
-    // Deduped by resume hash (30-day TTL). Vercel may kill the container
-    // shortly after res.end(), so writes are best-effort.
     (async () => {
       try {
         const resumeHash = crypto
