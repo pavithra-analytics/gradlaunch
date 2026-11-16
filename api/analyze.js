@@ -1701,6 +1701,33 @@ module.exports = async function handler(req, res) {
     totalJobs:     marketData?.totalJobs || null
   });
 
+  // ── Early server-computed skills & gaps ──
+  // Send skills and gaps immediately from deterministic server data so the UI
+  // populates before the LLM even starts. If the LLM later calls set_skills or
+  // set_gaps, those events re-render with any LLM-enhanced data (how_to_fix text).
+  if (serverSkills && serverSkills.present.length > 0) {
+    const earlySkills = serverSkills.present.slice(0, 6);
+    const levels = {}, relevance = {};
+    for (const s of earlySkills) {
+      levels[s.skill] = computeSkillLevel(s.skill, serverSkills._resumeText || '');
+      relevance[s.skill] = s.pct;
+    }
+    sendEvent(res, 'skills', {
+      skills_present: earlySkills.map(s => s.skill),
+      skill_levels: levels,
+      skill_relevance: relevance
+    });
+  }
+  if (serverSkills && serverSkills.missing.length > 0) {
+    const earlyGaps = serverSkills.missing.slice(0, 5).map(g => ({
+      skill: g.skill,
+      pct: g.pct,
+      how_to_fix: `Build ${g.skill} skills through projects or certifications.`,
+      priority: g.pct > 50 ? 'high' : g.pct > 25 ? 'medium' : 'low'
+    }));
+    sendEvent(res, 'gaps', { gaps: earlyGaps });
+  }
+
   // ── Per-section retry fast-path ──
   // When sectionOnly is set, skip Stream A entirely and run just the requested Stream B tool.
   // confirmedSkills and detectedGaps are passed from the frontend (captured from the original run).
@@ -1780,7 +1807,7 @@ module.exports = async function handler(req, res) {
       userContent: userContentA,
       tools:       TOOLS_A,
       fileId,
-      maxTokens:   4000
+      maxTokens:   8000
     });
 
     console.log(`[T+${Date.now()-T0}ms] Stream A connected (HTTP 200)`);
