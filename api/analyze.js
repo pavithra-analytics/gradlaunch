@@ -428,17 +428,22 @@ function normalizeCerts(certPicks, certReasons) {
     const cost     = parts[1] || '';
     const duration = parts[2] || '';
 
-    // Primary: check structured position [3] for URL
-    const urlInPos3 = /^https?:\/\//.test(parts[3] || '');
-    // Fallback: scan the entire raw string for any https URL (handles Claude formatting variations)
-    const rawUrlMatch = !urlInPos3 ? (raw.match(/https?:\/\/[^\s·,)"'\]>]+/) || null) : null;
-    const url = urlInPos3 ? parts[3] : (rawUrlMatch ? rawUrlMatch[0] : '');
+    // Primary: check structured position [3] for URL (with or without protocol)
+    const pos3 = (parts[3] || '').trim();
+    const urlInPos3 = /^https?:\/\//.test(pos3);
+    const bareInPos3 = !urlInPos3 && /^[a-z0-9][-a-z0-9]*\.(?:com|org|net|edu|io|dev|ai|gov)/i.test(pos3);
+    // Fallback: scan the entire raw string for any URL (with or without protocol)
+    const rawUrlMatch = !(urlInPos3 || bareInPos3)
+      ? (raw.match(/https?:\/\/[^\s·,)"'\]>]+/) || raw.match(/\b((?:[a-z0-9][-a-z0-9]*\.)+(?:com|org|net|edu|io|dev|ai|gov)(?:\/[^\s·,)"'\]>]*)?)/i) || null)
+      : null;
+    let url = urlInPos3 ? pos3 : bareInPos3 ? 'https://' + pos3 : (rawUrlMatch ? (rawUrlMatch[1] ? 'https://' + rawUrlMatch[1] : rawUrlMatch[0]) : '');
 
     // Why text: everything after the URL part, stripping the URL if found via regex
-    const whyParts = urlInPos3 ? parts.slice(4) : parts.slice(3);
+    const whyParts = (urlInPos3 || bareInPos3) ? parts.slice(4) : parts.slice(3);
     let why = whyParts.join(' · ').replace(/^Why:\s*/i, '').trim();
-    if (rawUrlMatch && why.includes(rawUrlMatch[0])) {
-      why = why.replace(rawUrlMatch[0], '').replace(/\s{2,}/g, ' ').trim();
+    const urlTextToStrip = rawUrlMatch ? (rawUrlMatch[1] || rawUrlMatch[0]) : '';
+    if (urlTextToStrip && why.includes(urlTextToStrip)) {
+      why = why.replace(urlTextToStrip, '').replace(/\s{2,}/g, ' ').trim();
     }
     why = why
        || raw.replace(/https?:\/\/[^\s·,)"'\]>]+/g, '').replace(/·/g, ' ').replace(/\s{2,}/g, ' ').trim()

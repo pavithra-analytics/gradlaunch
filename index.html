@@ -4374,8 +4374,10 @@ function trimToSentences(text, n) {
 // Extract a URL from text that may contain one, returning { url, cleaned }
 function extractUrlFromText(text) {
   const m = (text || '').match(/https?:\/\/[^\s·,)]+/);
-  if (!m) return { url: '', cleaned: text };
-  return { url: m[0], cleaned: text.replace(m[0], '').replace(/\s{2,}/g, ' ').trim() };
+  if (m) return { url: m[0], cleaned: text.replace(m[0], '').replace(/\s{2,}/g, ' ').trim() };
+  const bare = (text || '').match(/\b((?:[a-z0-9][-a-z0-9]*\.)+(?:com|org|net|edu|io|dev|ai|gov)(?:\/[^\s·,)]*)?)/i);
+  if (bare) return { url: 'https://' + bare[1], cleaned: text.replace(bare[0], '').replace(/\s{2,}/g, ' ').trim() };
+  return { url: '', cleaned: text };
 }
 
 function renderCerts(certs) {
@@ -4392,10 +4394,10 @@ function renderCerts(certs) {
       const extracted = extractUrlFromText(fullWhy);
       if (extracted.url) { enrollUrl = extracted.url; fullWhy = extracted.cleaned; }
     }
-    // Also try www. URLs without protocol
+    // Also try bare domain URLs without protocol
     if (!enrollUrl) {
-      const wwwM = fullWhy.match(/\b((?:www\.)[^\s·,)]+)/);
-      if (wwwM) { enrollUrl = 'https://' + wwwM[1]; fullWhy = fullWhy.replace(wwwM[0], '').replace(/\s{2,}/g,' ').trim(); }
+      const bareM = fullWhy.match(/\b((?:[a-z0-9][-a-z0-9]*\.)+(?:com|org|net|edu|io|dev|ai|gov)(?:\/[^\s·,)]*)?)/i);
+      if (bareM) { enrollUrl = 'https://' + bareM[1]; fullWhy = fullWhy.replace(bareM[0], '').replace(/\s{2,}/g,' ').trim(); }
     }
     // Now trim to 2 sentences
     let why = trimToSentences(fullWhy, 2);
