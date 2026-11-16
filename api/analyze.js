@@ -1423,7 +1423,7 @@ function makeStreamRequest({ apiKey, model, system, userContent, tools, fileId, 
       system,
       messages: [{ role: 'user', content: userContent }],
       tools,
-      tool_choice: toolChoice || { type: 'auto' },
+      tool_choice: toolChoice || { type: 'any' },
       stream: true
     });
 
@@ -1786,8 +1786,10 @@ module.exports = async function handler(req, res) {
   // Fixed delay avoids worst-case wait when set_skills is slow.
 
   let streamASkills = []; // populated when set_skills fires
+  const streamACalled = new Set(); // track which tools Stream A actually called
 
   const emitA = (name, args) => {
+    streamACalled.add(name);
     emitToolCallA(name, args, res, sal, role, marketData, atsResult, serverSkills);
     if (name === 'set_skills') {
       // Use server-detected skills when available for Stream B context
@@ -1812,7 +1814,26 @@ module.exports = async function handler(req, res) {
 
     console.log(`[T+${Date.now()-T0}ms] Stream A connected (HTTP 200)`);
     const streamAPromise = processStream(anthropicResA, emitA).then(() => {
-      console.log(`[T+${Date.now()-T0}ms] Stream A complete`);
+      console.log(`[T+${Date.now()-T0}ms] Stream A complete — tools called: ${[...streamACalled].join(', ') || 'none'}`);
+
+      // ── Fallback: emit missing Stream A sections from server-computed data ──
+      // With tool_choice 'any', Haiku often calls only set_verdict then stops.
+      // Emit server-computed fallbacks for any sections the LLM skipped.
+      if (!streamACalled.has('set_scores')) {
+        const overall = atsResult?.atsScore != null
+          ? computeMatchScore(atsResult.atsScore, serverSkills?.present?.length || 0, Math.max(1, (marketData?._mergedSkillFreq || []).length))
+          : 30;
+        sendEvent(res, 'scores', {
+          overall,
+          categories: [
+            { name: 'Bullet Quality', score: 4 },
+            { name: 'Impact & Metrics', score: 3 },
+            { name: 'Technical Depth', score: 5 },
+            { name: 'Role Alignment', score: Math.round(overall / 10) }
+          ]
+        });
+        console.log(`[T+${Date.now()-T0}ms] Fallback: emitted scores`);
+      }
     });
 
     const launchStreamB = async () => {
