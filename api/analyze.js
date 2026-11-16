@@ -428,17 +428,22 @@ function normalizeCerts(certPicks, certReasons) {
     const cost     = parts[1] || '';
     const duration = parts[2] || '';
 
-    // Primary: check structured position [3] for URL
-    const urlInPos3 = /^https?:\/\//.test(parts[3] || '');
-    // Fallback: scan the entire raw string for any https URL (handles Claude formatting variations)
-    const rawUrlMatch = !urlInPos3 ? (raw.match(/https?:\/\/[^\s·,)"'\]>]+/) || null) : null;
-    const url = urlInPos3 ? parts[3] : (rawUrlMatch ? rawUrlMatch[0] : '');
+    // Primary: check structured position [3] for URL (with or without protocol)
+    const pos3 = (parts[3] || '').trim();
+    const urlInPos3 = /^https?:\/\//.test(pos3);
+    const bareInPos3 = !urlInPos3 && /^[a-z0-9][-a-z0-9]*\.(?:com|org|net|edu|io|dev|ai|gov)/i.test(pos3);
+    // Fallback: scan the entire raw string for any URL (with or without protocol)
+    const rawUrlMatch = !(urlInPos3 || bareInPos3)
+      ? (raw.match(/https?:\/\/[^\s·,)"'\]>]+/) || raw.match(/\b((?:[a-z0-9][-a-z0-9]*\.)+(?:com|org|net|edu|io|dev|ai|gov)(?:\/[^\s·,)"'\]>]*)?)/i) || null)
+      : null;
+    let url = urlInPos3 ? pos3 : bareInPos3 ? 'https://' + pos3 : (rawUrlMatch ? (rawUrlMatch[1] ? 'https://' + rawUrlMatch[1] : rawUrlMatch[0]) : '');
 
     // Why text: everything after the URL part, stripping the URL if found via regex
-    const whyParts = urlInPos3 ? parts.slice(4) : parts.slice(3);
+    const whyParts = (urlInPos3 || bareInPos3) ? parts.slice(4) : parts.slice(3);
     let why = whyParts.join(' · ').replace(/^Why:\s*/i, '').trim();
-    if (rawUrlMatch && why.includes(rawUrlMatch[0])) {
-      why = why.replace(rawUrlMatch[0], '').replace(/\s{2,}/g, ' ').trim();
+    const urlTextToStrip = rawUrlMatch ? (rawUrlMatch[1] || rawUrlMatch[0]) : '';
+    if (urlTextToStrip && why.includes(urlTextToStrip)) {
+      why = why.replace(urlTextToStrip, '').replace(/\s{2,}/g, ' ').trim();
     }
     why = why
        || raw.replace(/https?:\/\/[^\s·,)"'\]>]+/g, '').replace(/·/g, ' ').replace(/\s{2,}/g, ' ').trim()
@@ -1696,6 +1701,33 @@ module.exports = async function handler(req, res) {
     totalJobs:     marketData?.totalJobs || null
   });
 
+  // ── Early server-computed skills & gaps ──
+  // Send skills and gaps immediately from deterministic server data so the UI
+  // populates before the LLM even starts. If the LLM later calls set_skills or
+  // set_gaps, those events re-render with any LLM-enhanced data (how_to_fix text).
+  if (serverSkills && serverSkills.present.length > 0) {
+    const earlySkills = serverSkills.present.slice(0, 6);
+    const levels = {}, relevance = {};
+    for (const s of earlySkills) {
+      levels[s.skill] = computeSkillLevel(s.skill, serverSkills._resumeText || '');
+      relevance[s.skill] = s.pct;
+    }
+    sendEvent(res, 'skills', {
+      skills_present: earlySkills.map(s => s.skill),
+      skill_levels: levels,
+      skill_relevance: relevance
+    });
+  }
+  if (serverSkills && serverSkills.missing.length > 0) {
+    const earlyGaps = serverSkills.missing.slice(0, 5).map(g => ({
+      skill: g.skill,
+      pct: g.pct,
+      how_to_fix: `Build ${g.skill} skills through projects or certifications.`,
+      priority: g.pct > 50 ? 'high' : g.pct > 25 ? 'medium' : 'low'
+    }));
+    sendEvent(res, 'gaps', { gaps: earlyGaps });
+  }
+
   // ── Per-section retry fast-path ──
   // When sectionOnly is set, skip Stream A entirely and run just the requested Stream B tool.
   // confirmedSkills and detectedGaps are passed from the frontend (captured from the original run).
@@ -1775,7 +1807,7 @@ module.exports = async function handler(req, res) {
       userContent: userContentA,
       tools:       TOOLS_A,
       fileId,
-      maxTokens:   4000
+      maxTokens:   8000
     });
 
     console.log(`[T+${Date.now()-T0}ms] Stream A connected (HTTP 200)`);

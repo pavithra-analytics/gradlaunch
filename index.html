@@ -2373,6 +2373,10 @@ body{line-height:1.5}
   100%{background:rgba(70,71,211,.0)}
 }
 
+.bullet-fix-inline{
+  margin-top:10px;padding-top:10px;
+  border-top:1px solid var(--border-soft);
+}
 /* Inline bullet detail (replaces modal for Resume Fix tab) */
 .bullet-inline-detail{
   margin-top:10px;padding-top:10px;
@@ -4370,8 +4374,10 @@ function trimToSentences(text, n) {
 // Extract a URL from text that may contain one, returning { url, cleaned }
 function extractUrlFromText(text) {
   const m = (text || '').match(/https?:\/\/[^\s·,)]+/);
-  if (!m) return { url: '', cleaned: text };
-  return { url: m[0], cleaned: text.replace(m[0], '').replace(/\s{2,}/g, ' ').trim() };
+  if (m) return { url: m[0], cleaned: text.replace(m[0], '').replace(/\s{2,}/g, ' ').trim() };
+  const bare = (text || '').match(/\b((?:[a-z0-9][-a-z0-9]*\.)+(?:com|org|net|edu|io|dev|ai|gov)(?:\/[^\s·,)]*)?)/i);
+  if (bare) return { url: 'https://' + bare[1], cleaned: text.replace(bare[0], '').replace(/\s{2,}/g, ' ').trim() };
+  return { url: '', cleaned: text };
 }
 
 function renderCerts(certs) {
@@ -4388,10 +4394,10 @@ function renderCerts(certs) {
       const extracted = extractUrlFromText(fullWhy);
       if (extracted.url) { enrollUrl = extracted.url; fullWhy = extracted.cleaned; }
     }
-    // Also try www. URLs without protocol
+    // Also try bare domain URLs without protocol
     if (!enrollUrl) {
-      const wwwM = fullWhy.match(/\b((?:www\.)[^\s·,)]+)/);
-      if (wwwM) { enrollUrl = 'https://' + wwwM[1]; fullWhy = fullWhy.replace(wwwM[0], '').replace(/\s{2,}/g,' ').trim(); }
+      const bareM = fullWhy.match(/\b((?:[a-z0-9][-a-z0-9]*\.)+(?:com|org|net|edu|io|dev|ai|gov)(?:\/[^\s·,)]*)?)/i);
+      if (bareM) { enrollUrl = 'https://' + bareM[1]; fullWhy = fullWhy.replace(bareM[0], '').replace(/\s{2,}/g,' ').trim(); }
     }
     // Now trim to 2 sentences
     let why = trimToSentences(fullWhy, 2);
@@ -4658,6 +4664,7 @@ function appendBulletGroup(data) {
     list.innerHTML = '';
   }
 
+  const needsRewrite = [];
   const items = (data.items||[]).map(item => {
     const isRed = item.status !== 'green';
     const tags  = item.tags || [];
@@ -4676,24 +4683,40 @@ function appendBulletGroup(data) {
     const idx = bulletStoreIdx++;
     bulletStore.set(idx, { text: item.text, bh: item.brutal_honey, rw: item.rewrite, tags, atsKw: item.ats_keyword_introduced || '' });
 
-    const suggestion = item.rewrite && /^<\s*REMOVE/i.test(item.rewrite.trim())
-      ? `<div class="bullet-suggestion" style="color:var(--amber-text)">⚠ Consider removing — not relevant to target role</div>`
-      : item.rewrite
-      ? `<div class="bullet-after-preview">
-          <div class="bullet-after-lbl">After →</div>
-          <div class="bullet-after-text">${esc(item.rewrite.replace(/\[.*?\]/g,'…').substring(0,120))}${item.rewrite.length>120?'…':''}</div>
-        </div>`
+    const isRemove = item.rewrite && /^<\s*REMOVE/i.test(item.rewrite.trim());
+    const hasRewrite = !!(item.rewrite && item.rewrite.trim() && !isRemove);
+    const rwText = hasRewrite ? item.rewrite : '';
+    const atsKw = item.ats_keyword_introduced || '';
+    const atsKwBadge = atsKw
+      ? `<div style="display:inline-flex;align-items:center;gap:5px;margin-bottom:6px;background:rgba(0,87,189,.07);border:1px solid rgba(0,87,189,.18);border-radius:6px;padding:4px 10px;font-size:10px;font-weight:800;color:var(--primary)">
+           <span class="material-symbols-outlined" style="font-size:13px;font-variation-settings:'FILL' 1">label</span>
+           Introduces ATS keyword: ${esc(atsKw)}
+         </div>`
       : '';
 
-    return `<div class="bullet-item red" data-bullet-idx="${idx}" onclick="toggleBulletDetail(${idx})">
+    const fixContent = isRemove
+      ? `<div class="bid-verdict">${esc(item.brutal_honey || 'This bullet needs work.')}</div>
+         <div style="background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);border-radius:8px;padding:10px 12px;font-size:12px;font-weight:600;color:var(--on-surface)">
+           <span class="material-symbols-outlined" style="color:#d97706;font-size:16px;vertical-align:middle;margin-right:4px;font-variation-settings:'FILL' 1">info</span>
+           Consider removing — not relevant to target role.
+         </div>`
+      : `<div class="bid-verdict">${esc(item.brutal_honey || 'This bullet needs work.')}</div>
+         ${atsKwBadge}
+         <div class="bid-after-lbl" style="font-size:10px;font-weight:800;color:var(--secondary);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px">After — edit freely, then adopt</div>
+         <textarea class="bid-textarea" id="bid-ta-${idx}">${esc(rwText)}</textarea>
+         <div class="bid-actions">
+           <button class="bid-adopt" id="bid-adopt-${idx}" onclick="event.stopPropagation();adoptRewriteInline(${idx})" ${hasRewrite ? '' : 'disabled'}>
+             <span class="material-symbols-outlined" style="font-size:14px">check_circle</span>Adopt
+           </button>
+         </div>`;
+
+    if (!hasRewrite && !isRemove) needsRewrite.push(idx);
+
+    return `<div class="bullet-item red" data-bullet-idx="${idx}">
       ${tagHtml ? `<div class="bullet-tags">${tagHtml}</div>` : ''}
       <div class="bullet-before-lbl">Before</div>
       <p class="bullet-text">${esc(item.text)}</p>
-      ${suggestion}
-      <div class="bullet-see-more">
-        <span class="material-symbols-outlined" style="font-size:14px">expand_more</span>
-        See analysis &amp; fix inline
-      </div>
+      <div class="bullet-fix-inline">${fixContent}</div>
     </div>`;
   }).join('');
 
@@ -4707,6 +4730,7 @@ function appendBulletGroup(data) {
     <span style="font-weight:500;font-size:10px;color:var(--outline)">${esc(data.role||'')}</span>
   </div>${items}`;
   list.appendChild(group);
+  needsRewrite.forEach(i => generateBulletRewriteInline(i));
 
   // Build jump-nav button for this company
   const nav = document.getElementById('co-nav');
@@ -5165,100 +5189,9 @@ function scrollResumePaneToText(text) {
 }
 
 // ═══════════════════════════════════════════════════
-// INLINE BULLET DETAIL (split-screen Resume Fix)
-// Replaces modal for the Resume Fix tab.
+// INLINE BULLET FIX (Resume Fix tab)
+// Analysis + editable textarea + Adopt/Revert shown directly on card.
 // ═══════════════════════════════════════════════════
-function toggleBulletDetail(idx) {
-  const card = document.querySelector(`[data-bullet-idx="${idx}"]`);
-  if (!card) return;
-  // Adopted bullets ARE still expandable — just show revert option inside
-
-  const isOpen = card.classList.contains('expanded');
-
-  // Collapse any other open bullet first; remove active from all
-  document.querySelectorAll('.bullet-item.expanded').forEach(c => {
-    if (c !== card) {
-      c.classList.remove('expanded', 'active');
-      const det = c.querySelector('.bullet-inline-detail');
-      if (det) det.remove();
-      const see = c.querySelector('.bullet-see-more .material-symbols-outlined');
-      if (see) see.textContent = 'expand_more';
-    }
-  });
-
-  if (isOpen) {
-    // Collapse this bullet and remove active highlight
-    card.classList.remove('expanded', 'active');
-    const det = card.querySelector('.bullet-inline-detail');
-    if (det) det.remove();
-    const see = card.querySelector('.bullet-see-more .material-symbols-outlined');
-    if (see) see.textContent = 'expand_more';
-  } else {
-    // Expand and mark as active (visible selected state)
-    card.classList.add('expanded', 'active');
-    const see = card.querySelector('.bullet-see-more .material-symbols-outlined');
-    if (see) see.textContent = 'expand_less';
-    renderBulletInlineDetail(idx, card);
-
-    // Scroll right pane to align with this bullet
-    const d = bulletStore.get(idx);
-    const scrollTarget = d && (d.adoptedText || d.text);
-    if (scrollTarget) scrollResumePaneToText(scrollTarget);
-  }
-}
-
-function renderBulletInlineDetail(idx, card) {
-  const d = bulletStore.get(idx);
-  if (!d) return;
-
-  const isRemove = d.rw && /^<\s*REMOVE/i.test(d.rw.trim());
-  const taId = `bid-ta-${idx}`;
-
-  const detEl = document.createElement('div');
-  detEl.className = 'bullet-inline-detail';
-  detEl.onclick = e => e.stopPropagation(); // prevent collapse when clicking inside
-
-  if (isRemove) {
-    detEl.innerHTML = `<div class="bid-verdict">${esc(d.bh || 'This bullet needs work.')}</div>
-      <div style="background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);border-radius:8px;padding:10px 12px;font-size:12px;font-weight:600;color:var(--on-surface)">
-        <span class="material-symbols-outlined" style="color:#d97706;font-size:16px;vertical-align:middle;margin-right:4px;font-variation-settings:'FILL' 1">info</span>
-        Consider removing — not relevant to target role.
-      </div>`;
-  } else {
-    const hasAutoFix = !!(d.rw && d.rw.trim());
-    const rwText = d.adopted ? (d.adoptedText || d.rw || '') : (d.rw || d.text || '');
-    const afterLblText = d.adopted
-      ? 'Adopted — edit if needed, then revert or re-adopt'
-      : hasAutoFix ? 'After — edit freely, then adopt' : 'Edit manually, then adopt';
-    const atsKwBadge = d.atsKw
-      ? `<div style="display:inline-flex;align-items:center;gap:5px;margin-bottom:6px;background:rgba(0,87,189,.07);border:1px solid rgba(0,87,189,.18);border-radius:6px;padding:4px 10px;font-size:10px;font-weight:800;color:var(--primary)">
-           <span class="material-symbols-outlined" style="font-size:13px;font-variation-settings:'FILL' 1">label</span>
-           Introduces ATS keyword: ${esc(d.atsKw)}
-         </div>`
-      : '';
-    detEl.innerHTML = `<div class="bid-verdict">${esc(d.bh || 'This bullet needs work.')}</div>
-      ${atsKwBadge}
-      <div style="font-size:10px;font-weight:800;color:${d.adopted ? 'var(--tertiary)' : 'var(--secondary)'};text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px">${afterLblText}</div>
-      <textarea class="bid-textarea" id="${taId}">${esc(rwText)}</textarea>
-      <div class="bid-actions">
-        ${d.adopted
-          ? `<button class="bid-revert" id="bid-revert-${idx}" onclick="revertBulletInline(${idx})">
-               <span class="material-symbols-outlined" style="font-size:14px">undo</span>Revert
-             </button>`
-          : `<button class="bid-adopt" id="bid-adopt-${idx}" onclick="adoptRewriteInline(${idx})" ${rwText ? '' : 'disabled'}>
-               <span class="material-symbols-outlined" style="font-size:14px">check_circle</span>Adopt
-             </button>`
-        }
-      </div>`;
-
-    // If no rewrite yet, generate one via micro-call
-    if (!rwText) {
-      generateBulletRewriteInline(idx);
-    }
-  }
-
-  card.appendChild(detEl);
-}
 
 async function generateBulletRewriteInline(idx) {
   const d = bulletStore.get(idx);
@@ -5332,32 +5265,33 @@ function adoptRewriteInline(idx) {
   const originalText = d.original || d.text;
   bulletStore.set(idx, { ...d, rw: newText, adopted: true, original: originalText, adoptedText: newText });
 
-  // Mark card visually as adopted — keep clickable so user can revert
   const card = document.querySelector(`[data-bullet-idx="${idx}"]`);
   if (card) {
-    // Update displayed bullet text to adopted version
     const textEl = card.querySelector('.bullet-text');
     if (textEl) textEl.textContent = newText;
 
-    // Add adopted class (green border, still pointer cursor) and remove expanded
     card.classList.add('adopted');
-    card.classList.remove('expanded', 'active');
 
-    // Remove inline detail; update badge
-    card.querySelectorAll('.bullet-adopted-badge').forEach(el => el.remove());
-    card.querySelectorAll('.bullet-inline-detail').forEach(el => el.remove());
+    // Update textarea and label
+    const ta = card.querySelector('.bid-textarea');
+    if (ta) ta.value = newText;
+    const lbl = card.querySelector('.bid-after-lbl');
+    if (lbl) { lbl.textContent = 'Adopted — edit if needed, then revert or re-adopt'; lbl.style.color = 'var(--tertiary)'; }
+
+    // Switch Adopt button to Revert
+    const actions = card.querySelector('.bid-actions');
+    if (actions) {
+      actions.innerHTML = `<button class="bid-revert" id="bid-revert-${idx}" onclick="event.stopPropagation();revertBulletInline(${idx})">
+        <span class="material-symbols-outlined" style="font-size:14px">undo</span>Revert
+      </button>`;
+    }
 
     // Adopted badge
+    card.querySelectorAll('.bullet-adopted-badge').forEach(el => el.remove());
     const badge = document.createElement('div');
     badge.className = 'bullet-adopted-badge';
     badge.innerHTML = '<span class="material-symbols-outlined" style="font-size:13px;vertical-align:middle;color:var(--tertiary)">check_circle</span> Adopted';
     card.appendChild(badge);
-
-    // Update see-more to revert affordance
-    const seeEl = card.querySelector('.bullet-see-more');
-    if (seeEl) {
-      seeEl.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px">undo</span>Click to revert';
-    }
   }
 
   // Recount flagged (adopted bullets no longer count as "to rewrite")
@@ -5398,24 +5332,26 @@ function revertBulletInline(idx) {
   // Restore store — clear adopted state, preserve original rw for potential re-adoption
   bulletStore.set(idx, { ...d, adopted: false, adoptedText: null });
 
-  // Re-render card as red/expandable (collapsed)
   const card = document.querySelector(`[data-bullet-idx="${idx}"]`);
   if (card) {
-    card.classList.remove('adopted', 'expanded', 'active');
+    card.classList.remove('adopted');
     card.classList.add('red');
     const textEl = card.querySelector('.bullet-text');
     if (textEl) textEl.textContent = d.original;
-    card.querySelectorAll('.bullet-adopted-badge,.bullet-inline-detail').forEach(el => el.remove());
+    card.querySelectorAll('.bullet-adopted-badge').forEach(el => el.remove());
 
-    // Restore see-more affordance text
-    const seeEl = card.querySelector('.bullet-see-more');
-    if (seeEl) {
-      seeEl.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px">expand_more</span>See analysis &amp; fix inline';
-    } else {
-      const seeMore = document.createElement('div');
-      seeMore.className = 'bullet-see-more';
-      seeMore.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px">expand_more</span>See analysis &amp; fix inline';
-      card.appendChild(seeMore);
+    // Restore textarea to original rewrite
+    const ta = card.querySelector('.bid-textarea');
+    if (ta) ta.value = d.rw || '';
+    const lbl = card.querySelector('.bid-after-lbl');
+    if (lbl) { lbl.textContent = 'After — edit freely, then adopt'; lbl.style.color = 'var(--secondary)'; }
+
+    // Switch Revert button back to Adopt
+    const actions = card.querySelector('.bid-actions');
+    if (actions) {
+      actions.innerHTML = `<button class="bid-adopt" id="bid-adopt-${idx}" onclick="event.stopPropagation();adoptRewriteInline(${idx})">
+        <span class="material-symbols-outlined" style="font-size:14px">check_circle</span>Adopt
+      </button>`;
     }
   }
 
