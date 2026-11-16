@@ -1423,7 +1423,7 @@ function makeStreamRequest({ apiKey, model, system, userContent, tools, fileId, 
       system,
       messages: [{ role: 'user', content: userContent }],
       tools,
-      tool_choice: toolChoice || { type: 'any' },
+      tool_choice: toolChoice || { type: 'auto' },
       stream: true
     });
 
