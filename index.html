@@ -3861,6 +3861,9 @@ async function launchAnalysis() {
     sessionStorage.setItem('gl_last', Date.now().toString());
     // Results page is shown by the 'scores' SSE event (Stream A done)
     // Stream B (LinkedIn/certs/projects) populates async after that
+    // Safety net: if the SSE connection dropped before 'done' arrived,
+    // show retry buttons for any Stream B sections that never loaded
+    showMissingSectionRetry();
   } catch(err) {
     clearTimeout(safetyTimer);
     if (err.name==='AbortError') return;
@@ -4000,6 +4003,8 @@ function handleSSE(name, data) {
         showPage('results');
         document.getElementById('back-btn').style.display = 'block';
         showStreamBLoading();
+        // If Stream B sections haven't loaded after 70s, show retry buttons
+        setTimeout(() => showMissingSectionRetry(), 70000);
       }
       break;
 

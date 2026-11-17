@@ -1744,6 +1744,11 @@ module.exports = async function handler(req, res) {
       role, locationStr, jd, hasJD, sal, marketDataBlock,
       (resumeFull || resume || '').substring(0, 6000), confirmedSkills, retryGaps, retryResumeAnchors
     );
+    const keepalive = setInterval(() => {
+      if (!res.writableEnded && !res.finished) {
+        try { res.write(': keepalive\n\n'); } catch { /* client gone */ }
+      }
+    }, 15000);
     try {
       const toolSchema = TOOLS_B.filter(t => t.name === targetTool);
       const anthropicResB = await makeStreamRequest({
@@ -1762,6 +1767,8 @@ module.exports = async function handler(req, res) {
     } catch (err) {
       console.error('Section retry error:', err.message);
       sendEvent(res, 'error', { message: err.message || 'Retry failed. Please try again.' });
+    } finally {
+      clearInterval(keepalive);
     }
     res.end();
     return;
@@ -1866,29 +1873,40 @@ module.exports = async function handler(req, res) {
         { toolName: 'set_projects',       maxTokens: 6000 },
       ];
 
-      await Promise.all(SECTION_REQUESTS.map(async ({ toolName, maxTokens }) => {
-        const t0 = Date.now();
-        try {
-          const toolSchema = TOOLS_B.filter(t => t.name === toolName);
-          const anthropicRes = await makeStreamRequest({
-            apiKey,
-            model:       MODEL_B,
-            system:      systemPromptB,
-            userContent: userContentB,
-            tools:       toolSchema,
-            toolChoice:  { type: 'tool', name: toolName },
-            fileId:      streamBFileId,
-            maxTokens,
-          });
-          await processStream(anthropicRes, (name, args) =>
-            emitToolCallB(name, args, res, role, marketData, detectedGaps)
-          );
-          console.log(`[T+${Date.now()-T0}ms] Stream B ${toolName} done (${Date.now()-t0}ms)`);
-        } catch (err) {
-          console.error(`[T+${Date.now()-T0}ms] Stream B ${toolName} FAILED (${Date.now()-t0}ms):`, err.message);
-          // non-fatal — other sections still complete
+      // Keepalive: send SSE comments every 15s to prevent CDN/proxy idle-timeout drops
+      const keepalive = setInterval(() => {
+        if (!res.writableEnded && !res.finished) {
+          try { res.write(': keepalive\n\n'); } catch { /* client gone */ }
         }
-      }));
+      }, 15000);
+
+      try {
+        await Promise.all(SECTION_REQUESTS.map(async ({ toolName, maxTokens }) => {
+          const t0 = Date.now();
+          try {
+            const toolSchema = TOOLS_B.filter(t => t.name === toolName);
+            const anthropicRes = await makeStreamRequest({
+              apiKey,
+              model:       MODEL_B,
+              system:      systemPromptB,
+              userContent: userContentB,
+              tools:       toolSchema,
+              toolChoice:  { type: 'tool', name: toolName },
+              fileId:      streamBFileId,
+              maxTokens,
+            });
+            await processStream(anthropicRes, (name, args) =>
+              emitToolCallB(name, args, res, role, marketData, detectedGaps)
+            );
+            console.log(`[T+${Date.now()-T0}ms] Stream B ${toolName} done (${Date.now()-t0}ms)`);
+          } catch (err) {
+            console.error(`[T+${Date.now()-T0}ms] Stream B ${toolName} FAILED (${Date.now()-t0}ms):`, err.message);
+            // non-fatal — other sections still complete
+          }
+        }));
+      } finally {
+        clearInterval(keepalive);
+      }
     };
 
     // allSettled: if Stream A rejects (API error), Stream B still finishes
