@@ -1710,12 +1710,16 @@ module.exports = async function handler(req, res) {
   // and experience details in the lower half of longer resumes are available for grounding.
   const resumeForB = (resumeFull || resume || '').substring(0, 6000);
 
-  // Detect garbled PDF text (>35% non-ASCII non-whitespace).
-  // When garbled, Stream B's resume context is unusable — pass the fileId instead
-  // so Claude reads the original PDF directly, just like Stream A does.
   const resumeBNonWS = resumeForB.replace(/\s/g, '');
-  const resumeBGarbled = resumeBNonWS.length > 50 &&
-    (resumeBNonWS.match(/[^\x20-\x7E]/g) || []).length / resumeBNonWS.length > 0.35;
+  let resumeBGarbled = false;
+  if (resumeBNonWS.length > 50) {
+    const nonAsciiRatio = (resumeBNonWS.match(/[^\x20-\x7E]/g) || []).length / resumeBNonWS.length;
+    const letterRatio = (resumeBNonWS.match(/[a-zA-Z]/g) || []).length / resumeBNonWS.length;
+    const words = resumeForB.match(/[a-zA-Z]{3,}/g) || [];
+    const common = /^(the|and|for|are|but|not|you|all|can|had|was|one|our|with|have|this|will|your|from|they|been|call|come|each|make|like|long|look|many|over|such|take|than|that|them|then|what|when|work|year|also|back|into|just|only|very|data|team|experience|management|skills|project|analysis|developed|managed|created|led|built|design|business|company|role|resume|education|university|degree|bachelor|master|professional|certified)$/i;
+    const recognized = words.filter(w => common.test(w)).length;
+    resumeBGarbled = nonAsciiRatio > 0.35 || letterRatio < 0.4 || (words.length > 10 && recognized / words.length < 0.05);
+  }
 
   // SSE headers
   res.setHeader('Content-Type',      'text/event-stream');
