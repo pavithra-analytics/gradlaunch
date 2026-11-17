@@ -4717,7 +4717,7 @@ function appendBulletGroup(data) {
 
     if (!hasRewrite && !isRemove) needsRewrite.push(idx);
 
-    return `<div class="bullet-item red" data-bullet-idx="${idx}">
+    return `<div class="bullet-item red" data-bullet-idx="${idx}" onclick="selectBullet(${idx})" style="cursor:pointer">
       ${tagHtml ? `<div class="bullet-tags">${tagHtml}</div>` : ''}
       <div class="bullet-before-lbl">Before</div>
       <p class="bullet-text">${esc(item.text)}</p>
@@ -5196,7 +5196,19 @@ function scrollResumePaneToText(text) {
 // ═══════════════════════════════════════════════════
 // INLINE BULLET FIX (Resume Fix tab)
 // Analysis + editable textarea + Adopt/Revert shown directly on card.
+// Click a bullet to highlight it and scroll the right pane to that text.
 // ═══════════════════════════════════════════════════
+function selectBullet(idx) {
+  const card = document.querySelector(`[data-bullet-idx="${idx}"]`);
+  if (!card) return;
+  // Remove active from all other cards
+  document.querySelectorAll('.bullet-item.active').forEach(c => c.classList.remove('active'));
+  card.classList.add('active');
+  // Scroll right pane to this bullet's text
+  const d = bulletStore.get(idx);
+  const scrollTarget = d && (d.adoptedText || d.text);
+  if (scrollTarget) scrollResumePaneToText(scrollTarget);
+}
 
 async function generateBulletRewriteInline(idx) {
   const d = bulletStore.get(idx);
@@ -5265,6 +5277,7 @@ function adoptRewriteInline(idx) {
   tempFocusText = null;
   const rta = document.getElementById('resume-edit-area');
   if (rta) rta.innerHTML = buildResumePaneHTML();
+  scrollResumePaneToText(newText);
 
   // Update store: preserve original for revert, track adoptedText
   const originalText = d.original || d.text;
