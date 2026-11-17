@@ -418,6 +418,39 @@ function httpsPost(hostname, path, headers, body) {
 // NORMALIZE HELPERS
 // ═══════════════════════════════════════════════════════
 // ── Cert normaliser — parses combined "Provider · Cost · Duration · URL · Why" string ──
+const CERT_URL_FALLBACKS = [
+  { pattern: /google/i,                          url: 'https://grow.google/certificates/' },
+  { pattern: /aws|amazon web services/i,          url: 'https://aws.amazon.com/certification/' },
+  { pattern: /microsoft|azure|ms\b/i,            url: 'https://learn.microsoft.com/en-us/credentials/' },
+  { pattern: /coursera/i,                         url: 'https://www.coursera.org/' },
+  { pattern: /comptia/i,                          url: 'https://www.comptia.org/certifications' },
+  { pattern: /cisco|ccna|ccnp/i,                  url: 'https://www.cisco.com/site/us/en/learn/training-certifications/' },
+  { pattern: /salesforce/i,                       url: 'https://trailhead.salesforce.com/credentials' },
+  { pattern: /pmp|project management professional/i, url: 'https://www.pmi.org/certifications/project-management-pmp' },
+  { pattern: /scrum|csm/i,                        url: 'https://www.scrumalliance.org/get-certified' },
+  { pattern: /hubspot/i,                          url: 'https://academy.hubspot.com/courses' },
+  { pattern: /tableau/i,                          url: 'https://www.tableau.com/learn/certification' },
+  { pattern: /meta\b/i,                           url: 'https://www.coursera.org/meta' },
+  { pattern: /ibm/i,                              url: 'https://www.ibm.com/training/credentials' },
+  { pattern: /oracle/i,                           url: 'https://education.oracle.com/certification' },
+  { pattern: /shrm/i,                             url: 'https://www.shrm.org/credentials' },
+  { pattern: /six sigma|lean/i,                   url: 'https://www.sixsigmacouncil.org/six-sigma-certifications/' },
+  { pattern: /deep learning|andrew ng/i,          url: 'https://www.coursera.org/specializations/deep-learning' },
+  { pattern: /tensorflow/i,                       url: 'https://www.tensorflow.org/certificate' },
+  { pattern: /datacamp/i,                         url: 'https://www.datacamp.com/certification' },
+  { pattern: /edx/i,                              url: 'https://www.edx.org/certificates' },
+  { pattern: /udemy/i,                            url: 'https://www.udemy.com/' },
+  { pattern: /linkedin learning/i,                url: 'https://www.linkedin.com/learning/' },
+];
+
+function certUrlFallback(certName, provider) {
+  const text = `${certName} ${provider}`;
+  for (const { pattern, url } of CERT_URL_FALLBACKS) {
+    if (pattern.test(text)) return url;
+  }
+  return '';
+}
+
 function normalizeCerts(certPicks, certReasons) {
   if (!certPicks || !certPicks.length) return [];
   return certPicks.slice(0, 3).map(name => {
@@ -437,6 +470,9 @@ function normalizeCerts(certPicks, certReasons) {
       ? (raw.match(/https?:\/\/[^\s·,)"'\]>]+/) || raw.match(/\b((?:[a-z0-9][-a-z0-9]*\.)+(?:com|org|net|edu|io|dev|ai|gov)(?:\/[^\s·,)"'\]>]*)?)/i) || null)
       : null;
     let url = urlInPos3 ? pos3 : bareInPos3 ? 'https://' + pos3 : (rawUrlMatch ? (rawUrlMatch[1] ? 'https://' + rawUrlMatch[1] : rawUrlMatch[0]) : '');
+
+    // Last resort: known-cert provider URL lookup
+    if (!url) url = certUrlFallback(name, provider);
 
     // Why text: everything after the URL part, stripping the URL if found via regex
     const whyParts = (urlInPos3 || bareInPos3) ? parts.slice(4) : parts.slice(3);
