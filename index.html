@@ -5496,13 +5496,8 @@ function isGarbledText(text) {
   if (nonWS.length < 50) return false;
   const nonAsciiRatio = (nonWS.match(/[^\x20-\x7E]/g) || []).length / nonWS.length;
   if (nonAsciiRatio > 0.35) return true;
-  const letters = (nonWS.match(/[a-zA-Z]/g) || []).length;
-  const letterRatio = letters / nonWS.length;
+  const letterRatio = (nonWS.match(/[a-zA-Z]/g) || []).length / nonWS.length;
   if (letterRatio < 0.4) return true;
-  const words = text.match(/[a-zA-Z]{3,}/g) || [];
-  const common = /^(the|and|for|are|but|not|you|all|can|had|her|was|one|our|out|with|have|this|will|your|from|they|been|call|come|each|make|like|long|look|many|over|such|take|than|that|them|then|what|when|work|year|also|back|into|just|only|very|data|team|experience|management|skills|project|analysis|developed|managed|created|led|built|design|business|company|role|resume|education|university|degree|bachelor|master|professional|certified)$/i;
-  const recognized = words.filter(w => common.test(w)).length;
-  if (words.length > 10 && recognized / words.length < 0.05) return true;
   return false;
 }
 

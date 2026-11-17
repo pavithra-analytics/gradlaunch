@@ -1715,10 +1715,7 @@ module.exports = async function handler(req, res) {
   if (resumeBNonWS.length > 50) {
     const nonAsciiRatio = (resumeBNonWS.match(/[^\x20-\x7E]/g) || []).length / resumeBNonWS.length;
     const letterRatio = (resumeBNonWS.match(/[a-zA-Z]/g) || []).length / resumeBNonWS.length;
-    const words = resumeForB.match(/[a-zA-Z]{3,}/g) || [];
-    const common = /^(the|and|for|are|but|not|you|all|can|had|was|one|our|with|have|this|will|your|from|they|been|call|come|each|make|like|long|look|many|over|such|take|than|that|them|then|what|when|work|year|also|back|into|just|only|very|data|team|experience|management|skills|project|analysis|developed|managed|created|led|built|design|business|company|role|resume|education|university|degree|bachelor|master|professional|certified)$/i;
-    const recognized = words.filter(w => common.test(w)).length;
-    resumeBGarbled = nonAsciiRatio > 0.35 || letterRatio < 0.4 || (words.length > 10 && recognized / words.length < 0.05);
+    resumeBGarbled = nonAsciiRatio > 0.35 || letterRatio < 0.4;
   }
 
   // SSE headers
