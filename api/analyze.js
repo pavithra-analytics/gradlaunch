@@ -1711,12 +1711,8 @@ module.exports = async function handler(req, res) {
   const resumeForB = (resumeFull || resume || '').substring(0, 6000);
 
   const resumeBNonWS = resumeForB.replace(/\s/g, '');
-  let resumeBGarbled = false;
-  if (resumeBNonWS.length > 50) {
-    const nonAsciiRatio = (resumeBNonWS.match(/[^\x20-\x7E]/g) || []).length / resumeBNonWS.length;
-    const letterRatio = (resumeBNonWS.match(/[a-zA-Z]/g) || []).length / resumeBNonWS.length;
-    resumeBGarbled = nonAsciiRatio > 0.35 || letterRatio < 0.4;
-  }
+  const resumeBGarbled = resumeBNonWS.length > 50 &&
+    (resumeBNonWS.match(/[^\x20-\x7E]/g) || []).length / resumeBNonWS.length > 0.35;
 
   // SSE headers
   res.setHeader('Content-Type',      'text/event-stream');
